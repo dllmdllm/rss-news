@@ -70,6 +70,20 @@ def _fix_graphic_tags(html: str) -> str:
     return html
 
 
+def _remove_leading_title(content: str, title: str) -> str:
+    """Remove leading <h1> if it duplicates the article title."""
+    soup = BeautifulSoup(content, "html.parser")
+    h1 = soup.find("h1")
+    if h1:
+        h1_text = h1.get_text(strip=True)
+        title_clean = title.strip()
+        # Remove if h1 text is contained in title or vice versa (handles minor differences)
+        if h1_text and (h1_text in title_clean or title_clean in h1_text or h1_text == title_clean):
+            h1.decompose()
+            return str(soup)
+    return content
+
+
 def _add_featured_image(content: str, thumbnail: str) -> str:
     """Prepend thumbnail as featured image if content has no inline images."""
     if thumbnail and '<img' not in content:
@@ -111,56 +125,62 @@ async def _scrape_one(
     sem: asyncio.Semaphore,
 ) -> dict:
     async with sem:
-        try:
-            async with session.get(
-                article["url"], timeout=aiohttp.ClientTimeout(total=25)
-            ) as resp:
-                raw = await resp.read()
-                charset = resp.charset or "utf-8"
-            html = raw.decode(charset, errors="replace")
+        for attempt in range(2):
+            try:
+                async with session.get(
+                    article["url"], timeout=aiohttp.ClientTimeout(total=40)
+                ) as resp:
+                    raw = await resp.read()
+                    charset = resp.charset or "utf-8"
+                html = raw.decode(charset, errors="replace")
 
-            if _is_blocked(html):
-                print(f"[BLOCK] {article['source']} — {article['url'][:60]}")
-                rss = article.get("rss_content") or ""
-                thumb = article.get("thumbnail") or ""
-                img_html = f'<img src="{thumb}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
-                if rss or img_html:
-                    content = img_html + rss
+                if _is_blocked(html):
+                    print(f"[BLOCK] {article['source']} — {article['url'][:60]}")
+                    rss = article.get("rss_content") or ""
+                    thumb = article.get("thumbnail") or ""
+                    img_html = f'<img src="{thumb}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
+                    if rss or img_html:
+                        content = img_html + rss
+                        if article["source"] in SIMPLIFIED_SOURCES:
+                            content = _to_hk_traditional(content)
+                        article["content"] = content
+                    return article
+
+                html = _extract_noscript_imgs(html)
+                html = _fix_lazy_images(html)
+
+                content = trafilatura.extract(
+                    html,
+                    output_format="html",
+                    include_images=True,
+                    include_links=False,
+                    favor_precision=True,
+                    no_fallback=False,
+                )
+
+                if content:
+                    content = _fix_graphic_tags(content)
+                    content = _remove_leading_title(content, article.get("title", ""))
+                    content = _add_featured_image(content, article.get("thumbnail") or "")
                     if article["source"] in SIMPLIFIED_SOURCES:
                         content = _to_hk_traditional(content)
+                    elif article["source"] in ENGLISH_SOURCES:
+                        content = _translate_to_hk(content)
                     article["content"] = content
-                return article
 
-            html = _extract_noscript_imgs(html)
-            html = _fix_lazy_images(html)
+                # Extract og:image thumbnail if not already set from RSS
+                if not article.get("thumbnail"):
+                    meta = trafilatura.extract_metadata(html)
+                    if meta and meta.image:
+                        article["thumbnail"] = meta.image
 
-            content = trafilatura.extract(
-                html,
-                output_format="html",
-                include_images=True,
-                include_links=False,
-                favor_precision=True,
-                no_fallback=False,
-            )
+                break  # success, no retry needed
 
-            if content:
-                content = _fix_graphic_tags(content)
-                # Add thumbnail as featured image if no inline images
-                content = _add_featured_image(content, article.get("thumbnail") or "")
-                if article["source"] in SIMPLIFIED_SOURCES:
-                    content = _to_hk_traditional(content)
-                elif article["source"] in ENGLISH_SOURCES:
-                    content = _translate_to_hk(content)
-                article["content"] = content
-
-            # Extract og:image thumbnail if not already set from RSS
-            if not article.get("thumbnail"):
-                meta = trafilatura.extract_metadata(html)
-                if meta and meta.image:
-                    article["thumbnail"] = meta.image
-
-        except Exception as exc:
-            print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")
+            except Exception as exc:
+                if attempt == 0:
+                    await asyncio.sleep(3)  # wait before retry
+                else:
+                    print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")
     return article
 
 

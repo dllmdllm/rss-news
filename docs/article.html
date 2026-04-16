@@ -74,6 +74,17 @@
     .art-cat.cat-網媒 { background: #2a1a3d; color: #b87ce8; }
 
     .loading { text-align: center; padding: 80px; color: var(--muted); }
+
+    /* AI summary box */
+    .summary-box {
+      background: #1e1e2e; border-left: 3px solid var(--accent);
+      padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
+      font-size: .88rem; color: #c0c0d8; line-height: 1.6;
+    }
+    .summary-label {
+      display: block; font-size: .72rem; color: var(--accent);
+      font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;
+    }
   </style>
 </head>
 <body>
@@ -87,6 +98,7 @@
     <div id="art-body" style="display:none">
       <div class="art-meta" id="art-meta"></div>
       <h1 id="art-title"></h1>
+      <div id="art-summary"></div>
       <div class="content" id="art-content"></div>
     </div>
   </main>
@@ -115,6 +127,11 @@
            <span class="art-date">${date}</span>`;
 
         document.getElementById("art-title").textContent = art.title;
+
+        const summaryEl = document.getElementById("art-summary");
+        if (art.summary) {
+          summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${art.summary}</div>`;
+        }
 
         const body = document.getElementById("art-content");
         if (art.content) {

@@ -77,8 +77,9 @@
     .cat-網媒   { background: #2a1a3d; color: #b87ce8; }
     .source     { font-size: .75rem; color: var(--accent); font-weight: 600; }
     .date       { font-size: .72rem; color: var(--muted); margin-left: auto; }
-    .card-title { font-size: .92rem; font-weight: 500; color: var(--link); line-height: 1.5; }
-    .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
+    .card-title   { font-size: .92rem; font-weight: 500; color: var(--link); line-height: 1.5; }
+    .card-summary { font-size: .8rem; color: #aaa; line-height: 1.55; margin-top: 2px; }
+    .no-content   { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
     .loading, .empty {
       grid-column: 1 / -1; text-align: center;
@@ -148,6 +149,7 @@
               <span class="date">${date}</span>
             </div>
             <div class="card-title">${a.title}</div>
+            ${a.summary ? `<div class="card-summary">${a.summary}</div>` : ""}
             ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
           </div>
         </a>`;

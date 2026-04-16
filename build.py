@@ -13,8 +13,12 @@ if sys.stderr.encoding.lower() != "utf-8":
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.fetch import fetch_all
 from src.scrape import scrape_all
+from src.summarise import summarise_all
 
 DOCS_DIR = ROOT / "docs"
 DATA_DIR = DOCS_DIR / "data"
@@ -37,6 +41,8 @@ async def main():
     print("=== rss-news build start ===")
     articles = await fetch_all()
     articles = await scrape_all(articles)
+    articles = await summarise_all(articles)
+    articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles)
     print("=== done ===")
 
