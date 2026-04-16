@@ -36,7 +36,8 @@
       margin-bottom: 16px;
     }
     .art-cat    { font-size: .72rem; font-weight: 700; padding: 2px 10px; border-radius: 4px; }
-    .art-source { font-size: .8rem; color: var(--accent); font-weight: 600; }
+    .art-source { font-size: .8rem; color: var(--accent); font-weight: 600; text-decoration: none; }
+    .art-source:hover { text-decoration: underline; }
     .art-date   { font-size: .78rem; color: var(--muted); }
 
     h1#art-title {
@@ -110,7 +111,7 @@
 
         document.getElementById("art-meta").innerHTML =
           `<span class="art-cat cat-${art.category}">${art.category}</span>
-           <span class="art-source">${art.source}</span>
+           <a class="art-source" href="${art.url}" target="_blank" rel="noopener">${art.source}</a>
            <span class="art-date">${date}</span>`;
 
         document.getElementById("art-title").textContent = art.title;

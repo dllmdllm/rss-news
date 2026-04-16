@@ -1,7 +1,7 @@
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Force UTF-8 output on Windows
@@ -24,7 +24,7 @@ def save_json(articles: list):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = DATA_DIR / "articles.json"
     payload = {
-        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "updated": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
         "articles": articles,
     }
     with open(path, "w", encoding="utf-8") as f:
