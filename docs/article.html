@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>文章</title>
+  <style>
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a22;
+      --border:  #2e2e3e;
+      --accent:  #7c6af7;
+      --text:    #e0e0f0;
+      --muted:   #888;
+      --link:    #a89ff7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; }
+
+    /* top bar */
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .back { color: var(--accent); text-decoration: none; font-size: .9rem; }
+    .back:hover { text-decoration: underline; }
+    .topbar-source { font-size: .8rem; color: var(--muted); }
+
+    /* article layout */
+    main { max-width: 780px; margin: 0 auto; padding: 32px 24px 80px; }
+
+    .art-meta {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .art-cat    { font-size: .72rem; font-weight: 700; padding: 2px 10px; border-radius: 4px; }
+    .art-source { font-size: .8rem; color: var(--accent); font-weight: 600; }
+    .art-date   { font-size: .78rem; color: var(--muted); }
+
+    h1#art-title {
+      font-size: 1.4rem; font-weight: 700; line-height: 1.5;
+      color: var(--text); margin-bottom: 24px;
+    }
+
+    /* article body */
+    .content { line-height: 1.85; font-size: .95rem; color: #d0d0e8; }
+    .content p      { margin-bottom: 1.2em; }
+    .content h2     { font-size: 1.1rem; color: var(--text); margin: 1.6em 0 .6em; }
+    .content h3     { font-size: 1rem;   color: var(--text); margin: 1.4em 0 .5em; }
+    .content img    { max-width: 100%; height: auto; border-radius: 6px; margin: 1em 0; display: block; }
+    .content ul,
+    .content ol     { padding-left: 1.4em; margin-bottom: 1em; }
+    .content li     { margin-bottom: .4em; }
+    .content figure { margin: 1.2em 0; }
+    .content figcaption { font-size: .8rem; color: var(--muted); margin-top: .4em; }
+
+    /* fallback */
+    .no-content { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .ext-link {
+      display: inline-block; margin-top: 16px;
+      background: var(--accent); color: #fff; text-decoration: none;
+      padding: 10px 24px; border-radius: 8px; font-size: .9rem;
+    }
+
+    /* category colours */
+    .art-cat.cat-新聞 { background: #3d1a1a; color: #e87c7c; }
+    .art-cat.cat-國際 { background: #1a2a3d; color: #7cb4e8; }
+    .art-cat.cat-娛樂 { background: #3d1a30; color: #e87cc8; }
+    .art-cat.cat-消閒 { background: #1a3d22; color: #7ce890; }
+    .art-cat.cat-科技 { background: #3d2e1a; color: #e8b87c; }
+    .art-cat.cat-網媒 { background: #2a1a3d; color: #b87ce8; }
+
+    .loading { text-align: center; padding: 80px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="index.html" class="back">← 返回</a>
+    <span id="topbar-source" class="topbar-source"></span>
+  </div>
+
+  <main>
+    <div id="loading" class="loading">載入中…</div>
+    <div id="art-body" style="display:none">
+      <div class="art-meta" id="art-meta"></div>
+      <h1 id="art-title"></h1>
+      <div class="content" id="art-content"></div>
+    </div>
+  </main>
+
+  <script>
+    async function load() {
+      const id = new URLSearchParams(location.search).get("id");
+      if (!id) { location.href = "index.html"; return; }
+
+      try {
+        const res  = await fetch("data/articles.json");
+        const data = await res.json();
+        const art  = data.articles.find(a => a.id === id);
+        if (!art) { location.href = "index.html"; return; }
+
+        document.title = art.title;
+        document.getElementById("topbar-source").textContent = art.source;
+
+        const date = art.date
+          ? new Date(art.date).toLocaleString("zh-HK", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "";
+
+        document.getElementById("art-meta").innerHTML =
+          `<span class="art-cat cat-${art.category}">${art.category}</span>
+           <span class="art-source">${art.source}</span>
+           <span class="art-date">${date}</span>`;
+
+        document.getElementById("art-title").textContent = art.title;
+
+        const body = document.getElementById("art-content");
+        if (art.content) {
+          body.innerHTML = art.content;
+          // make all images responsive & lazy-load
+          body.querySelectorAll("img").forEach(img => {
+            img.loading = "lazy";
+            img.referrerPolicy = "no-referrer";
+            img.style.maxWidth = "100%";
+            img.style.height = "auto";
+            // onerror fallback: hide broken images
+            img.onerror = () => { img.style.display = "none"; };
+          });
+        } else {
+          body.innerHTML = `<div class="no-content">
+            <p>未能擷取全文</p>
+            <a href="${art.url}" target="_blank" rel="noopener" class="ext-link">閱讀原文 ↗</a>
+          </div>`;
+        }
+
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("art-body").style.display = "block";
+      } catch (e) {
+        document.getElementById("loading").textContent = "載入失敗";
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

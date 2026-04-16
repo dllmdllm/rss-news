@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新聞快訊</title>
+  <style>
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a22;
+      --border:  #2e2e3e;
+      --accent:  #7c6af7;
+      --text:    #e0e0f0;
+      --muted:   #888;
+      --link:    #a89ff7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; min-height: 100vh; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: .06em; }
+    .updated  { font-size: .78rem; color: var(--muted); }
+
+    .filters {
+      padding: 10px 24px; display: flex; flex-wrap: wrap; gap: 6px;
+      border-bottom: 1px solid var(--border); background: var(--bg);
+      position: sticky; top: 49px; z-index: 9;
+    }
+    .filter-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 14px; border-radius: 999px; cursor: pointer; font-size: .8rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px; padding: 20px 24px; max-width: 1600px; margin: 0 auto;
+    }
+
+    /* card */
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column;
+      cursor: pointer; transition: border-color .15s, transform .1s;
+      text-decoration: none; color: inherit;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+    /* thumbnail */
+    .card-thumb {
+      width: 100%; aspect-ratio: 16/9; object-fit: cover;
+      background: var(--border); display: block;
+    }
+    .card-thumb-placeholder {
+      width: 100%; aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #1a1a2e 0%, #2e2e3e 100%);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--border); font-size: 2rem;
+    }
+
+    /* card body */
+    .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
+    .card-meta  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cat        { font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; }
+    .cat-新聞   { background: #3d1a1a; color: #e87c7c; }
+    .cat-國際   { background: #1a2a3d; color: #7cb4e8; }
+    .cat-娛樂   { background: #3d1a30; color: #e87cc8; }
+    .cat-消閒   { background: #1a3d22; color: #7ce890; }
+    .cat-科技   { background: #3d2e1a; color: #e8b87c; }
+    .cat-網媒   { background: #2a1a3d; color: #b87ce8; }
+    .source     { font-size: .75rem; color: var(--accent); font-weight: 600; }
+    .date       { font-size: .72rem; color: var(--muted); margin-left: auto; }
+    .card-title { font-size: .92rem; font-weight: 500; color: var(--link); line-height: 1.5; }
+    .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
+
+    .loading, .empty {
+      grid-column: 1 / -1; text-align: center;
+      padding: 60px; color: var(--muted); font-size: .9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>新聞快訊</h1>
+    <span id="updated" class="updated"></span>
+  </header>
+  <div class="filters" id="filters"></div>
+  <div class="grid" id="grid"><div class="loading">載入中…</div></div>
+
+  <script>
+    const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
+    let all = [];
+
+    async function load() {
+      try {
+        const res  = await fetch("data/articles.json");
+        const data = await res.json();
+        document.getElementById("updated").textContent = "更新：" + data.updated;
+        all = data.articles;
+        buildFilters();
+        render(all);
+      } catch (e) {
+        document.getElementById("grid").innerHTML = '<div class="empty">載入失敗，請重試</div>';
+      }
+    }
+
+    function buildFilters() {
+      const container = document.getElementById("filters");
+      container.innerHTML = CATS.map(c =>
+        `<button class="filter-btn${c === "全部" ? " active" : ""}" data-cat="${c}">${c}</button>`
+      ).join("");
+      container.addEventListener("click", e => {
+        const btn = e.target.closest(".filter-btn");
+        if (!btn) return;
+        container.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const cat = btn.dataset.cat;
+        render(cat === "全部" ? all : all.filter(a => a.category === cat));
+      });
+    }
+
+    function render(articles) {
+      const grid = document.getElementById("grid");
+      if (!articles.length) {
+        grid.innerHTML = '<div class="empty">沒有文章</div>';
+        return;
+      }
+      grid.innerHTML = articles.map(a => {
+        const date = a.date
+          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "";
+        const thumb = a.thumbnail
+          ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
+          : `<div class="card-thumb-placeholder">📰</div>`;
+        return `<a class="card" href="article.html?id=${a.id}">
+          ${thumb}
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="cat cat-${a.category}">${a.category}</span>
+              <span class="source">${a.source}</span>
+              <span class="date">${date}</span>
+            </div>
+            <div class="card-title">${a.title}</div>
+            ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
+          </div>
+        </a>`;
+      }).join("");
+    }
+
+    load();
+    // Auto-refresh every 10 minutes
+    setInterval(load, 10 * 60 * 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+feedparser
+aiohttp
+trafilatura
+zhconv
+deep-translator
+beautifulsoup4
