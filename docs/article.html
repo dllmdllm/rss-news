@@ -242,7 +242,8 @@
 
         const summaryEl = document.getElementById("art-summary");
         if (art.summary) {
-          summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${art.summary}</div>`;
+          const summaryText = art.summary.replace(/\s*・/g, '\n・').trimStart();
+          summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${summaryText}</div>`;
         }
 
         const body = document.getElementById("art-content");

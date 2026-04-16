@@ -490,7 +490,7 @@
             </div>
             <div class="card-title cat-${a.category}">${a.title}</div>
             ${tags}
-            ${a.summary ? `<div class="card-summary">${a.summary}</div>` : ""}
+            ${a.summary ? `<div class="card-summary">${a.summary.replace(/\s*・/g, '\n・').trimStart()}</div>` : ""}
             ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
           </div>
         </a>`;
