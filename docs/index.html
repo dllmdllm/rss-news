@@ -88,11 +88,26 @@
     .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
     .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* ── source filters ── */
+    .source-filters {
+      padding: 5px 24px 7px; display: none; flex-wrap: wrap; gap: 5px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      position: sticky; top: 135px; z-index: 7;
+    }
+    .source-filters.has-sources { display: flex; }
+    .source-filter-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .source-filter-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .source-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
     /* ── tag filters ── */
     .tag-filters {
       padding: 5px 24px 7px; display: flex; flex-wrap: wrap; gap: 5px;
       background: var(--bg); border-bottom: 1px solid var(--border);
-      position: sticky; top: 135px; z-index: 7;
+      position: sticky; top: 135px; z-index: 6;
     }
     .tag-filter-btn {
       background: transparent; border: 1px solid var(--border); color: var(--muted);
@@ -252,14 +267,15 @@
     <input class="search-input" id="search" type="search" placeholder="搜尋標題、來源、標籤…" autocomplete="off">
   </div>
 
-  <div class="filters"     id="filters"></div>
-  <div class="tag-filters" id="tag-filters"></div>
+  <div class="filters"        id="filters"></div>
+  <div class="source-filters" id="source-filters"></div>
+  <div class="tag-filters"    id="tag-filters"></div>
   <div class="grid" id="grid"><div class="loading">載入中…</div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7/dist/fuse.min.js"></script>
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
-    let all = [], activeCat = "全部", activeTag = "", sortMode = "date";
+    let all = [], activeCat = "全部", activeSource = "", activeTag = "", sortMode = "date";
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let fuse = null;
 
@@ -303,6 +319,7 @@
       pendingNew.clear();
       all = pendingData.articles;
       loadedIds = new Set(all.map(a => a.id));
+      buildSourceFilters();
       buildTagFilters();
       renderFiltered();
       setTimeout(() => {
@@ -326,6 +343,7 @@
           threshold: 0.4, minMatchCharLength: 2,
         });
         buildFilters();
+        buildSourceFilters();
         buildTagFilters();
         renderFiltered();
       } catch {
@@ -379,8 +397,56 @@
         container.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         activeCat = btn.dataset.cat;
+        activeSource = "";
+        buildSourceFilters();
         renderFiltered();
       });
+    }
+
+    function buildSourceFilters() {
+      const container = document.getElementById("source-filters");
+      const tagFilters = document.getElementById("tag-filters");
+
+      if (activeCat === "全部") {
+        container.classList.remove("has-sources");
+        container.innerHTML = "";
+        tagFilters.style.top = "135px";
+        return;
+      }
+
+      const sources = [...new Set(
+        all.filter(a => a.category === activeCat).map(a => a.source)
+      )].sort();
+
+      if (!sources.length) {
+        container.classList.remove("has-sources");
+        container.innerHTML = "";
+        tagFilters.style.top = "135px";
+        return;
+      }
+
+      container.innerHTML = sources.map(s =>
+        `<button class="source-filter-btn${activeSource === s ? " active" : ""}" data-source="${s}">${s}</button>`
+      ).join("");
+      container.classList.add("has-sources");
+
+      // Push tag-filters down to sit below source-filters
+      tagFilters.style.top = (135 + container.offsetHeight) + "px";
+
+      container.onclick = e => {
+        const btn = e.target.closest(".source-filter-btn");
+        if (!btn) return;
+        const src = btn.dataset.source;
+        if (activeSource === src) {
+          activeSource = "";
+          container.querySelectorAll(".source-filter-btn").forEach(b => b.classList.remove("active"));
+        } else {
+          activeSource = src;
+          container.querySelectorAll(".source-filter-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        }
+        renderFiltered();
+      };
     }
 
     function buildTagFilters() {
@@ -443,6 +509,7 @@
         list = fuse.search(searchQuery).map(r => r.item);
       } else {
         if (activeCat !== "全部") list = list.filter(a => a.category === activeCat);
+        if (activeSource) list = list.filter(a => a.source === activeSource);
         if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
       }
       render(getSorted(list));
