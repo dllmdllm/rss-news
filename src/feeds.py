@@ -2,7 +2,8 @@ RSS_FEEDS = [
     # 新聞
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},
     {"name": "明報 本地",          "url": "https://news.mingpao.com/rss/ins/s00001.xml",                           "category": "新聞"},
-    {"name": "星島頭條",           "url": "https://www.stheadline.com/rss",                                        "category": "新聞"},
+    {"name": "星島頭條",           "url": "https://www.stheadline.com/rss",                                        "category": "新聞",
+     "url_category": {"/film-drama/": "娛樂", "/entertainment/": "娛樂", "/lifestyle/": "消閒", "/life/": "消閒"}},
     # 國際
     {"name": "RTHK 國際",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml", "category": "國際"},
     {"name": "RTHK 大中華",       "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_greaterchina.xml",   "category": "國際"},
@@ -10,7 +11,6 @@ RSS_FEEDS = [
     {"name": "明報 中國",          "url": "https://news.mingpao.com/rss/ins/s00004.xml",                           "category": "國際"},
     # 娛樂
     {"name": "明報 娛樂",          "url": "https://news.mingpao.com/rss/ins/s00007.xml",                           "category": "娛樂"},
-    {"name": "星島娛樂",           "url": "https://www.stheadline.com/rss/entertainment",                          "category": "娛樂"},
     # 消閒
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},

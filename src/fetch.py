@@ -90,13 +90,20 @@ async def _fetch_one(session: aiohttp.ClientSession, feed_info: dict, cutoff: da
                 except Exception:
                     pass
 
+            # Allow per-feed URL-based category override
+            category = feed_info["category"]
+            for pattern, cat in (feed_info.get("url_category") or {}).items():
+                if pattern in url:
+                    category = cat
+                    break
+
             articles.append({
                 "id":          _make_id(url),
                 "title":       title,
                 "url":         url,
                 "date":        date.isoformat(),
                 "source":      feed_info["name"],
-                "category":    feed_info["category"],
+                "category":    category,
                 "content":     None,
                 "thumbnail":   thumbnail,
                 "rss_content": rss_content,
