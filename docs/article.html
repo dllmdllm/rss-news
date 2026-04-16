@@ -41,12 +41,12 @@
     .art-date   { font-size: .78rem; color: var(--muted); }
 
     h1#art-title {
-      font-size: 1.4rem; font-weight: 700; line-height: 1.5;
+      font-size: 1.6rem; font-weight: 700; line-height: 1.5;
       color: var(--text); margin-bottom: 24px;
     }
 
     /* article body */
-    .content { line-height: 1.85; font-size: .95rem; color: #d0d0e8; }
+    .content { line-height: 1.85; font-size: 1.05rem; color: #d0d0e8; }
     .content p      { margin-bottom: 1.2em; }
     .content h2     { font-size: 1.1rem; color: var(--text); margin: 1.6em 0 .6em; }
     .content h3     { font-size: 1rem;   color: var(--text); margin: 1.4em 0 .5em; }
@@ -145,6 +145,16 @@
             // onerror fallback: hide broken images
             img.onerror = () => { img.style.display = "none"; };
           });
+          // If no images in content but article has a thumbnail, add it at top
+          if (art.thumbnail && body.querySelectorAll("img").length === 0) {
+            const fi = document.createElement("img");
+            fi.src = art.thumbnail;
+            fi.referrerPolicy = "no-referrer";
+            fi.loading = "lazy";
+            fi.style.cssText = "max-width:100%;height:auto;border-radius:6px;margin-bottom:1em;display:block";
+            fi.onerror = () => { fi.style.display = "none"; };
+            body.insertBefore(fi, body.firstChild);
+          }
         } else {
           body.innerHTML = `<div class="no-content">
             <p>未能擷取全文</p>

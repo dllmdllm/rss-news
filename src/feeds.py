@@ -10,6 +10,7 @@ RSS_FEEDS = [
     {"name": "明報 中國",          "url": "https://news.mingpao.com/rss/ins/s00004.xml",                           "category": "國際"},
     # 娛樂
     {"name": "明報 娛樂",          "url": "https://news.mingpao.com/rss/ins/s00007.xml",                           "category": "娛樂"},
+    {"name": "星島娛樂",           "url": "https://www.stheadline.com/rss/entertainment",                          "category": "娛樂"},
     # 消閒
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},

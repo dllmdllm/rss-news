@@ -89,6 +89,10 @@ def _add_featured_image(content: str, thumbnail: str) -> str:
     """Prepend thumbnail as featured image if content has no inline images."""
     if thumbnail and '<img' not in content:
         img = f'<img src="{thumbnail}" style="max-width:100%;border-radius:6px;margin-bottom:1em">'
+        # BeautifulSoup wraps fragments with <html><body>…</body></html>,
+        # so insert after <body> to avoid being stripped by innerHTML assignment.
+        if '<body>' in content:
+            return content.replace('<body>', f'<body>{img}', 1)
         return img + content
     return content
 
