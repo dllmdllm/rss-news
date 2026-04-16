@@ -115,14 +115,18 @@ async def _analyse_one(
         article["topic"]     = c.get("topic", "")
         return article
 
-    if not article.get("content"):
-        return article
+    title = article.get("title", "")
 
-    text = _extract_text(article["content"])
+    # Use full content if available; fall back to RSS summary; last resort: title only
+    if article.get("content"):
+        text = _extract_text(article["content"])
+    elif article.get("rss_content"):
+        text = _extract_text(article["rss_content"])
+    else:
+        text = title  # analyse from title alone
+
     if not text.strip():
         return article
-
-    title = article.get("title", "")
 
     async with sem:
         for attempt in range(3):
@@ -186,7 +190,8 @@ async def analyse_all(articles: list) -> list:
     cache     = load_cache()
     new_count = sum(
         1 for a in articles
-        if (a["id"] not in cache or _needs_full_analysis(cache[a["id"]])) and a.get("content")
+        if (a["id"] not in cache or _needs_full_analysis(cache[a["id"]]))
+        and (a.get("content") or a.get("rss_content") or a.get("title"))
     )
     cached_count = len(articles) - new_count
     print(f"[analyse] {cached_count} cached, {new_count} to generate")
