@@ -305,7 +305,6 @@
       loadedIds = new Set(all.map(a => a.id));
       buildTagFilters();
       renderFiltered();
-      window.scrollTo({ top: 0, behavior: "smooth" });
       setTimeout(() => {
         snap.forEach(id => {
           const card = document.querySelector(`a.card[href="article.html?id=${id}"]`);
