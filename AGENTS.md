@@ -182,9 +182,10 @@ Header: anthropic-version: 2023-06-01
 
 ### AI 分析並發數
 
-`ANALYSE_CONCURRENCY = 1`（`src/analyse.py`）
+`ANALYSE_CONCURRENCY = 10`（`src/analyse.py`）
 
-Token Plan 的 RPM 極低，提高並發會觸發 rate limit（錯誤碼 1002）。不要調大。
+MiniMax-M2.7 Token Plan 上限為 **500 RPM**，並發 10 實測安全。
+若觸發 rate limit（錯誤碼 1002），可調低至 5。
 
 ### `_add_featured_image` 插入位置
 

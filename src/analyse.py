@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 MINIMAX_API_KEY      = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_MODEL        = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
-ANALYSE_CONCURRENCY  = 1  # Token Plan strict RPM
+ANALYSE_CONCURRENCY  = 10  # MiniMax-M2.7 allows 500 RPM
 
 CACHE_PATH     = Path(__file__).parent.parent / "docs" / "data" / "analyses.json"
 OLD_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "summaries.json"
@@ -127,7 +127,8 @@ async def _analyse_one(
     async with sem:
         for attempt in range(3):
             try:
-                await asyncio.sleep(1 + attempt * 3)
+                if attempt > 0:
+                    await asyncio.sleep(attempt * 3)  # 3s, 6s backoff on retry only
                 async with session.post(
                     "https://api.minimax.io/anthropic/v1/messages",
                     headers={
