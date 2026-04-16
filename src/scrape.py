@@ -124,6 +124,38 @@ def _translate_to_hk(html_content: str) -> str:
         return html_content
 
 
+async def _urllib_fetch(url: str) -> str | None:
+    """Fetch using urllib.request in thread pool — bypasses Cloudflare TLS fingerprinting."""
+    try:
+        import urllib.request
+        loop = asyncio.get_event_loop()
+        def _fetch():
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read()
+                charset = resp.headers.get_content_charset() or "utf-8"
+                return raw.decode(charset, errors="replace")
+        return await loop.run_in_executor(None, _fetch)
+    except Exception as exc:
+        print(f"[WARN] urllib_fetch {url[:60]}: {exc!r}")
+        return None
+
+
+async def _cloudscraper_fetch(url: str) -> str | None:
+    """Bypass Cloudflare using cloudscraper (runs in thread pool)."""
+    try:
+        import cloudscraper
+        loop = asyncio.get_event_loop()
+        def _fetch():
+            scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
+            r = scraper.get(url, timeout=30)
+            return r.text
+        return await loop.run_in_executor(None, _fetch)
+    except Exception as exc:
+        print(f"[WARN] cloudscraper {url[:60]}: {exc!r}")
+        return None
+
+
 async def _scrape_one(
     session: aiohttp.ClientSession,
     article: dict,
@@ -140,16 +172,26 @@ async def _scrape_one(
                 html = raw.decode(charset, errors="replace")
 
                 if _is_blocked(html):
-                    print(f"[BLOCK] {article['source']} — {article['url'][:60]}")
-                    rss = article.get("rss_content") or ""
-                    thumb = article.get("thumbnail") or ""
-                    img_html = f'<img src="{thumb}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
-                    if rss or img_html:
-                        content = img_html + rss
-                        if article["source"] in SIMPLIFIED_SOURCES:
-                            content = _to_hk_traditional(content)
-                        article["content"] = content
-                    return article
+                    print(f"[BLOCK] {article['source']} — trying urllib fallback")
+                    html = await _urllib_fetch(article["url"])
+                    if html and not _is_blocked(html):
+                        print(f"[UNBLOCK] {article['source']} — urllib succeeded")
+                    else:
+                        print(f"[BLOCK] {article['source']} — trying cloudscraper fallback")
+                        html = await _cloudscraper_fetch(article["url"])
+                        if html and not _is_blocked(html):
+                            print(f"[UNBLOCK] {article['source']} — cloudscraper succeeded")
+                        else:
+                            print(f"[BLOCK] {article['source']} — falling back to RSS content")
+                            rss = article.get("rss_content") or ""
+                            thumb = article.get("thumbnail") or ""
+                            img_html = f'<img src="{thumb}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
+                            if rss or img_html:
+                                content = img_html + rss
+                                if article["source"] in SIMPLIFIED_SOURCES:
+                                    content = _to_hk_traditional(content)
+                                article["content"] = content
+                            return article
 
                 html = _extract_noscript_imgs(html)
                 html = _fix_lazy_images(html)
