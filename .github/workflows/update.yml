@@ -17,7 +17,7 @@ jobs:
     runs-on: self-hosted
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
 
@@ -34,8 +34,11 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/data/articles.json docs/data/analyses.json
-          git diff --cached --quiet && exit 0
-          git commit -m "chore: update articles $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          $ts = (Get-Date -Format "yyyy-MM-dd HH:mm") + " UTC"
+          git commit -m "chore: update articles $ts"
           git fetch origin main
-          git rebase origin/main -X ours || (git rebase --abort && true)
+          git rebase origin/main -X ours
+          if ($LASTEXITCODE -ne 0) { git rebase --abort }
           git push --force-with-lease
