@@ -17,13 +17,15 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; min-height: 100vh; }
 
+    /* ── header ── */
     header {
       background: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+      padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
       position: sticky; top: 0; z-index: 10;
     }
     header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: .06em; }
-    .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
     .updated {
       font-size: .78rem; color: var(--muted);
       cursor: pointer; user-select: none;
@@ -34,7 +36,73 @@
     .updated.busy   { color: var(--accent); border-bottom-color: transparent; cursor: default; }
     .updated.ok     { color: #4ade80; border-bottom-color: transparent; }
 
-    /* new-articles toast */
+    /* sort toggle */
+    .sort-toggle { display: flex; gap: 4px; }
+    .sort-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* font size buttons */
+    .font-btns { display: flex; gap: 3px; }
+    .font-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      font-weight: 700; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .font-btn:hover { border-color: var(--accent); color: var(--text); }
+    .font-btn:first-child { font-size: .72rem; }
+    .font-btn:last-child  { font-size: .92rem; }
+
+    /* ── search row ── */
+    .search-row {
+      padding: 8px 24px; background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 47px; z-index: 9;
+    }
+    .search-input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 14px 7px 36px; color: var(--text);
+      font-size: .88rem; outline: none;
+      transition: border-color .15s;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23888' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.868-3.833zm-5.242 1.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: 12px center;
+    }
+    .search-input:focus  { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--muted); }
+
+    /* ── category filters ── */
+    .filters {
+      padding: 7px 24px; display: flex; flex-wrap: wrap; gap: 6px;
+      border-bottom: 1px solid var(--border); background: var(--bg);
+      position: sticky; top: 95px; z-index: 8;
+    }
+    .filter-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 14px; border-radius: 999px; cursor: pointer; font-size: .8rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── tag filters ── */
+    .tag-filters {
+      padding: 5px 24px 7px; display: flex; flex-wrap: wrap; gap: 5px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      position: sticky; top: 135px; z-index: 7;
+    }
+    .tag-filter-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
+    .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
+
+    /* ── new-articles toast ── */
     .news-toast {
       position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
       background: #1a2e1a; border: 1px solid #3a6a3a; border-radius: 8px;
@@ -53,73 +121,29 @@
     .toast-refresh:hover { background: #4a8a4a; }
     .toast-close {
       background: none; border: none; color: #7ce890;
-      cursor: pointer; font-size: 1rem; padding: 0 2px; line-height: 1;
-      opacity: .6;
+      cursor: pointer; font-size: 1rem; padding: 0 2px; line-height: 1; opacity: .6;
     }
     .toast-close:hover { opacity: 1; }
 
-    /* new card highlight */
-    @keyframes newPulse {
-      0%   { box-shadow: 0 0 0 3px #4ade8044; border-color: #4ade80; }
-      100% { box-shadow: none; border-color: var(--border); }
-    }
-    .card-new { animation: newPulse 2.5s ease-out forwards; }
-
-    /* Sort toggle */
-    .sort-toggle { display: flex; gap: 4px; }
-    .sort-btn {
-      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
-      transition: background .15s, color .15s, border-color .15s;
-    }
-    .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-    /* Category filters */
-    .filters {
-      padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 6px;
-      border-bottom: 1px solid var(--border); background: var(--bg);
-      position: sticky; top: 49px; z-index: 9;
-    }
-    .filter-btn {
-      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      padding: 4px 14px; border-radius: 999px; cursor: pointer; font-size: .8rem;
-      transition: background .15s, color .15s, border-color .15s;
-    }
-    .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
-    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-    /* Tag filters */
-    .tag-filters {
-      padding: 6px 24px 8px; display: flex; flex-wrap: wrap; gap: 5px;
-      background: var(--bg); border-bottom: 1px solid var(--border);
-      position: sticky; top: 89px; z-index: 8;
-    }
-    .tag-filter-btn {
-      background: transparent; border: 1px solid var(--border); color: var(--muted);
-      padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
-      transition: background .15s, color .15s, border-color .15s;
-    }
-    .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
-    .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
-
+    /* ── grid ── */
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 14px; padding: 20px 24px; max-width: 1600px; margin: 0 auto;
     }
 
-    /* card */
+    /* ── card ── */
     .card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
       overflow: hidden; display: flex; flex-direction: column;
-      cursor: pointer; transition: border-color .15s, transform .1s;
+      cursor: pointer; transition: border-color .15s, transform .1s, opacity .2s;
       text-decoration: none; color: inherit;
     }
     .card:hover { border-color: var(--accent); transform: translateY(-1px); }
-
-    /* High importance highlight */
     .card.important { border-color: #f59e0b44; }
     .card.important:hover { border-color: #f59e0b; }
+    .card.read { opacity: .45; }
+    .card.read:hover { opacity: .8; }
 
     /* thumbnail */
     .card-thumb {
@@ -135,8 +159,6 @@
 
     /* card body */
     .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
-
-    /* top row: cat + source + date + badges */
     .card-meta  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .cat        { font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; }
     .cat-新聞   { background: #3d1a1a; color: #e87c7c; }
@@ -148,23 +170,16 @@
     .source     { font-size: .75rem; color: var(--accent); font-weight: 600; }
     .date       { font-size: .72rem; color: var(--muted); margin-left: auto; }
 
-    /* score badge */
-    .score-badge {
-      font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
-    }
-    .score-high   { background: #7c1f1f; color: #f87171; }
-    .score-mid    { background: #4a3a00; color: #fbbf24; }
-    .score-low    { background: #1e1e2e; color: var(--muted); }
+    .score-badge { font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; flex-shrink: 0; }
+    .score-high  { background: #7c1f1f; color: #f87171; }
+    .score-mid   { background: #4a3a00; color: #fbbf24; }
+    .score-low   { background: #1e1e2e; color: var(--muted); }
 
-    /* sentiment dot */
-    .sentiment {
-      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    }
-    .sent-positive { background: #4ade80; }
-    .sent-negative { background: #f87171; }
-    .sent-neutral  { background: #888; }
+    .sentiment       { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .sent-positive   { background: #4ade80; }
+    .sent-negative   { background: #f87171; }
+    .sent-neutral    { background: #888; }
 
-    /* cluster badge */
     .cluster-badge {
       font-size: .68rem; background: #1a2a3d; color: #7cb4e8;
       border: 1px solid #2a4060; padding: 1px 7px; border-radius: 4px;
@@ -172,23 +187,37 @@
     }
     .cluster-badge:hover { background: #2a4060; }
 
-    .card-title   { font-size: 1.05rem; font-weight: 500; line-height: 1.5; }
+    /* card title — colour by category, size by font level */
+    .card-title          { font-weight: 500; line-height: 1.5; }
     .card-title.cat-新聞 { color: #e87c7c; }
     .card-title.cat-國際 { color: #7cb4e8; }
     .card-title.cat-娛樂 { color: #e87cc8; }
     .card-title.cat-消閒 { color: #7ce890; }
     .card-title.cat-科技 { color: #e8b87c; }
     .card-title.cat-網媒 { color: #b87ce8; }
-    .card-summary { font-size: .9rem; color: #aaa; line-height: 1.55; margin-top: 2px; white-space: pre-line; }
 
-    /* inline tags */
-    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .card-summary { color: #aaa; line-height: 1.55; margin-top: 2px; white-space: pre-line; }
+    .card-tags    { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag-chip {
       font-size: .68rem; background: #1e1a30; color: #a78bfa;
       border: 1px solid #3b2f60; padding: 1px 7px; border-radius: 4px;
     }
+    .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
-    .no-content   { font-size: .72rem; color: var(--muted); margin-top: auto; }
+    /* ── font size levels ── */
+    body.fs-0 .card-title   { font-size: .9rem; }
+    body.fs-0 .card-summary { font-size: .8rem; }
+    body.fs-1 .card-title   { font-size: 1.05rem; }  /* default */
+    body.fs-1 .card-summary { font-size: .9rem; }
+    body.fs-2 .card-title   { font-size: 1.2rem; }
+    body.fs-2 .card-summary { font-size: 1rem; }
+
+    /* ── new card highlight ── */
+    @keyframes newPulse {
+      0%   { box-shadow: 0 0 0 3px #4ade8044; border-color: #4ade80; }
+      100% { box-shadow: none; border-color: var(--border); }
+    }
+    .card-new { animation: newPulse 2.5s ease-out forwards; }
 
     .loading, .empty {
       grid-column: 1 / -1; text-align: center;
@@ -197,10 +226,11 @@
   </style>
 </head>
 <body>
+  <!-- new articles toast -->
   <div class="news-toast" id="news-toast">
     <span id="toast-msg"></span>
     <button class="toast-refresh" id="toast-refresh">立即刷新</button>
-    <button class="toast-close" id="toast-close">✕</button>
+    <button class="toast-close"   id="toast-close">✕</button>
   </div>
 
   <header>
@@ -210,20 +240,51 @@
         <button class="sort-btn active" data-sort="date">最新</button>
         <button class="sort-btn" data-sort="score">最重要</button>
       </div>
+      <div class="font-btns">
+        <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
+        <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
+      </div>
       <span id="updated" class="updated"></span>
     </div>
   </header>
-  <div class="filters"    id="filters"></div>
+
+  <div class="search-row">
+    <input class="search-input" id="search" type="search" placeholder="搜尋標題、來源、標籤…" autocomplete="off">
+  </div>
+
+  <div class="filters"     id="filters"></div>
   <div class="tag-filters" id="tag-filters"></div>
   <div class="grid" id="grid"><div class="loading">載入中…</div></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7/dist/fuse.min.js"></script>
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     let all = [], activeCat = "全部", activeTag = "", sortMode = "date";
-    let loadedIds = new Set();   // IDs currently shown
-    let pendingNew = new Set();  // IDs waiting to be revealed
+    let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
+    let fuse = null;
 
-    // ── Toast helpers ──────────────────────────────────────────────
+    // ── Font size ─────────────────────────────────────────────────
+    let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
+    function applyFs() {
+      document.body.className = document.body.className.replace(/\bfs-\d\b/g, "").trim();
+      document.body.classList.add("fs-" + fsLevel);
+    }
+    applyFs();
+    document.getElementById("font-inc").addEventListener("click", () => {
+      if (fsLevel < 2) { fsLevel++; localStorage.setItem("fontSize", fsLevel); applyFs(); }
+    });
+    document.getElementById("font-dec").addEventListener("click", () => {
+      if (fsLevel > 0) { fsLevel--; localStorage.setItem("fontSize", fsLevel); applyFs(); }
+    });
+
+    // ── Read tracking ─────────────────────────────────────────────
+    const READ_KEY = "rss_read_ids";
+    function getRead() {
+      try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); }
+      catch { return new Set(); }
+    }
+
+    // ── Toast ─────────────────────────────────────────────────────
     const toast        = document.getElementById("news-toast");
     const toastMsg     = document.getElementById("toast-msg");
     const toastRefresh = document.getElementById("toast-refresh");
@@ -233,64 +294,56 @@
       toastMsg.textContent = `↑ ${count} 篇新文章`;
       toast.classList.add("show");
     }
-    function hideToast() {
-      toast.classList.remove("show");
-    }
+    function hideToast() { toast.classList.remove("show"); }
     toastClose.addEventListener("click", hideToast);
-    toastRefresh.addEventListener("click", () => {
-      hideToast();
-      applyPending();
-    });
+    toastRefresh.addEventListener("click", () => { hideToast(); applyPending(); });
 
     function applyPending() {
-      const newIdsSnapshot = new Set(pendingNew);
+      const snap = new Set(pendingNew);
       pendingNew.clear();
       all = pendingData.articles;
       loadedIds = new Set(all.map(a => a.id));
       buildTagFilters();
       renderFiltered();
       window.scrollTo({ top: 0, behavior: "smooth" });
-      // highlight new cards after render
       setTimeout(() => {
-        newIdsSnapshot.forEach(id => {
+        snap.forEach(id => {
           const card = document.querySelector(`a.card[href="article.html?id=${id}"]`);
           if (card) card.classList.add("card-new");
         });
       }, 80);
     }
 
-    let pendingData = null;
-
-    // ── Initial load ───────────────────────────────────────────────
+    // ── Load ──────────────────────────────────────────────────────
     async function load() {
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
-        const updEl = document.getElementById("updated");
-        updEl.textContent = "更新：" + data.updated;
+        document.getElementById("updated").textContent = "更新：" + data.updated;
         all = data.articles;
         loadedIds = new Set(all.map(a => a.id));
+        fuse = new Fuse(all, {
+          keys: ["title", "source", "tags", "summary"],
+          threshold: 0.4, minMatchCharLength: 2,
+        });
         buildFilters();
         buildTagFilters();
         renderFiltered();
-      } catch (e) {
+      } catch {
         document.getElementById("grid").innerHTML = '<div class="empty">載入失敗，請重試</div>';
       }
     }
 
-    // ── Check for updates (triggered by clicking the timestamp) ────
+    // ── Check for updates ─────────────────────────────────────────
     async function checkUpdates() {
       const updEl = document.getElementById("updated");
       if (updEl.classList.contains("busy")) return;
       updEl.classList.add("busy");
       updEl.textContent = "檢查中…";
-
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
-        const freshIds  = new Set(data.articles.map(a => a.id));
-        const newOnes   = data.articles.filter(a => !loadedIds.has(a.id));
-
+        const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
         if (newOnes.length > 0) {
           pendingData = data;
           pendingNew  = new Set(newOnes.map(a => a.id));
@@ -299,19 +352,23 @@
         } else {
           updEl.classList.add("ok");
           updEl.textContent = "✓ 已是最新";
-          setTimeout(() => {
-            updEl.classList.remove("ok");
-            updEl.textContent = "更新：" + data.updated;
-          }, 2000);
+          setTimeout(() => { updEl.classList.remove("ok"); updEl.textContent = "更新：" + data.updated; }, 2000);
         }
-      } catch (e) {
+      } catch {
         updEl.textContent = "更新：檢查失敗";
       }
       updEl.classList.remove("busy");
     }
-
     document.getElementById("updated").addEventListener("click", checkUpdates);
 
+    // ── Search ────────────────────────────────────────────────────
+    let searchQuery = "";
+    document.getElementById("search").addEventListener("input", e => {
+      searchQuery = e.target.value.trim();
+      renderFiltered();
+    });
+
+    // ── Filters ───────────────────────────────────────────────────
     function buildFilters() {
       const container = document.getElementById("filters");
       container.innerHTML = CATS.map(c =>
@@ -328,18 +385,13 @@
     }
 
     function buildTagFilters() {
-      // Collect all unique tags across articles
       const tagCounts = {};
       all.forEach(a => (a.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-      // Show tags appearing ≥2 times, sorted by count desc
       const tags = Object.entries(tagCounts)
-        .filter(([,c]) => c >= 2)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 20)
-        .map(([t]) => t);
-
+        .filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([t]) => t);
       const container = document.getElementById("tag-filters");
       if (!tags.length) { container.style.display = "none"; return; }
+      container.style.display = "";
       container.innerHTML = tags.map(t =>
         `<button class="tag-filter-btn" data-tag="${t}"># ${t}</button>`
       ).join("");
@@ -359,7 +411,7 @@
       });
     }
 
-    // Sort toggle
+    // ── Sort toggle ───────────────────────────────────────────────
     document.getElementById("sort-toggle").addEventListener("click", e => {
       const btn = e.target.closest(".sort-btn");
       if (!btn) return;
@@ -373,35 +425,38 @@
       if (sortMode === "score") {
         return [...articles].sort((a, b) => {
           const sa = a.score ?? 5, sb = b.score ?? 5;
-          if (sb !== sa) return sb - sa;
-          return (b.date || "") > (a.date || "") ? 1 : -1;
+          return sb !== sa ? sb - sa : (b.date || "") > (a.date || "") ? 1 : -1;
         });
       }
-      return articles; // already date-sorted from build.py
+      return articles;
     }
 
     function filterCluster(cid) {
       activeTag = "";
       document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
-      const filtered = all.filter(a => a.cluster_id === cid);
-      render(getSorted(filtered));
+      render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
 
     function renderFiltered() {
-      let list = activeCat === "全部" ? all : all.filter(a => a.category === activeCat);
-      if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
+      let list = all;
+      // search takes priority — override category/tag if query present
+      if (searchQuery && fuse) {
+        list = fuse.search(searchQuery).map(r => r.item);
+      } else {
+        if (activeCat !== "全部") list = list.filter(a => a.category === activeCat);
+        if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
+      }
       render(getSorted(list));
     }
 
     function scoreClass(score) {
       if (!score) return "score-low";
-      if (score >= 8) return "score-high";
-      if (score >= 5) return "score-mid";
-      return "score-low";
+      return score >= 8 ? "score-high" : score >= 5 ? "score-mid" : "score-low";
     }
 
     function render(articles) {
-      const grid = document.getElementById("grid");
+      const grid  = document.getElementById("grid");
+      const reads = getRead();
       if (!articles.length) {
         grid.innerHTML = '<div class="empty">沒有文章</div>';
         return;
@@ -414,31 +469,23 @@
           ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
           : `<div class="card-thumb-placeholder">📰</div>`;
 
-        const score    = a.score ?? null;
-        const scoreBadge = score !== null
-          ? `<span class="score-badge ${scoreClass(score)}">${score >= 8 ? "🔥 " : ""}${score}</span>`
-          : "";
-
-        const sentiment = a.sentiment || "neutral";
-        const sentDot   = `<span class="sentiment sent-${sentiment}" title="${sentiment}"></span>`;
-
+        const score       = a.score ?? null;
+        const scoreBadge  = score !== null
+          ? `<span class="score-badge ${scoreClass(score)}">${score >= 8 ? "🔥 " : ""}${score}</span>` : "";
+        const sentDot     = `<span class="sentiment sent-${a.sentiment || "neutral"}"></span>`;
         const clusterBadge = a.cluster_size > 1
-          ? `<span class="cluster-badge" data-cid="${a.cluster_id}" onclick="event.preventDefault();filterCluster('${a.cluster_id}')">${a.cluster_size} 來源</span>`
-          : "";
-
+          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${a.cluster_id}')">${a.cluster_size} 來源</span>` : "";
         const tags = (a.tags || []).length
-          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${t}</span>`).join("")}</div>`
-          : "";
+          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${t}</span>`).join("")}</div>` : "";
+        const isRead = reads.has(a.id);
 
-        return `<a class="card${score >= 8 ? " important" : ""}" href="article.html?id=${a.id}">
+        return `<a class="card${score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${a.id}">
           ${thumb}
           <div class="card-body">
             <div class="card-meta">
               <span class="cat cat-${a.category}">${a.category}</span>
               <span class="source">${a.source}</span>
-              ${scoreBadge}
-              ${sentDot}
-              ${clusterBadge}
+              ${scoreBadge}${sentDot}${clusterBadge}
               <span class="date">${date}</span>
             </div>
             <div class="card-title cat-${a.category}">${a.title}</div>
@@ -451,9 +498,9 @@
     }
 
     load();
-    // Background poll: silently check every 10 min, show toast if new articles found
+    // Background poll
     setInterval(async () => {
-      if (document.hidden) return; // don't fetch if tab not visible
+      if (document.hidden) return;
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();

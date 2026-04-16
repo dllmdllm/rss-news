@@ -21,12 +21,33 @@
     /* top bar */
     .topbar {
       background: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+      padding: 12px 24px; display: flex; align-items: center; gap: 12px;
       position: sticky; top: 0; z-index: 10;
     }
-    .back { color: var(--accent); text-decoration: none; font-size: .9rem; }
+    .back { color: var(--accent); text-decoration: none; font-size: .9rem; flex-shrink: 0; }
     .back:hover { text-decoration: underline; }
-    .topbar-source { font-size: .8rem; color: var(--muted); }
+    .topbar-source { font-size: .8rem; color: var(--muted); flex: 1; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+
+    /* font size buttons */
+    .font-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      font-weight: 700; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .font-btn:hover { border-color: var(--accent); color: var(--text); }
+    .font-btn:first-child { font-size: .72rem; }
+    .font-btn:last-child  { font-size: .92rem; }
+
+    /* share button */
+    .share-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: .8rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .share-btn:hover { border-color: var(--accent); color: var(--text); }
+    .share-btn.copied { border-color: #4ade80; color: #4ade80; }
 
     /* article layout */
     main { max-width: 780px; margin: 0 auto; padding: 32px 24px 80px; }
@@ -40,34 +61,27 @@
     .art-source:hover { text-decoration: underline; }
     .art-date   { font-size: .78rem; color: var(--muted); }
 
-    /* score & sentiment */
     .art-score {
       font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
     }
     .score-high { background: #7c1f1f; color: #f87171; }
     .score-mid  { background: #4a3a00; color: #fbbf24; }
     .score-low  { background: #1e1e2e; color: var(--muted); }
-    .art-sentiment {
-      font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600;
-    }
+    .art-sentiment { font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
     .sent-positive { background: #14401f; color: #4ade80; }
     .sent-negative { background: #401414; color: #f87171; }
     .sent-neutral  { background: #1e1e2e; color: #888; }
 
-    /* tags row */
     .art-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
     .art-tag {
       font-size: .75rem; background: #1e1a30; color: #a78bfa;
       border: 1px solid #3b2f60; padding: 2px 10px; border-radius: 4px;
     }
 
-    h1#art-title {
-      font-size: 1.6rem; font-weight: 700; line-height: 1.5;
-      color: var(--text); margin-bottom: 24px;
-    }
+    h1#art-title { font-weight: 700; line-height: 1.5; color: var(--text); margin-bottom: 24px; }
 
     /* article body */
-    .content { line-height: 1.85; font-size: 1.05rem; color: #d0d0e8; }
+    .content { line-height: 1.85; color: #d0d0e8; }
     .content p      { margin-bottom: 1.2em; }
     .content h2     { font-size: 1.1rem; color: var(--text); margin: 1.6em 0 .6em; }
     .content h3     { font-size: 1rem;   color: var(--text); margin: 1.4em 0 .5em; }
@@ -78,7 +92,6 @@
     .content figure { margin: 1.2em 0; }
     .content figcaption { font-size: .8rem; color: var(--muted); margin-top: .4em; }
 
-    /* fallback */
     .no-content { text-align: center; padding: 60px 20px; color: var(--muted); }
     .ext-link {
       display: inline-block; margin-top: 16px;
@@ -86,7 +99,6 @@
       padding: 10px 24px; border-radius: 8px; font-size: .9rem;
     }
 
-    /* category colours */
     .art-cat.cat-新聞 { background: #3d1a1a; color: #e87c7c; }
     .art-cat.cat-國際 { background: #1a2a3d; color: #7cb4e8; }
     .art-cat.cat-娛樂 { background: #3d1a30; color: #e87cc8; }
@@ -96,22 +108,37 @@
 
     .loading { text-align: center; padding: 80px; color: var(--muted); }
 
-    /* AI summary box */
     .summary-box {
       background: #1e1e2e; border-left: 3px solid var(--accent);
       padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
-      font-size: .88rem; color: #c0c0d8; line-height: 1.6; white-space: pre-line;
+      color: #c0c0d8; line-height: 1.6; white-space: pre-line;
     }
     .summary-label {
       display: block; font-size: .72rem; color: var(--accent);
       font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;
     }
+
+    /* ── font size levels ── */
+    body.fs-0 h1#art-title { font-size: 1.4rem; }
+    body.fs-0 .content     { font-size: .92rem; }
+    body.fs-0 .summary-box { font-size: .82rem; }
+    body.fs-1 h1#art-title { font-size: 1.6rem; }   /* default */
+    body.fs-1 .content     { font-size: 1.05rem; }
+    body.fs-1 .summary-box { font-size: .88rem; }
+    body.fs-2 h1#art-title { font-size: 1.8rem; }
+    body.fs-2 .content     { font-size: 1.18rem; }
+    body.fs-2 .summary-box { font-size: .98rem; }
   </style>
 </head>
 <body>
   <div class="topbar">
     <a href="index.html" class="back">← 返回</a>
     <span id="topbar-source" class="topbar-source"></span>
+    <div class="topbar-right">
+      <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
+      <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
+      <button class="share-btn" id="share-btn">分享</button>
+    </div>
   </div>
 
   <main>
@@ -126,6 +153,50 @@
   </main>
 
   <script>
+    // ── Font size (shared with index.html via localStorage) ───────
+    const READ_KEY = "rss_read_ids";
+    let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
+    function applyFs() {
+      document.body.className = document.body.className.replace(/\bfs-\d\b/g, "").trim();
+      document.body.classList.add("fs-" + fsLevel);
+    }
+    applyFs();
+    document.getElementById("font-inc").addEventListener("click", () => {
+      if (fsLevel < 2) { fsLevel++; localStorage.setItem("fontSize", fsLevel); applyFs(); }
+    });
+    document.getElementById("font-dec").addEventListener("click", () => {
+      if (fsLevel > 0) { fsLevel--; localStorage.setItem("fontSize", fsLevel); applyFs(); }
+    });
+
+    // ── Share ─────────────────────────────────────────────────────
+    document.getElementById("share-btn").addEventListener("click", async () => {
+      const btn   = document.getElementById("share-btn");
+      const title = document.getElementById("art-title").textContent;
+      const url   = location.href;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title, url });
+        } else {
+          await navigator.clipboard.writeText(url);
+          btn.textContent = "✓ 已複製連結";
+          btn.classList.add("copied");
+          setTimeout(() => { btn.textContent = "分享"; btn.classList.remove("copied"); }, 2000);
+        }
+      } catch (_) {}
+    });
+
+    // ── Mark as read ──────────────────────────────────────────────
+    function markRead(id) {
+      try {
+        const read = new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]"));
+        read.add(id);
+        // Keep max 500 entries to avoid bloat
+        const arr = [...read].slice(-500);
+        localStorage.setItem(READ_KEY, JSON.stringify(arr));
+      } catch (_) {}
+    }
+
+    // ── Load article ──────────────────────────────────────────────
     async function load() {
       const id = new URLSearchParams(location.search).get("id");
       if (!id) { location.href = "index.html"; return; }
@@ -136,6 +207,9 @@
         const art  = data.articles.find(a => a.id === id);
         if (!art) { location.href = "index.html"; return; }
 
+        // Mark as read immediately
+        markRead(id);
+
         document.title = art.title;
         document.getElementById("topbar-source").textContent = art.source;
 
@@ -143,17 +217,15 @@
           ? new Date(art.date).toLocaleString("zh-HK", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
           : "";
 
-        // Score badge
         const score = art.score ?? null;
         let scoreHtml = "";
         if (score !== null) {
           const cls = score >= 8 ? "score-high" : score >= 5 ? "score-mid" : "score-low";
           scoreHtml = `<span class="art-score ${cls}">${score >= 8 ? "🔥 " : ""}重要度 ${score}</span>`;
         }
-        // Sentiment badge
-        const sent = art.sentiment || "neutral";
+        const sent      = art.sentiment || "neutral";
         const sentLabel = { positive: "正面", negative: "負面", neutral: "中性" }[sent] || "中性";
-        const sentHtml = `<span class="art-sentiment sent-${sent}">${sentLabel}</span>`;
+        const sentHtml  = `<span class="art-sentiment sent-${sent}">${sentLabel}</span>`;
 
         document.getElementById("art-meta").innerHTML =
           `<span class="art-cat cat-${art.category}">${art.category}</span>
@@ -163,7 +235,6 @@
 
         document.getElementById("art-title").textContent = art.title;
 
-        // Tags row
         const tagsEl = document.getElementById("art-tags");
         if (art.tags && art.tags.length) {
           tagsEl.innerHTML = art.tags.map(t => `<span class="art-tag"># ${t}</span>`).join("");
@@ -177,16 +248,13 @@
         const body = document.getElementById("art-content");
         if (art.content) {
           body.innerHTML = art.content;
-          // make all images responsive & lazy-load
           body.querySelectorAll("img").forEach(img => {
             img.loading = "lazy";
             img.referrerPolicy = "no-referrer";
             img.style.maxWidth = "100%";
             img.style.height = "auto";
-            // onerror fallback: hide broken images
             img.onerror = () => { img.style.display = "none"; };
           });
-          // If no images in content but article has a thumbnail, add it at top
           if (art.thumbnail && body.querySelectorAll("img").length === 0) {
             const fi = document.createElement("img");
             fi.src = art.thumbnail;
@@ -205,7 +273,7 @@
 
         document.getElementById("loading").style.display = "none";
         document.getElementById("art-body").style.display = "block";
-      } catch (e) {
+      } catch {
         document.getElementById("loading").textContent = "載入失敗";
       }
     }
