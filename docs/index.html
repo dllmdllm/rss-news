@@ -23,10 +23,21 @@
       position: sticky; top: 0; z-index: 10;
     }
     header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: .06em; }
-    .updated  { font-size: .78rem; color: var(--muted); }
+    .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .updated { font-size: .78rem; color: var(--muted); }
 
+    /* Sort toggle */
+    .sort-toggle { display: flex; gap: 4px; }
+    .sort-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Category filters */
     .filters {
-      padding: 10px 24px; display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 6px;
       border-bottom: 1px solid var(--border); background: var(--bg);
       position: sticky; top: 49px; z-index: 9;
     }
@@ -37,6 +48,20 @@
     }
     .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
     .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Tag filters */
+    .tag-filters {
+      padding: 6px 24px 8px; display: flex; flex-wrap: wrap; gap: 5px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      position: sticky; top: 89px; z-index: 8;
+    }
+    .tag-filter-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
+    .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
 
     .grid {
       display: grid;
@@ -53,6 +78,10 @@
     }
     .card:hover { border-color: var(--accent); transform: translateY(-1px); }
 
+    /* High importance highlight */
+    .card.important { border-color: #f59e0b44; }
+    .card.important:hover { border-color: #f59e0b; }
+
     /* thumbnail */
     .card-thumb {
       width: 100%; aspect-ratio: 16/9; object-fit: cover;
@@ -67,7 +96,9 @@
 
     /* card body */
     .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
-    .card-meta  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* top row: cat + source + date + badges */
+    .card-meta  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .cat        { font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; }
     .cat-新聞   { background: #3d1a1a; color: #e87c7c; }
     .cat-國際   { background: #1a2a3d; color: #7cb4e8; }
@@ -77,8 +108,41 @@
     .cat-網媒   { background: #2a1a3d; color: #b87ce8; }
     .source     { font-size: .75rem; color: var(--accent); font-weight: 600; }
     .date       { font-size: .72rem; color: var(--muted); margin-left: auto; }
+
+    /* score badge */
+    .score-badge {
+      font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+    }
+    .score-high   { background: #7c1f1f; color: #f87171; }
+    .score-mid    { background: #4a3a00; color: #fbbf24; }
+    .score-low    { background: #1e1e2e; color: var(--muted); }
+
+    /* sentiment dot */
+    .sentiment {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    }
+    .sent-positive { background: #4ade80; }
+    .sent-negative { background: #f87171; }
+    .sent-neutral  { background: #888; }
+
+    /* cluster badge */
+    .cluster-badge {
+      font-size: .68rem; background: #1a2a3d; color: #7cb4e8;
+      border: 1px solid #2a4060; padding: 1px 7px; border-radius: 4px;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .cluster-badge:hover { background: #2a4060; }
+
     .card-title   { font-size: 1.05rem; font-weight: 500; color: var(--link); line-height: 1.5; }
     .card-summary { font-size: .9rem; color: #aaa; line-height: 1.55; margin-top: 2px; }
+
+    /* inline tags */
+    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag-chip {
+      font-size: .68rem; background: #1e1a30; color: #a78bfa;
+      border: 1px solid #3b2f60; padding: 1px 7px; border-radius: 4px;
+    }
+
     .no-content   { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
     .loading, .empty {
@@ -90,14 +154,21 @@
 <body>
   <header>
     <h1>新聞快訊</h1>
-    <span id="updated" class="updated"></span>
+    <div class="header-right">
+      <div class="sort-toggle" id="sort-toggle">
+        <button class="sort-btn active" data-sort="date">最新</button>
+        <button class="sort-btn" data-sort="score">最重要</button>
+      </div>
+      <span id="updated" class="updated"></span>
+    </div>
   </header>
-  <div class="filters" id="filters"></div>
+  <div class="filters"    id="filters"></div>
+  <div class="tag-filters" id="tag-filters"></div>
   <div class="grid" id="grid"><div class="loading">載入中…</div></div>
 
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
-    let all = [];
+    let all = [], activeCat = "全部", activeTag = "", sortMode = "date";
 
     async function load() {
       try {
@@ -106,7 +177,8 @@
         document.getElementById("updated").textContent = "更新：" + data.updated;
         all = data.articles;
         buildFilters();
-        render(all);
+        buildTagFilters();
+        renderFiltered();
       } catch (e) {
         document.getElementById("grid").innerHTML = '<div class="empty">載入失敗，請重試</div>';
       }
@@ -122,9 +194,82 @@
         if (!btn) return;
         container.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        const cat = btn.dataset.cat;
-        render(cat === "全部" ? all : all.filter(a => a.category === cat));
+        activeCat = btn.dataset.cat;
+        renderFiltered();
       });
+    }
+
+    function buildTagFilters() {
+      // Collect all unique tags across articles
+      const tagCounts = {};
+      all.forEach(a => (a.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+      // Show tags appearing ≥2 times, sorted by count desc
+      const tags = Object.entries(tagCounts)
+        .filter(([,c]) => c >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20)
+        .map(([t]) => t);
+
+      const container = document.getElementById("tag-filters");
+      if (!tags.length) { container.style.display = "none"; return; }
+      container.innerHTML = tags.map(t =>
+        `<button class="tag-filter-btn" data-tag="${t}"># ${t}</button>`
+      ).join("");
+      container.addEventListener("click", e => {
+        const btn = e.target.closest(".tag-filter-btn");
+        if (!btn) return;
+        const tag = btn.dataset.tag;
+        if (activeTag === tag) {
+          activeTag = "";
+          container.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
+        } else {
+          activeTag = tag;
+          container.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        }
+        renderFiltered();
+      });
+    }
+
+    // Sort toggle
+    document.getElementById("sort-toggle").addEventListener("click", e => {
+      const btn = e.target.closest(".sort-btn");
+      if (!btn) return;
+      document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      sortMode = btn.dataset.sort;
+      renderFiltered();
+    });
+
+    function getSorted(articles) {
+      if (sortMode === "score") {
+        return [...articles].sort((a, b) => {
+          const sa = a.score ?? 5, sb = b.score ?? 5;
+          if (sb !== sa) return sb - sa;
+          return (b.date || "") > (a.date || "") ? 1 : -1;
+        });
+      }
+      return articles; // already date-sorted from build.py
+    }
+
+    function filterCluster(cid) {
+      activeTag = "";
+      document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
+      const filtered = all.filter(a => a.cluster_id === cid);
+      render(getSorted(filtered));
+    }
+
+    function renderFiltered() {
+      let list = activeCat === "全部" ? all : all.filter(a => a.category === activeCat);
+      if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
+      render(getSorted(list));
+    }
+
+    function scoreClass(score) {
+      if (!score) return "score-low";
+      if (score >= 8) return "score-high";
+      if (score >= 5) return "score-mid";
+      return "score-low";
     }
 
     function render(articles) {
@@ -140,15 +285,36 @@
         const thumb = a.thumbnail
           ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
           : `<div class="card-thumb-placeholder">📰</div>`;
-        return `<a class="card" href="article.html?id=${a.id}">
+
+        const score    = a.score ?? null;
+        const scoreBadge = score !== null
+          ? `<span class="score-badge ${scoreClass(score)}">${score >= 8 ? "🔥 " : ""}${score}</span>`
+          : "";
+
+        const sentiment = a.sentiment || "neutral";
+        const sentDot   = `<span class="sentiment sent-${sentiment}" title="${sentiment}"></span>`;
+
+        const clusterBadge = a.cluster_size > 1
+          ? `<span class="cluster-badge" data-cid="${a.cluster_id}" onclick="event.preventDefault();filterCluster('${a.cluster_id}')">${a.cluster_size} 來源</span>`
+          : "";
+
+        const tags = (a.tags || []).length
+          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${t}</span>`).join("")}</div>`
+          : "";
+
+        return `<a class="card${score >= 8 ? " important" : ""}" href="article.html?id=${a.id}">
           ${thumb}
           <div class="card-body">
             <div class="card-meta">
               <span class="cat cat-${a.category}">${a.category}</span>
               <span class="source">${a.source}</span>
+              ${scoreBadge}
+              ${sentDot}
+              ${clusterBadge}
               <span class="date">${date}</span>
             </div>
             <div class="card-title">${a.title}</div>
+            ${tags}
             ${a.summary ? `<div class="card-summary">${a.summary}</div>` : ""}
             ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
           </div>
@@ -157,7 +323,6 @@
     }
 
     load();
-    // Auto-refresh every 10 minutes
     setInterval(load, 10 * 60 * 1000);
   </script>
 </body>
