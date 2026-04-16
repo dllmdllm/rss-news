@@ -61,39 +61,46 @@ async def _summarise_one(
         return article
 
     async with sem:
-        try:
-            await asyncio.sleep(1)  # respect Token Plan RPM limits
-            async with session.post(
-                "https://api.minimax.io/anthropic/v1/messages",
-                headers={
-                    "x-api-key":         MINIMAX_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Type":      "application/json",
-                },
-                json={
-                    "model":      MINIMAX_MODEL,
-                    "max_tokens": 300,
-                    "system":     SYSTEM_PROMPT,
-                    "messages": [
-                        {"role": "user", "content": f"請摘要以下文章：\n\n{text}"},
-                    ],
-                },
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                data = await resp.json(content_type=None)
-                # Anthropic-compatible response: content[0].text
-                content_blocks = data.get("content") or []
-                summary = next(
-                    (b.get("text", "").strip() for b in content_blocks if b.get("type") == "text"),
-                    ""
-                )
-                if summary:
-                    article["summary"] = summary
-                    cache[aid] = summary
-                elif data.get("error"):
-                    print(f"[WARN] summarise {article['url'][:60]}: {data['error']}")
-        except Exception as exc:
-            print(f"[WARN] summarise {article['url'][:60]}: {exc!r}")
+        for attempt in range(3):
+            try:
+                await asyncio.sleep(1 + attempt * 3)  # 1s, 4s, 7s backoff
+                async with session.post(
+                    "https://api.minimax.io/anthropic/v1/messages",
+                    headers={
+                        "x-api-key":         MINIMAX_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type":      "application/json",
+                    },
+                    json={
+                        "model":      MINIMAX_MODEL,
+                        "max_tokens": 300,
+                        "system":     SYSTEM_PROMPT,
+                        "messages": [
+                            {"role": "user", "content": f"請摘要以下文章：\n\n{text}"},
+                        ],
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    data = await resp.json(content_type=None)
+                    err = data.get("error") or {}
+                    # Retry on overloaded (529)
+                    if err.get("type") == "overloaded_error" and attempt < 2:
+                        await asyncio.sleep(10 * (attempt + 1))
+                        continue
+                    content_blocks = data.get("content") or []
+                    summary = next(
+                        (b.get("text", "").strip() for b in content_blocks if b.get("type") == "text"),
+                        ""
+                    )
+                    if summary:
+                        article["summary"] = summary
+                        cache[aid] = summary
+                    elif err:
+                        print(f"[WARN] summarise {article['url'][:60]}: {err}")
+                    break
+            except Exception as exc:
+                if attempt == 2:
+                    print(f"[WARN] summarise {article['url'][:60]}: {exc!r}")
 
     return article
 
