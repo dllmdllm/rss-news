@@ -24,7 +24,46 @@
     }
     header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: .06em; }
     .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .updated { font-size: .78rem; color: var(--muted); }
+    .updated {
+      font-size: .78rem; color: var(--muted);
+      cursor: pointer; user-select: none;
+      border-bottom: 1px dashed transparent;
+      transition: color .15s, border-color .15s;
+    }
+    .updated:hover  { color: var(--text); border-bottom-color: var(--muted); }
+    .updated.busy   { color: var(--accent); border-bottom-color: transparent; cursor: default; }
+    .updated.ok     { color: #4ade80; border-bottom-color: transparent; }
+
+    /* new-articles toast */
+    .news-toast {
+      position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
+      background: #1a2e1a; border: 1px solid #3a6a3a; border-radius: 8px;
+      padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+      font-size: .85rem; color: #7ce890; z-index: 100;
+      box-shadow: 0 4px 16px #00000066;
+      transition: top .3s cubic-bezier(.34,1.56,.64,1);
+      white-space: nowrap;
+    }
+    .news-toast.show { top: 12px; }
+    .toast-refresh {
+      background: #3a6a3a; border: none; color: #7ce890;
+      padding: 3px 12px; border-radius: 4px; cursor: pointer; font-size: .82rem;
+      transition: background .15s;
+    }
+    .toast-refresh:hover { background: #4a8a4a; }
+    .toast-close {
+      background: none; border: none; color: #7ce890;
+      cursor: pointer; font-size: 1rem; padding: 0 2px; line-height: 1;
+      opacity: .6;
+    }
+    .toast-close:hover { opacity: 1; }
+
+    /* new card highlight */
+    @keyframes newPulse {
+      0%   { box-shadow: 0 0 0 3px #4ade8044; border-color: #4ade80; }
+      100% { box-shadow: none; border-color: var(--border); }
+    }
+    .card-new { animation: newPulse 2.5s ease-out forwards; }
 
     /* Sort toggle */
     .sort-toggle { display: flex; gap: 4px; }
@@ -158,6 +197,12 @@
   </style>
 </head>
 <body>
+  <div class="news-toast" id="news-toast">
+    <span id="toast-msg"></span>
+    <button class="toast-refresh" id="toast-refresh">立即刷新</button>
+    <button class="toast-close" id="toast-close">✕</button>
+  </div>
+
   <header>
     <h1>新聞快訊</h1>
     <div class="header-right">
@@ -175,13 +220,56 @@
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     let all = [], activeCat = "全部", activeTag = "", sortMode = "date";
+    let loadedIds = new Set();   // IDs currently shown
+    let pendingNew = new Set();  // IDs waiting to be revealed
 
+    // ── Toast helpers ──────────────────────────────────────────────
+    const toast        = document.getElementById("news-toast");
+    const toastMsg     = document.getElementById("toast-msg");
+    const toastRefresh = document.getElementById("toast-refresh");
+    const toastClose   = document.getElementById("toast-close");
+
+    function showToast(count) {
+      toastMsg.textContent = `↑ ${count} 篇新文章`;
+      toast.classList.add("show");
+    }
+    function hideToast() {
+      toast.classList.remove("show");
+    }
+    toastClose.addEventListener("click", hideToast);
+    toastRefresh.addEventListener("click", () => {
+      hideToast();
+      applyPending();
+    });
+
+    function applyPending() {
+      const newIdsSnapshot = new Set(pendingNew);
+      pendingNew.clear();
+      all = pendingData.articles;
+      loadedIds = new Set(all.map(a => a.id));
+      buildTagFilters();
+      renderFiltered();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      // highlight new cards after render
+      setTimeout(() => {
+        newIdsSnapshot.forEach(id => {
+          const card = document.querySelector(`a.card[href="article.html?id=${id}"]`);
+          if (card) card.classList.add("card-new");
+        });
+      }, 80);
+    }
+
+    let pendingData = null;
+
+    // ── Initial load ───────────────────────────────────────────────
     async function load() {
       try {
-        const res  = await fetch("data/articles.json");
+        const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
-        document.getElementById("updated").textContent = "更新：" + data.updated;
+        const updEl = document.getElementById("updated");
+        updEl.textContent = "更新：" + data.updated;
         all = data.articles;
+        loadedIds = new Set(all.map(a => a.id));
         buildFilters();
         buildTagFilters();
         renderFiltered();
@@ -189,6 +277,40 @@
         document.getElementById("grid").innerHTML = '<div class="empty">載入失敗，請重試</div>';
       }
     }
+
+    // ── Check for updates (triggered by clicking the timestamp) ────
+    async function checkUpdates() {
+      const updEl = document.getElementById("updated");
+      if (updEl.classList.contains("busy")) return;
+      updEl.classList.add("busy");
+      updEl.textContent = "檢查中…";
+
+      try {
+        const res  = await fetch("data/articles.json?" + Date.now());
+        const data = await res.json();
+        const freshIds  = new Set(data.articles.map(a => a.id));
+        const newOnes   = data.articles.filter(a => !loadedIds.has(a.id));
+
+        if (newOnes.length > 0) {
+          pendingData = data;
+          pendingNew  = new Set(newOnes.map(a => a.id));
+          updEl.textContent = "更新：" + data.updated;
+          showToast(newOnes.length);
+        } else {
+          updEl.classList.add("ok");
+          updEl.textContent = "✓ 已是最新";
+          setTimeout(() => {
+            updEl.classList.remove("ok");
+            updEl.textContent = "更新：" + data.updated;
+          }, 2000);
+        }
+      } catch (e) {
+        updEl.textContent = "更新：檢查失敗";
+      }
+      updEl.classList.remove("busy");
+    }
+
+    document.getElementById("updated").addEventListener("click", checkUpdates);
 
     function buildFilters() {
       const container = document.getElementById("filters");
@@ -329,7 +451,21 @@
     }
 
     load();
-    setInterval(load, 10 * 60 * 1000);
+    // Background poll: silently check every 10 min, show toast if new articles found
+    setInterval(async () => {
+      if (document.hidden) return; // don't fetch if tab not visible
+      try {
+        const res  = await fetch("data/articles.json?" + Date.now());
+        const data = await res.json();
+        const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
+        if (newOnes.length > 0) {
+          pendingData = data;
+          pendingNew  = new Set(newOnes.map(a => a.id));
+          document.getElementById("updated").textContent = "更新：" + data.updated;
+          showToast(newOnes.length);
+        }
+      } catch (_) {}
+    }, 10 * 60 * 1000);
   </script>
 </body>
 </html>
