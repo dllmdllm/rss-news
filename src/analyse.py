@@ -17,7 +17,7 @@ OLD_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "summaries.jso
 SYSTEM_PROMPT = (
     "你係一個新聞分析助手。"
     "輸出純JSON，唔好有任何其他文字，格式如下：\n"
-    '{"summary":"3至5個重點，每點用「・」開頭，每點唔超過20字",'
+    '{"summary":"5至8個重點，每點用「・」開頭，每點唔超過10個字，精簡如標題",'
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'

@@ -133,7 +133,13 @@
     }
     .cluster-badge:hover { background: #2a4060; }
 
-    .card-title   { font-size: 1.05rem; font-weight: 500; color: var(--link); line-height: 1.5; }
+    .card-title   { font-size: 1.05rem; font-weight: 500; line-height: 1.5; }
+    .card-title.cat-新聞 { color: #e87c7c; }
+    .card-title.cat-國際 { color: #7cb4e8; }
+    .card-title.cat-娛樂 { color: #e87cc8; }
+    .card-title.cat-消閒 { color: #7ce890; }
+    .card-title.cat-科技 { color: #e8b87c; }
+    .card-title.cat-網媒 { color: #b87ce8; }
     .card-summary { font-size: .9rem; color: #aaa; line-height: 1.55; margin-top: 2px; }
 
     /* inline tags */
@@ -313,7 +319,7 @@
               ${clusterBadge}
               <span class="date">${date}</span>
             </div>
-            <div class="card-title">${a.title}</div>
+            <div class="card-title cat-${a.category}">${a.title}</div>
             ${tags}
             ${a.summary ? `<div class="card-summary">${a.summary}</div>` : ""}
             ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
