@@ -72,12 +72,13 @@ def _fix_graphic_tags(html: str) -> str:
 
 def _remove_leading_title(content: str, title: str) -> str:
     """Remove leading <h1> if it duplicates the article title."""
+    import re as _re
     soup = BeautifulSoup(content, "html.parser")
     h1 = soup.find("h1")
     if h1:
-        h1_text = h1.get_text(strip=True)
-        title_clean = title.strip()
-        # Remove if h1 text is contained in title or vice versa (handles minor differences)
+        # Normalise whitespace before comparing
+        h1_text = _re.sub(r"\s+", " ", h1.get_text()).strip()
+        title_clean = _re.sub(r"\s+", " ", title).strip()
         if h1_text and (h1_text in title_clean or title_clean in h1_text or h1_text == title_clean):
             h1.decompose()
             return str(soup)
