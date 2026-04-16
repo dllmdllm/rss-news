@@ -142,8 +142,8 @@
     .card:hover { border-color: var(--accent); transform: translateY(-1px); }
     .card.important { border-color: #f59e0b44; }
     .card.important:hover { border-color: #f59e0b; }
-    .card.read { opacity: .45; }
-    .card.read:hover { opacity: .8; }
+    .card.read { filter: grayscale(1) opacity(.5); }
+    .card.read:hover { filter: grayscale(.4) opacity(.85); }
 
     /* thumbnail */
     .card-thumb {
