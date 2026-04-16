@@ -5,6 +5,10 @@ on:
     - cron: "*/10 * * * *"   # every 10 minutes
   workflow_dispatch:           # allow manual trigger
 
+concurrency:
+  group: update-rss
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
