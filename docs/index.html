@@ -169,9 +169,15 @@
       cursor: pointer; transition: border-color .15s, transform .1s, opacity .2s;
       text-decoration: none; color: inherit;
     }
-    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .card:hover { border-color: var(--accent); border-width: 2px; transform: translateY(-1px); }
+    .card.cat-新聞:hover { border-color: #e87c7c; }
+    .card.cat-國際:hover { border-color: #7cb4e8; }
+    .card.cat-娛樂:hover { border-color: #e87cc8; }
+    .card.cat-消閒:hover { border-color: #7ce890; }
+    .card.cat-科技:hover { border-color: #e8b87c; }
+    .card.cat-網媒:hover { border-color: #b87ce8; }
     .card.important { border-color: #f59e0b44; }
-    .card.important:hover { border-color: #f59e0b; }
+    .card.important:hover { border-color: #f59e0b; border-width: 2px; }
     .card.read { filter: grayscale(1) opacity(.5); }
     .card.read:hover { filter: grayscale(.4) opacity(.85); }
 
@@ -563,7 +569,7 @@
           ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${t}</span>`).join("")}</div>` : "";
         const isRead = reads.has(a.id);
 
-        return `<a class="card${score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${a.id}">
+        return `<a class="card cat-${a.category}${score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${a.id}">
           ${thumb}
           <div class="card-body">
             <div class="card-meta">
