@@ -65,11 +65,40 @@ def save_json(articles: list):
     print(f"[build] Saved: {path} ({size_kb} KB, {len(articles)} articles)")
 
 
+def _load_old_summaries() -> dict:
+    """Load previous articles.json and return a {id: article} map as fallback."""
+    path = DATA_DIR / "articles.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {a["id"]: a for a in data.get("articles", []) if a.get("summary")}
+    except Exception:
+        return {}
+
+
+def _apply_fallback_summaries(articles: list, old: dict) -> list:
+    """For articles that failed AI analysis this run, restore from previous build."""
+    restored = 0
+    for a in articles:
+        if not a.get("summary") and a["id"] in old:
+            src = old[a["id"]]
+            for field in ("summary", "score", "tags", "sentiment", "topic"):
+                if src.get(field) is not None:
+                    a[field] = src[field]
+            restored += 1
+    if restored:
+        print(f"[build] Restored {restored} summaries from previous articles.json")
+    return articles
+
+
 async def main():
     print("=== rss-news build start ===")
+    old_summaries = _load_old_summaries()
     articles = await fetch_all()
     articles = await scrape_all(articles)
     articles = await analyse_all(articles)
+    articles = _apply_fallback_summaries(articles, old_summaries)
     articles = cluster_articles(articles)
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles)

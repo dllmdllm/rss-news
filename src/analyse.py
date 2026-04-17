@@ -129,10 +129,10 @@ async def _analyse_one(
         return article
 
     async with sem:
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 if attempt > 0:
-                    await asyncio.sleep(attempt * 3)  # 3s, 6s backoff on retry only
+                    await asyncio.sleep(attempt * 5)  # 5s, 10s, 15s, 20s backoff on retry
                 async with session.post(
                     "https://api.minimax.io/anthropic/v1/messages",
                     headers={
@@ -153,7 +153,7 @@ async def _analyse_one(
                 ) as resp:
                     data = await resp.json(content_type=None)
                     err  = data.get("error") or {}
-                    if err.get("type") == "overloaded_error" and attempt < 2:
+                    if err.get("type") == "overloaded_error" and attempt < 4:
                         await asyncio.sleep(10 * (attempt + 1))
                         continue
                     content_blocks = data.get("content") or []
@@ -176,7 +176,7 @@ async def _analyse_one(
                         print(f"[WARN] analyse {article['url'][:60]}: {err}")
                     break
             except Exception as exc:
-                if attempt == 2:
+                if attempt == 4:
                     print(f"[WARN] analyse {article['url'][:60]}: {exc!r}")
 
     return article
