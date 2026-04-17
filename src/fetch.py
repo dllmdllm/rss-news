@@ -7,18 +7,15 @@ import aiohttp
 import feedparser
 import zhconv
 
-from src.feeds import ENGLISH_SOURCES, MAX_ITEMS_PER_FEED, RSS_FEEDS, SIMPLIFIED_SOURCES
+from src.feeds import (
+    ENGLISH_SOURCES,
+    HTTP_HEADERS,
+    MAX_ITEMS_PER_FEED,
+    RSS_FEEDS,
+    SIMPLIFIED_SOURCES,
+)
 
 ARTICLE_MAX_AGE_HOURS = 48
-
-# Full Chrome UA — some feeds (WeekendHK, GoTrip) reject bot UAs
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-}
 
 
 def _parse_date(entry) -> datetime:
@@ -52,14 +49,21 @@ def _rss_thumbnail(entry) -> str | None:
     return None
 
 
-async def _fetch_one(session: aiohttp.ClientSession, feed_info: dict, cutoff: datetime) -> list:
+async def _fetch_one(
+    session: aiohttp.ClientSession, feed_info: dict, cutoff: datetime,
+) -> tuple[list, str | None]:
+    """Return (articles, error_message). error_message is None on success."""
     articles = []
     try:
         async with session.get(
             feed_info["url"], timeout=aiohttp.ClientTimeout(total=15)
         ) as resp:
+            if resp.status >= 400:
+                return articles, f"HTTP {resp.status}"
             raw = await resp.read()
         feed = feedparser.parse(raw)
+        if getattr(feed, "bozo", False) and not feed.entries:
+            return articles, f"parse: {feed.bozo_exception!r}"
         for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
             url = entry.get("link", "")
             if not url:
@@ -85,8 +89,12 @@ async def _fetch_one(session: aiohttp.ClientSession, feed_info: dict, cutoff: da
             elif feed_info["name"] in ENGLISH_SOURCES:
                 try:
                     from deep_translator import GoogleTranslator
-                    title = GoogleTranslator(source="auto", target="zh-TW").translate(title) or title
-                    title = zhconv.convert(title, "zh-hk")
+                    loop = asyncio.get_running_loop()
+                    translated = await loop.run_in_executor(
+                        None,
+                        lambda t=title: GoogleTranslator(source="auto", target="zh-TW").translate(t),
+                    )
+                    title = zhconv.convert(translated or title, "zh-hk")
                 except Exception:
                     pass
 
@@ -110,17 +118,29 @@ async def _fetch_one(session: aiohttp.ClientSession, feed_info: dict, cutoff: da
             })
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
-    return articles
+        return articles, repr(exc)
+    return articles, None
 
 
-async def fetch_all() -> list:
+async def fetch_all() -> tuple[list, dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     connector = aiohttp.TCPConnector(limit=30, ssl=False)
-    async with aiohttp.ClientSession(headers=HEADERS, connector=connector) as session:
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_fetch_one(session, f, cutoff) for f in RSS_FEEDS]
         results = await asyncio.gather(*tasks)
 
-    articles = [a for batch in results for a in batch]
+    source_stats: dict[str, dict] = {}
+    articles: list = []
+    failed_sources = 0
+    for feed_info, (batch, error) in zip(RSS_FEEDS, results):
+        source_stats[feed_info["name"]] = {
+            "category": feed_info["category"],
+            "count":    len(batch),
+            "error":    error,
+        }
+        if error:
+            failed_sources += 1
+        articles.extend(batch)
 
     seen, unique = set(), []
     for a in articles:
@@ -129,5 +149,9 @@ async def fetch_all() -> list:
             unique.append(a)
 
     unique.sort(key=lambda x: x["date"], reverse=True)
-    print(f"[fetch] {len(unique)} articles (last {ARTICLE_MAX_AGE_HOURS}h) from {len(RSS_FEEDS)} feeds")
-    return unique
+    print(
+        f"[fetch] {len(unique)} articles (last {ARTICLE_MAX_AGE_HOURS}h) "
+        f"from {len(RSS_FEEDS)} feeds"
+        + (f" ({failed_sources} failed)" if failed_sources else "")
+    )
+    return unique, source_stats

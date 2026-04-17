@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#7c6af7">
+  <link rel="manifest" href="manifest.json">
   <title>新聞快訊</title>
   <style>
     :root {
@@ -259,6 +261,45 @@
       grid-column: 1 / -1; text-align: center;
       padding: 60px; color: var(--muted); font-size: .9rem;
     }
+
+    /* ── keyboard focus ring ── */
+    .card.kb-focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ── health modal ── */
+    .health-overlay {
+      position: fixed; inset: 0; background: #000a; z-index: 100;
+      display: none; align-items: flex-start; justify-content: center;
+      padding: 60px 16px; overflow-y: auto;
+    }
+    .health-overlay.show { display: flex; }
+    .health-modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      max-width: 560px; width: 100%; padding: 20px 22px;
+      box-shadow: 0 12px 40px #000c;
+    }
+    .health-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .health-title { font-size: 1rem; color: var(--text); font-weight: 600; }
+    .health-close {
+      background: none; border: none; color: var(--muted);
+      font-size: 1.1rem; cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    .health-close:hover { color: var(--text); }
+    .health-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0; border-top: 1px solid var(--border); font-size: .82rem;
+    }
+    .health-row:first-of-type { border-top: none; }
+    .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .health-ok   { background: #4ade80; }
+    .health-warn { background: #fbbf24; }
+    .health-bad  { background: #f87171; }
+    .health-name { color: var(--text); min-width: 110px; }
+    .health-cat  { font-size: .7rem; color: var(--muted); }
+    .health-meta { margin-left: auto; color: var(--muted); font-size: .75rem; }
+    .health-err  { color: #f87171; font-size: .72rem; }
   </style>
 </head>
 <body>
@@ -293,11 +334,23 @@
   <div class="tag-filters"    id="tag-filters"></div>
   <div class="grid" id="grid"><div class="loading">載入中…</div></div>
 
+  <!-- source health modal -->
+  <div class="health-overlay" id="health-overlay">
+    <div class="health-modal" role="dialog" aria-label="來源狀態">
+      <div class="health-head">
+        <span class="health-title">來源狀態</span>
+        <button class="health-close" id="health-close" aria-label="關閉">✕</button>
+      </div>
+      <div id="health-body"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7/dist/fuse.min.js"></script>
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", sortMode = "date";
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
+    let sourceStats = {};
     let fuse = null;
 
     // ── Font size ─────────────────────────────────────────────────
@@ -359,8 +412,9 @@
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
-        document.getElementById("updated").textContent = "更新：" + data.updated;
+        updateHeader(data);
         all = data.articles;
+        sourceStats = data.sources || {};
         loadedIds = new Set(all.map(a => a.id));
         fuse = new Fuse(all, {
           keys: ["title", "source", "tags", "summary"],
@@ -375,6 +429,49 @@
       }
     }
 
+    // Header shows an orange dot if any source failed this build; click opens modal.
+    function updateHeader(data) {
+      const updEl = document.getElementById("updated");
+      const stats = data.sources || {};
+      const failed = Object.values(stats).filter(s => s.error).length;
+      const dot = failed ? ` <span title="${failed} 個來源失敗" style="color:#fbbf24">●</span>` : "";
+      updEl.innerHTML = "更新：" + data.updated + dot;
+    }
+
+    // ── Source health modal ──────────────────────────────────────
+    const healthOverlay = document.getElementById("health-overlay");
+    document.getElementById("health-close").addEventListener("click", () => healthOverlay.classList.remove("show"));
+    healthOverlay.addEventListener("click", e => {
+      if (e.target === healthOverlay) healthOverlay.classList.remove("show");
+    });
+
+    function openHealthModal() {
+      const body = document.getElementById("health-body");
+      const entries = Object.entries(sourceStats);
+      if (!entries.length) {
+        body.innerHTML = '<div class="health-err">未載入來源資料</div>';
+      } else {
+        entries.sort(([, a], [, b]) => {
+          const aRank = a.error ? 0 : a.count === 0 ? 1 : 2;
+          const bRank = b.error ? 0 : b.count === 0 ? 1 : 2;
+          return aRank - bRank;
+        });
+        body.innerHTML = entries.map(([name, s]) => {
+          const cls = s.error ? "health-bad" : s.count === 0 ? "health-warn" : "health-ok";
+          const meta = s.error
+            ? `<span class="health-err">${String(s.error).slice(0, 60)}</span>`
+            : `<span class="health-meta">${s.count} 篇${s.restored ? ` · 沿用 ${s.restored}` : ""}</span>`;
+          return `<div class="health-row">
+            <span class="health-dot ${cls}"></span>
+            <span class="health-name">${name}</span>
+            <span class="health-cat">${s.category || ""}</span>
+            ${meta}
+          </div>`;
+        }).join("");
+      }
+      healthOverlay.classList.add("show");
+    }
+
     // ── Check for updates ─────────────────────────────────────────
     async function checkUpdates() {
       const updEl = document.getElementById("updated");
@@ -384,23 +481,31 @@
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
+        sourceStats = data.sources || sourceStats;
         const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
         if (newOnes.length > 0) {
           pendingData = data;
           pendingNew  = new Set(newOnes.map(a => a.id));
-          updEl.textContent = "更新：" + data.updated;
+          updateHeader(data);
           showToast(newOnes.length);
         } else {
           updEl.classList.add("ok");
           updEl.textContent = "✓ 已是最新";
-          setTimeout(() => { updEl.classList.remove("ok"); updEl.textContent = "更新：" + data.updated; }, 2000);
+          setTimeout(() => { updEl.classList.remove("ok"); updateHeader(data); }, 2000);
         }
       } catch {
         updEl.textContent = "更新：檢查失敗";
       }
       updEl.classList.remove("busy");
     }
-    document.getElementById("updated").addEventListener("click", checkUpdates);
+    // Click on the dot opens source-health modal; click on text checks for updates.
+    document.getElementById("updated").addEventListener("click", e => {
+      if (e.target.tagName === "SPAN" && e.target.title) {
+        openHealthModal();
+      } else {
+        checkUpdates();
+      }
+    });
 
     // ── Search ────────────────────────────────────────────────────
     let searchQuery = "";
@@ -556,7 +661,7 @@
           ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
           : "";
         const thumb = a.thumbnail
-          ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
+          ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
           : `<div class="card-thumb-placeholder">📰</div>`;
 
         const score       = a.score ?? null;
@@ -581,10 +686,16 @@
             <div class="card-title cat-${a.category}">${a.title}</div>
             ${tags}
             ${a.summary ? `<div class="card-summary">${a.summary.replace(/\s*・/g, '\n・').trimStart()}</div>` : ""}
-            ${!a.content ? '<div class="no-content">↗ 外部連結</div>' : ""}
           </div>
         </a>`;
       }).join("");
+    }
+
+    // Register PWA service worker for offline support
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
     }
 
     load();
@@ -594,15 +705,53 @@
       try {
         const res  = await fetch("data/articles.json?" + Date.now());
         const data = await res.json();
+        sourceStats = data.sources || sourceStats;
         const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
         if (newOnes.length > 0) {
           pendingData = data;
           pendingNew  = new Set(newOnes.map(a => a.id));
-          document.getElementById("updated").textContent = "更新：" + data.updated;
+          updateHeader(data);
           showToast(newOnes.length);
         }
       } catch (_) {}
     }, 10 * 60 * 1000);
+
+    // ── Keyboard shortcuts ────────────────────────────────────────
+    // j/k = next/previous card, g = top, / = focus search, Esc = blur/clear.
+    let kbIndex = -1;
+    function focusCard(delta) {
+      const cards = [...document.querySelectorAll("#grid .card")];
+      if (!cards.length) return;
+      kbIndex = Math.max(0, Math.min(cards.length - 1, (kbIndex < 0 ? 0 : kbIndex + delta)));
+      cards.forEach(c => c.classList.remove("kb-focus"));
+      const target = cards[kbIndex];
+      target.classList.add("kb-focus");
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    document.addEventListener("keydown", e => {
+      const active = document.activeElement;
+      const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+      if (e.key === "Escape") {
+        const search = document.getElementById("search");
+        if (inInput) { search.value = ""; searchQuery = ""; renderFiltered(); active.blur(); }
+        else if (healthOverlay.classList.contains("show")) healthOverlay.classList.remove("show");
+        return;
+      }
+      if (inInput) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
+      else if (e.key === "j") { e.preventDefault(); focusCard(+1); }
+      else if (e.key === "k") { e.preventDefault(); focusCard(-1); }
+      else if (e.key === "g") { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); kbIndex = -1; }
+      else if (e.key === "h") { e.preventDefault(); openHealthModal(); }
+      else if (e.key === "Enter" && kbIndex >= 0) {
+        const cards = document.querySelectorAll("#grid .card");
+        if (cards[kbIndex]) cards[kbIndex].click();
+      }
+    });
+    // Reset keyboard index when list re-renders
+    const _origRender = render;
+    render = function (articles) { kbIndex = -1; return _origRender(articles); };
   </script>
 </body>
 </html>

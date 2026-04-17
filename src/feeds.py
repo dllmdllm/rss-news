@@ -1,3 +1,13 @@
+# Shared across fetch.py and scrape.py — some sites (WeekendHK, GoTrip,
+# Cloudflare-fronted feeds) reject non-browser user agents.
+HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
 RSS_FEEDS = [
     # 新聞
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},

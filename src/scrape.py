@@ -8,15 +8,17 @@ import zhconv
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 
-from src.feeds import ENGLISH_SOURCES, SCRAPE_CONCURRENCY, SIMPLIFIED_SOURCES
+from src.feeds import (
+    ENGLISH_SOURCES,
+    HTTP_HEADERS,
+    SCRAPE_CONCURRENCY,
+    SIMPLIFIED_SOURCES,
+)
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-}
+# Per-request timeouts — fallbacks fire after the main aiohttp fetch fails or
+# is blocked, so pages that do not respond quickly are unlikely to recover.
+_MAIN_TIMEOUT     = 20
+_FALLBACK_TIMEOUT = 15
 
 _BLOCK_PHRASES = [
     "cloudflare ray id",
@@ -206,8 +208,8 @@ async def _urllib_fetch(url: str) -> str | None:
         import urllib.request
         loop = asyncio.get_running_loop()
         def _fetch():
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            req = urllib.request.Request(url, headers=HTTP_HEADERS)
+            with urllib.request.urlopen(req, timeout=_FALLBACK_TIMEOUT) as resp:
                 raw = resp.read()
                 charset = resp.headers.get_content_charset() or "utf-8"
                 return raw.decode(charset, errors="replace")
@@ -224,7 +226,7 @@ async def _cloudscraper_fetch(url: str) -> str | None:
         loop = asyncio.get_running_loop()
         def _fetch():
             scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
-            r = scraper.get(url, timeout=30)
+            r = scraper.get(url, timeout=_FALLBACK_TIMEOUT)
             return r.text
         return await loop.run_in_executor(None, _fetch)
     except Exception as exc:
@@ -237,11 +239,14 @@ async def _scrape_one(
     article: dict,
     sem: asyncio.Semaphore,
 ) -> dict:
+    # Already scraped in a previous build and restored via _merge_missing_sources
+    if article.get("content"):
+        return article
     async with sem:
         for attempt in range(2):
             try:
                 async with session.get(
-                    article["url"], timeout=aiohttp.ClientTimeout(total=40)
+                    article["url"], timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT)
                 ) as resp:
                     raw = await resp.read()
                     charset = resp.charset or "utf-8"
@@ -290,7 +295,11 @@ async def _scrape_one(
                     if article["source"] in SIMPLIFIED_SOURCES:
                         content = _to_hk_traditional(content)
                     elif article["source"] in ENGLISH_SOURCES:
-                        content = _translate_to_hk(content)
+                        # Translation makes N serial GoogleTranslator calls — run
+                        # in executor so the event loop stays responsive while
+                        # other articles continue scraping.
+                        loop = asyncio.get_running_loop()
+                        content = await loop.run_in_executor(None, _translate_to_hk, content)
                     article["content"] = content
 
                 # Extract og:image thumbnail if not already set from RSS
@@ -312,7 +321,7 @@ async def _scrape_one(
 async def scrape_all(articles: list) -> list:
     sem = asyncio.Semaphore(SCRAPE_CONCURRENCY)
     connector = aiohttp.TCPConnector(limit=SCRAPE_CONCURRENCY, ssl=False)
-    async with aiohttp.ClientSession(headers=HEADERS, connector=connector) as session:
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_scrape_one(session, a, sem) for a in articles]
         results = await asyncio.gather(*tasks)
     scraped = sum(1 for a in results if a["content"])

@@ -1,0 +1,156 @@
+"""Unit tests for src/analyse.py parsing helpers.
+
+Run:  python -m pytest tests/ -v
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.analyse import (
+    ANALYSIS_VERSION,
+    _needs_full_analysis,
+    _normalise_summary,
+    _parse_analysis,
+)
+
+
+# ── _normalise_summary ────────────────────────────────────────────
+
+def test_normalise_from_list():
+    out = _normalise_summary(["foo", "bar"])
+    assert out == "・foo\n・bar"
+
+
+def test_normalise_from_list_strips_existing_bullets():
+    out = _normalise_summary(["・foo", " ・bar"])
+    assert out == "・foo\n・bar"
+
+
+def test_normalise_list_drops_empty():
+    assert _normalise_summary(["foo", "", "  "]) == "・foo"
+
+
+def test_normalise_already_formatted_passthrough():
+    text = "・foo\n・bar"
+    assert _normalise_summary(text) == text
+
+
+def test_normalise_string_with_bullets_no_newlines_split():
+    out = _normalise_summary("・foo・bar・baz")
+    assert out == "・foo\n・bar\n・baz"
+
+
+def test_normalise_preserves_interdot_names_in_prose():
+    # Must not split interdot names like 奧巴馬・侯賽因 when the text is prose
+    # (not a bullet list — doesn't start with ・).
+    text = "奧巴馬・侯賽因訪問香港"
+    assert _normalise_summary(text) == text
+
+
+def test_normalise_none_returns_empty():
+    assert _normalise_summary(None) == ""
+
+
+def test_normalise_single_bullet_passthrough():
+    # Single ・ at start but only one bullet — should not split.
+    assert _normalise_summary("・單一重點") == "・單一重點"
+
+
+# ── _parse_analysis ──────────────────────────────────────────────
+
+def test_parse_plain_json():
+    raw = '{"summary":"・a\\n・b","score":7,"tags":["x","y"],"sentiment":"negative","topic":"test"}'
+    out = _parse_analysis(raw)
+    assert out["summary"] == "・a\n・b"
+    assert out["score"] == 7
+    assert out["tags"] == ["x", "y"]
+    assert out["sentiment"] == "negative"
+    assert out["topic"] == "test"
+    assert out["version"] == ANALYSIS_VERSION
+
+
+def test_parse_strips_markdown_fence():
+    raw = '```json\n{"summary":"・a","score":5,"tags":[],"sentiment":"neutral","topic":"x"}\n```'
+    out = _parse_analysis(raw)
+    assert out is not None
+    assert out["score"] == 5
+
+
+def test_parse_clamps_score_out_of_range():
+    raw = '{"summary":"x","score":99,"tags":[],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["score"] == 10
+    raw = '{"summary":"x","score":-5,"tags":[],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["score"] == 1
+
+
+def test_parse_score_string_falls_back_to_5():
+    raw = '{"summary":"x","score":"not-a-number","tags":[],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["score"] == 5
+
+
+def test_parse_invalid_sentiment_defaults_neutral():
+    raw = '{"summary":"x","score":5,"tags":[],"sentiment":"nonsense","topic":""}'
+    assert _parse_analysis(raw)["sentiment"] == "neutral"
+
+
+def test_parse_tags_as_comma_string():
+    raw = '{"summary":"x","score":5,"tags":"政治,經濟、社會","sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["tags"] == ["政治", "經濟", "社會"]
+
+
+def test_parse_tags_capped_at_three():
+    raw = '{"summary":"x","score":5,"tags":["a","b","c","d","e"],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["tags"] == ["a", "b", "c"]
+
+
+def test_parse_strips_hash_from_tags():
+    raw = '{"summary":"x","score":5,"tags":["#政治","經濟"],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw)["tags"] == ["政治", "經濟"]
+
+
+def test_parse_topic_truncated():
+    raw = '{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":"' + "長" * 50 + '"}'
+    assert len(_parse_analysis(raw)["topic"]) == 20
+
+
+def test_parse_summary_as_list():
+    raw = '{"summary":["重點一","重點二"],"score":5,"tags":[],"sentiment":"neutral","topic":""}'
+    out = _parse_analysis(raw)
+    assert out["summary"] == "・重點一\n・重點二"
+
+
+def test_parse_garbage_returns_none():
+    assert _parse_analysis("not json") is None
+    assert _parse_analysis("") is None
+
+
+def test_parse_embedded_json_in_prose():
+    # Model sometimes wraps JSON with chatter — we extract the {...} block.
+    raw = '分析結果如下：{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""} 希望對你有幫助'
+    assert _parse_analysis(raw) is not None
+
+
+# ── _needs_full_analysis ─────────────────────────────────────────
+
+def test_needs_when_score_missing():
+    assert _needs_full_analysis({"summary": "x", "score": None}) is True
+
+
+def test_needs_when_version_stale():
+    assert _needs_full_analysis({
+        "summary": "x", "score": 5, "version": ANALYSIS_VERSION - 1
+    }) is True
+
+
+def test_no_need_when_current_version():
+    assert _needs_full_analysis({
+        "summary": "x", "score": 5, "version": ANALYSIS_VERSION
+    }) is False
+
+
+def test_needs_when_summary_is_list_repr():
+    # Legacy malformed entry: AI returned array, str() got cached.
+    assert _needs_full_analysis({
+        "summary": "['重點一', '重點二']", "score": 5, "version": ANALYSIS_VERSION
+    }) is True

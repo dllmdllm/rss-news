@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#7c6af7">
+  <link rel="manifest" href="manifest.json">
   <title>文章</title>
   <style>
     :root {
@@ -207,10 +209,22 @@
       if (!id) { location.href = "index.html"; return; }
 
       try {
-        const res  = await fetch("data/articles.json");
-        const data = await res.json();
+        // Fetch metadata + content in parallel. Content lives in a
+        // per-article file (data/content/{id}.json) so the index payload
+        // stays small.
+        const [metaRes, contentRes] = await Promise.all([
+          fetch("data/articles.json?" + Date.now()),
+          fetch("data/content/" + encodeURIComponent(id) + ".json?" + Date.now()),
+        ]);
+        const data = await metaRes.json();
         const art  = data.articles.find(a => a.id === id);
         if (!art) { location.href = "index.html"; return; }
+        if (contentRes.ok) {
+          try {
+            const c = await contentRes.json();
+            if (c && c.content) art.content = c.content;
+          } catch (_) {}
+        }
 
         // Mark as read immediately
         markRead(id);
@@ -285,6 +299,13 @@
     }
 
     load();
+
+    // Register PWA service worker for offline support
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>

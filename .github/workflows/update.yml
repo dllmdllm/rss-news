@@ -11,7 +11,10 @@ on:
 
 concurrency:
   group: update-rss
-  cancel-in-progress: true
+  # Let the running build finish — cancelling it mid-way when a build exceeds
+  # the 20-min cron interval means nothing ever gets pushed. A newer queued run
+  # will supersede older pending ones automatically.
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -28,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch RSS, scrape & summarise
+      - name: Fetch RSS, scrape & analyse
         run: python build.py
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
@@ -37,7 +40,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/data/articles.json docs/data/analyses.json
+          git add docs/data/articles.json docs/data/analyses.json docs/data/feed.xml docs/data/content
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) { exit 0 }
           $ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm") + " UTC"
@@ -46,3 +49,16 @@ jobs:
           git rebase origin/main -X ours
           if ($LASTEXITCODE -ne 0) { git rebase --abort }
           git push --force-with-lease
+
+      # Optional: notify Slack on build failure. Enable by uncommenting and
+      # adding a SLACK_WEBHOOK_URL secret (Incoming Webhook URL from Slack
+      # App → Features → Incoming Webhooks).
+      # - name: Notify Slack on failure
+      #   if: failure()
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   run: |
+      #     $body = @{
+      #       text = "rss-news build failed — run $env:GITHUB_RUN_ID on $env:GITHUB_REF"
+      #     } | ConvertTo-Json
+      #     Invoke-RestMethod -Uri $env:SLACK_WEBHOOK_URL -Method Post -Body $body -ContentType 'application/json'
