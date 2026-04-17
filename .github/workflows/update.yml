@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "*/10 * * * *"   # every 10 minutes
   workflow_dispatch:           # allow manual trigger
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/data/**"        # avoid loop from runner's own commits
 
 concurrency:
   group: update-rss
