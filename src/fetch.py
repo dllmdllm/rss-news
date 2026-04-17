@@ -67,7 +67,7 @@ async def _fetch_one(session: aiohttp.ClientSession, feed_info: dict, cutoff: da
 
             date = _parse_date(entry)
             if date < cutoff:
-                continue  # skip articles older than 24h
+                continue  # skip articles older than ARTICLE_MAX_AGE_HOURS
 
             # RSS image
             thumbnail = _rss_thumbnail(entry)
@@ -129,5 +129,5 @@ async def fetch_all() -> list:
             unique.append(a)
 
     unique.sort(key=lambda x: x["date"], reverse=True)
-    print(f"[fetch] {len(unique)} articles (last 24h) from {len(RSS_FEEDS)} feeds")
+    print(f"[fetch] {len(unique)} articles (last {ARTICLE_MAX_AGE_HOURS}h) from {len(RSS_FEEDS)} feeds")
     return unique

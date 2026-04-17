@@ -30,7 +30,7 @@ _BLOCK_PHRASES = [
 _LAZY_ATTRS = [
     "data-src", "data-lazy-src", "data-original", "data-lazy",
     "data-delayed-url", "data-url", "data-image", "data-echo",
-    "lazysrc", "data-actualsrc", "data-hi-res-src", "data-srcset",
+    "lazysrc", "data-actualsrc", "data-hi-res-src",
 ]
 
 
@@ -113,13 +113,11 @@ def _fix_picture_elements(html: str) -> str:
 
 def _remove_leading_title(content: str, title: str) -> str:
     """Remove leading <h1> if it duplicates the article title."""
-    import re as _re
     soup = BeautifulSoup(content, "html.parser")
     h1 = soup.find("h1")
     if h1:
-        # Normalise whitespace before comparing
-        h1_text = _re.sub(r"\s+", " ", h1.get_text()).strip()
-        title_clean = _re.sub(r"\s+", " ", title).strip()
+        h1_text = re.sub(r"\s+", " ", h1.get_text()).strip()
+        title_clean = re.sub(r"\s+", " ", title).strip()
         if h1_text and (h1_text in title_clean or title_clean in h1_text or h1_text == title_clean):
             h1.decompose()
             return str(soup)
@@ -169,7 +167,7 @@ async def _urllib_fetch(url: str) -> str | None:
     """Fetch using urllib.request in thread pool — bypasses Cloudflare TLS fingerprinting."""
     try:
         import urllib.request
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _fetch():
             req = urllib.request.Request(url, headers=HEADERS)
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -186,7 +184,7 @@ async def _cloudscraper_fetch(url: str) -> str | None:
     """Bypass Cloudflare using cloudscraper (runs in thread pool)."""
     try:
         import cloudscraper
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _fetch():
             scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
             r = scraper.get(url, timeout=30)
