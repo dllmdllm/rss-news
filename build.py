@@ -65,20 +65,21 @@ def save_json(articles: list):
     print(f"[build] Saved: {path} ({size_kb} KB, {len(articles)} articles)")
 
 
-def _load_old_summaries() -> dict:
-    """Load previous articles.json and return a {id: article} map as fallback."""
+def _load_old_articles() -> list:
+    """Load previous articles.json as a full list fallback."""
     path = DATA_DIR / "articles.json"
     if not path.exists():
-        return {}
+        return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return {a["id"]: a for a in data.get("articles", []) if a.get("summary")}
+        return data.get("articles", [])
     except Exception:
-        return {}
+        return []
 
 
-def _apply_fallback_summaries(articles: list, old: dict) -> list:
+def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     """For articles that failed AI analysis this run, restore from previous build."""
+    old = {a["id"]: a for a in old_articles if a.get("summary")}
     restored = 0
     for a in articles:
         if not a.get("summary") and a["id"] in old:
@@ -92,13 +93,50 @@ def _apply_fallback_summaries(articles: list, old: dict) -> list:
     return articles
 
 
+def _merge_missing_sources(articles: list, old_articles: list) -> list:
+    """If a source/category produced 0 articles this run (fetch failed),
+    fall back to its articles from the previous build to avoid blank categories."""
+    from collections import defaultdict
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    new_sources = {a["source"] for a in articles}
+    old_by_source = defaultdict(list)
+    for a in old_articles:
+        old_by_source[a["source"]].append(a)
+
+    existing_ids = {a["id"] for a in articles}
+    added = 0
+    for source, old_arts in old_by_source.items():
+        if source not in new_sources:
+            # Filter to still-recent articles only
+            recent = []
+            for a in old_arts:
+                try:
+                    dt = datetime.fromisoformat(a.get("date", "")).replace(tzinfo=timezone.utc) \
+                         if a.get("date") else None
+                    if dt and dt > cutoff:
+                        recent.append(a)
+                except Exception:
+                    pass
+            for a in recent:
+                if a["id"] not in existing_ids:
+                    articles.append(a)
+                    existing_ids.add(a["id"])
+                    added += 1
+    if added:
+        print(f"[build] Merged {added} articles from {len(old_by_source)-len(new_sources)} missing sources")
+    return articles
+
+
 async def main():
     print("=== rss-news build start ===")
-    old_summaries = _load_old_summaries()
+    old_articles = _load_old_articles()
     articles = await fetch_all()
+    articles = _merge_missing_sources(articles, old_articles)
     articles = await scrape_all(articles)
     articles = await analyse_all(articles)
-    articles = _apply_fallback_summaries(articles, old_summaries)
+    articles = _apply_fallback_summaries(articles, old_articles)
     articles = cluster_articles(articles)
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles)
