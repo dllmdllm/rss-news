@@ -30,7 +30,7 @@ _BLOCK_PHRASES = [
 _LAZY_ATTRS = [
     "data-src", "data-lazy-src", "data-original", "data-lazy",
     "data-delayed-url", "data-url", "data-image", "data-echo",
-    "lazysrc", "data-actualsrc", "data-hi-res-src",
+    "lazysrc", "data-actualsrc", "data-hi-res-src", "data-srcset",
 ]
 
 
@@ -65,9 +65,50 @@ def _is_blocked(html: str) -> bool:
 
 def _fix_graphic_tags(html: str) -> str:
     """Convert trafilatura's <graphic> TEI elements to standard <img>."""
-    html = re.sub(r'<graphic([^>]*)></graphic>', lambda m: '<img' + m.group(1) + '>', html, flags=re.IGNORECASE)
-    html = re.sub(r'<graphic([^>]*?)/>', lambda m: '<img' + m.group(1) + '>', html, flags=re.IGNORECASE)
+    def _to_img(m):
+        attrs = m.group(1)
+        # trafilatura uses url= attribute; browsers need src=
+        attrs = re.sub(r'\burl=', 'src=', attrs)
+        return '<img' + attrs + '>'
+    html = re.sub(r'<graphic([^>]*)></graphic>', _to_img, html, flags=re.IGNORECASE)
+    html = re.sub(r'<graphic([^>]*?)/>', _to_img, html, flags=re.IGNORECASE)
     return html
+
+
+def _fix_picture_elements(html: str) -> str:
+    """
+    Convert <picture>…</picture> to a plain <img> so trafilatura preserves them.
+    Priority: img[src] > img[data-src] > source[srcset] > source[data-srcset]
+    """
+    if '<picture' not in html:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    changed = False
+    for pic in soup.find_all("picture"):
+        img = pic.find("img")
+        url = None
+        if img:
+            url = (img.get("src") or img.get("data-src") or
+                   img.get("data-lazy-src") or img.get("data-original"))
+        if not url:
+            for src_tag in pic.find_all("source"):
+                for attr in ("srcset", "data-srcset"):
+                    val = src_tag.get(attr, "")
+                    if val:
+                        # srcset may be "img.jpg 1x, img@2x.jpg 2x" — take first URL
+                        url = val.split(",")[0].split()[0].strip()
+                        break
+                if url:
+                    break
+        if url:
+            new_img = soup.new_tag("img", src=url)
+            if img:
+                for attr in ("alt", "width", "height", "class"):
+                    if img.get(attr):
+                        new_img[attr] = img[attr]
+            pic.replace_with(new_img)
+            changed = True
+    return str(soup) if changed else html
 
 
 def _remove_leading_title(content: str, title: str) -> str:
@@ -194,6 +235,7 @@ async def _scrape_one(
                             return article
 
                 html = _extract_noscript_imgs(html)
+                html = _fix_picture_elements(html)
                 html = _fix_lazy_images(html)
 
                 content = trafilatura.extract(
