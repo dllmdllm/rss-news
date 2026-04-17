@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 
 import aiohttp
@@ -32,6 +33,42 @@ _LAZY_ATTRS = [
     "data-delayed-url", "data-url", "data-image", "data-echo",
     "lazysrc", "data-actualsrc", "data-hi-res-src",
 ]
+
+
+def _expand_stheadline_galleries(html: str) -> str:
+    """
+    星島頭條 uses <gallery-N> custom elements populated at runtime by JS.
+    The actual image data lives in a JS variable `article_galleries` embedded
+    in the page HTML.  Replace each <gallery-N> with the corresponding <img>
+    tags so trafilatura can see them.
+    """
+    if 'article_galleries' not in html:
+        return html
+    m = re.search(r'const article_galleries\s*=\s*(\{.*?\});\s*\n', html, re.DOTALL)
+    if not m:
+        return html
+    try:
+        galleries = json.loads(m.group(1))
+    except Exception:
+        return html
+
+    def _gallery_imgs(key):
+        imgs = []
+        for item in galleries.get(key, []):
+            src = item.get("src") or ""
+            alt = item.get("alt_text") or item.get("caption") or ""
+            if src:
+                imgs.append(f'<img src="{src}" alt="{alt}">')
+        return "\n".join(imgs)
+
+    def _replace_gallery(m2):
+        key = m2.group(1)  # e.g. "gallery-1"
+        return _gallery_imgs(key)
+
+    html = re.sub(r'<(gallery-\d+)>\s*</\1>', _replace_gallery, html, flags=re.IGNORECASE)
+    html = re.sub(r'<(gallery-\d+)\s*/>', _replace_gallery, html, flags=re.IGNORECASE)
+    html = re.sub(r'<(gallery-\d+)>', _replace_gallery, html, flags=re.IGNORECASE)
+    return html
 
 
 def _fix_lazy_images(html: str) -> str:
@@ -232,6 +269,7 @@ async def _scrape_one(
                                 article["content"] = content
                             return article
 
+                html = _expand_stheadline_galleries(html)
                 html = _extract_noscript_imgs(html)
                 html = _fix_picture_elements(html)
                 html = _fix_lazy_images(html)
