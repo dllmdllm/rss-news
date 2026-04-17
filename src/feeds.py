@@ -27,7 +27,7 @@ RSS_FEEDS = [
     {"name": "The Witness",       "url": "https://thewitnesshk.com/feed/",                                        "category": "網媒"},
 ]
 
-MAX_ITEMS_PER_FEED = 10
+MAX_ITEMS_PER_FEED = 20
 SCRAPE_CONCURRENCY = 15
 
 # Sources that publish in Simplified Chinese — will be auto-converted to HK Traditional

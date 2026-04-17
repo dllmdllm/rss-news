@@ -9,7 +9,7 @@ import zhconv
 
 from src.feeds import ENGLISH_SOURCES, MAX_ITEMS_PER_FEED, RSS_FEEDS, SIMPLIFIED_SOURCES
 
-ARTICLE_MAX_AGE_HOURS = 24
+ARTICLE_MAX_AGE_HOURS = 48
 
 # Full Chrome UA — some feeds (WeekendHK, GoTrip) reject bot UAs
 HEADERS = {
