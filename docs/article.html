@@ -39,6 +39,7 @@
     .font-btn:hover { border-color: var(--accent); color: var(--text); }
     .font-btn:first-child { font-size: .72rem; }
     .font-btn:last-child  { font-size: .92rem; }
+    .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
 
     /* share button */
     .share-btn {
@@ -120,15 +121,15 @@
     }
 
     /* ── font size levels ── */
-    body.fs-0 h1#art-title { font-size: 1.4rem; }
-    body.fs-0 .content     { font-size: .92rem; }
-    body.fs-0 .summary-box { font-size: .82rem; }
+    body.fs-0 h1#art-title { font-size: 1.3rem; }
+    body.fs-0 .content     { font-size: .85rem; }
+    body.fs-0 .summary-box { font-size: .78rem; }
     body.fs-1 h1#art-title { font-size: 1.6rem; }   /* default */
-    body.fs-1 .content     { font-size: 1.05rem; }
+    body.fs-1 .content     { font-size: 1rem; }
     body.fs-1 .summary-box { font-size: .88rem; }
-    body.fs-2 h1#art-title { font-size: 1.8rem; }
-    body.fs-2 .content     { font-size: 1.18rem; }
-    body.fs-2 .summary-box { font-size: .98rem; }
+    body.fs-2 h1#art-title { font-size: 2rem; }
+    body.fs-2 .content     { font-size: 1.25rem; }
+    body.fs-2 .summary-box { font-size: 1.05rem; }
   </style>
 </head>
 <body>
@@ -157,9 +158,12 @@
     // ── Font size (shared with index.html via localStorage) ───────
     const READ_KEY = "rss_read_ids";
     let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
+    if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;
     function applyFs() {
       document.body.className = document.body.className.replace(/\bfs-\d\b/g, "").trim();
       document.body.classList.add("fs-" + fsLevel);
+      document.getElementById("font-dec").classList.toggle("disabled", fsLevel === 0);
+      document.getElementById("font-inc").classList.toggle("disabled", fsLevel === 2);
     }
     applyFs();
     document.getElementById("font-inc").addEventListener("click", () => {

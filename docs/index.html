@@ -56,6 +56,7 @@
     .font-btn:hover { border-color: var(--accent); color: var(--text); }
     .font-btn:first-child { font-size: .72rem; }
     .font-btn:last-child  { font-size: .92rem; }
+    .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
 
     /* ── search row ── */
     .search-row {
@@ -220,12 +221,12 @@
     .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
     /* ── font size levels ── */
-    body.fs-0 .card-title   { font-size: .9rem; }
-    body.fs-0 .card-summary { font-size: .8rem; }
-    body.fs-1 .card-title   { font-size: 1.05rem; }  /* default */
-    body.fs-1 .card-summary { font-size: .9rem; }
-    body.fs-2 .card-title   { font-size: 1.2rem; }
-    body.fs-2 .card-summary { font-size: 1rem; }
+    body.fs-0 .card-title   { font-size: .82rem; }
+    body.fs-0 .card-summary { font-size: .75rem; }
+    body.fs-1 .card-title   { font-size: 1rem; }     /* default */
+    body.fs-1 .card-summary { font-size: .88rem; }
+    body.fs-2 .card-title   { font-size: 1.25rem; }
+    body.fs-2 .card-summary { font-size: 1.08rem; }
 
     /* ── new card highlight ── */
     @keyframes newPulse {
@@ -281,9 +282,12 @@
 
     // ── Font size ─────────────────────────────────────────────────
     let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
+    if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;
     function applyFs() {
       document.body.className = document.body.className.replace(/\bfs-\d\b/g, "").trim();
       document.body.classList.add("fs-" + fsLevel);
+      document.getElementById("font-dec").classList.toggle("disabled", fsLevel === 0);
+      document.getElementById("font-inc").classList.toggle("disabled", fsLevel === 2);
     }
     applyFs();
     document.getElementById("font-inc").addEventListener("click", () => {
