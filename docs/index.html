@@ -89,6 +89,20 @@
     .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
     .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* category-specific active colours for filter buttons */
+    .filter-btn.cat-新聞:hover  { border-color: #e87c7c; color: #e87c7c; }
+    .filter-btn.cat-新聞.active { background: #3d1a1a; border-color: #e87c7c; color: #e87c7c; }
+    .filter-btn.cat-國際:hover  { border-color: #7cb4e8; color: #7cb4e8; }
+    .filter-btn.cat-國際.active { background: #1a2a3d; border-color: #7cb4e8; color: #7cb4e8; }
+    .filter-btn.cat-娛樂:hover  { border-color: #e87cc8; color: #e87cc8; }
+    .filter-btn.cat-娛樂.active { background: #3d1a30; border-color: #e87cc8; color: #e87cc8; }
+    .filter-btn.cat-消閒:hover  { border-color: #7ce890; color: #7ce890; }
+    .filter-btn.cat-消閒.active { background: #1a3d22; border-color: #7ce890; color: #7ce890; }
+    .filter-btn.cat-科技:hover  { border-color: #e8b87c; color: #e8b87c; }
+    .filter-btn.cat-科技.active { background: #3d2e1a; border-color: #e8b87c; color: #e8b87c; }
+    .filter-btn.cat-網媒:hover  { border-color: #b87ce8; color: #b87ce8; }
+    .filter-btn.cat-網媒.active { background: #2a1a3d; border-color: #b87ce8; color: #b87ce8; }
+
     /* ── source filters ── */
     .source-filters {
       padding: 5px 24px 7px; display: none; flex-wrap: wrap; gap: 5px;
@@ -393,7 +407,7 @@
     function buildFilters() {
       const container = document.getElementById("filters");
       container.innerHTML = CATS.map(c =>
-        `<button class="filter-btn${c === "全部" ? " active" : ""}" data-cat="${c}">${c}</button>`
+        `<button class="filter-btn${c === "全部" ? " active" : ""}${c !== "全部" ? " cat-" + c : ""}" data-cat="${c}">${c}</button>`
       ).join("");
       container.addEventListener("click", e => {
         const btn = e.target.closest(".filter-btn");
