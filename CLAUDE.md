@@ -137,7 +137,7 @@ RSS Feed
 
 - **Phase 1（完成）** — 全文抓取 + 靜態頁面（列表頁 + 文章閱讀頁）
 - **Phase 2（完成）** — AI 分析：摘要、重要性評分、標籤、情緒、話題 clustering
-- **Phase 3** — Client-side 語意搜尋（Fuse.js 或 embedding，無需後端）
+- **Phase 3（完成）** — Client-side 搜尋（Fuse.js，模糊匹配標題/摘要/標籤/來源/分類）
 
 ---
 

@@ -353,6 +353,18 @@
     let sourceStats = {};
     let fuse = null;
 
+    // RSS feeds are untrusted input; escape all interpolated string fields
+    // before putting them into innerHTML / attribute values.
+    const _ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => _ESC[c]);
+    }
+    // Only allow http(s): URLs through href/src — blocks javascript:, data:, etc.
+    function safeUrl(u) {
+      const s = String(u ?? "").trim();
+      return /^https?:\/\//i.test(s) ? s : "#";
+    }
+
     // ── Font size ─────────────────────────────────────────────────
     let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
     if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;
@@ -434,8 +446,8 @@
       const updEl = document.getElementById("updated");
       const stats = data.sources || {};
       const failed = Object.values(stats).filter(s => s.error).length;
-      const dot = failed ? ` <span title="${failed} 個來源失敗" style="color:#fbbf24">●</span>` : "";
-      updEl.innerHTML = "更新：" + data.updated + dot;
+      const dot = failed ? ` <span title="${esc(failed + " 個來源失敗")}" style="color:#fbbf24">●</span>` : "";
+      updEl.innerHTML = "更新：" + esc(data.updated) + dot;
     }
 
     // ── Source health modal ──────────────────────────────────────
@@ -459,12 +471,12 @@
         body.innerHTML = entries.map(([name, s]) => {
           const cls = s.error ? "health-bad" : s.count === 0 ? "health-warn" : "health-ok";
           const meta = s.error
-            ? `<span class="health-err">${String(s.error).slice(0, 60)}</span>`
-            : `<span class="health-meta">${s.count} 篇${s.restored ? ` · 沿用 ${s.restored}` : ""}</span>`;
+            ? `<span class="health-err">${esc(String(s.error).slice(0, 60))}</span>`
+            : `<span class="health-meta">${Number(s.count) || 0} 篇${s.restored ? ` · 沿用 ${Number(s.restored) || 0}` : ""}</span>`;
           return `<div class="health-row">
             <span class="health-dot ${cls}"></span>
-            <span class="health-name">${name}</span>
-            <span class="health-cat">${s.category || ""}</span>
+            <span class="health-name">${esc(name)}</span>
+            <span class="health-cat">${esc(s.category || "")}</span>
             ${meta}
           </div>`;
         }).join("");
@@ -518,7 +530,7 @@
     function buildFilters() {
       const container = document.getElementById("filters");
       container.innerHTML = CATS.map(c =>
-        `<button class="filter-btn${c === "全部" ? " active" : ""}${c !== "全部" ? " cat-" + c : ""}" data-cat="${c}">${c}</button>`
+        `<button class="filter-btn${c === "全部" ? " active" : ""}${c !== "全部" ? " cat-" + esc(c) : ""}" data-cat="${esc(c)}">${esc(c)}</button>`
       ).join("");
       container.addEventListener("click", e => {
         const btn = e.target.closest(".filter-btn");
@@ -555,7 +567,7 @@
       }
 
       container.innerHTML = sources.map(s =>
-        `<button class="source-filter-btn${activeSource === s ? " active" : ""}" data-source="${s}">${s}</button>`
+        `<button class="source-filter-btn${activeSource === s ? " active" : ""}" data-source="${esc(s)}">${esc(s)}</button>`
       ).join("");
       container.classList.add("has-sources");
 
@@ -587,7 +599,7 @@
       if (!tags.length) { container.style.display = "none"; return; }
       container.style.display = "";
       container.innerHTML = tags.map(t =>
-        `<button class="tag-filter-btn" data-tag="${t}"># ${t}</button>`
+        `<button class="tag-filter-btn" data-tag="${esc(t)}"># ${esc(t)}</button>`
       ).join("");
       container.addEventListener("click", e => {
         const btn = e.target.closest(".tag-filter-btn");
@@ -660,32 +672,40 @@
         const date = a.date
           ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
           : "";
-        const thumb = a.thumbnail
-          ? `<img class="card-thumb" src="${a.thumbnail}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
+        const thumbUrl = safeUrl(a.thumbnail);
+        const thumb = (a.thumbnail && thumbUrl !== "#")
+          ? `<img class="card-thumb" src="${esc(thumbUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
           : `<div class="card-thumb-placeholder">📰</div>`;
 
-        const score       = a.score ?? null;
-        const scoreBadge  = score !== null
+        const score = (typeof a.score === "number") ? a.score : null;
+        const scoreBadge = score !== null
           ? `<span class="score-badge ${scoreClass(score)}">${score >= 8 ? "🔥 " : ""}${score}</span>` : "";
-        const sentDot     = `<span class="sentiment sent-${a.sentiment || "neutral"}"></span>`;
-        const clusterBadge = a.cluster_size > 1
-          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${a.cluster_id}')">${a.cluster_size} 來源</span>` : "";
+        const sentiment = ["positive", "negative", "neutral"].includes(a.sentiment) ? a.sentiment : "neutral";
+        const sentDot   = `<span class="sentiment sent-${sentiment}"></span>`;
+        // cluster_id is 8-hex MD5; still clamp to [0-9a-f] to be defensive
+        const cid = /^[0-9a-f]{1,16}$/i.test(a.cluster_id || "") ? a.cluster_id : "";
+        const clusterBadge = (a.cluster_size > 1 && cid)
+          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${cid}')">${Number(a.cluster_size)} 來源</span>` : "";
         const tags = (a.tags || []).length
-          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${t}</span>`).join("")}</div>` : "";
+          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join("")}</div>` : "";
         const isRead = reads.has(a.id);
+        const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
+        const summaryHtml = a.summary
+          ? `<div class="card-summary">${esc(String(a.summary).replace(/\s*・/g, '\n・').trimStart())}</div>`
+          : "";
 
-        return `<a class="card cat-${a.category}${score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${a.id}">
+        return `<a class="card cat-${esc(a.category)}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${encodeURIComponent(aid)}">
           ${thumb}
           <div class="card-body">
             <div class="card-meta">
-              <span class="cat cat-${a.category}">${a.category}</span>
-              <span class="source">${a.source}</span>
+              <span class="cat cat-${esc(a.category)}">${esc(a.category)}</span>
+              <span class="source">${esc(a.source)}</span>
               ${scoreBadge}${sentDot}${clusterBadge}
-              <span class="date">${date}</span>
+              <span class="date">${esc(date)}</span>
             </div>
-            <div class="card-title cat-${a.category}">${a.title}</div>
+            <div class="card-title cat-${esc(a.category)}">${esc(a.title)}</div>
             ${tags}
-            ${a.summary ? `<div class="card-summary">${a.summary.replace(/\s*・/g, '\n・').trimStart()}</div>` : ""}
+            ${summaryHtml}
           </div>
         </a>`;
       }).join("");

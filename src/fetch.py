@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import aiohttp
 import feedparser
@@ -16,6 +18,27 @@ from src.feeds import (
 )
 
 ARTICLE_MAX_AGE_HOURS = 48
+
+# Conditional-request cache: maps feed URL → {"etag": ..., "last_modified": ...}
+# Saves bandwidth when the upstream feed has not changed (HTTP 304 path).
+_FEED_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "feed_http_cache.json"
+
+
+def _load_feed_http_cache() -> dict:
+    if _FEED_CACHE_PATH.exists():
+        try:
+            return json.loads(_FEED_CACHE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _save_feed_http_cache(cache: dict):
+    _FEED_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _FEED_CACHE_PATH.write_text(
+        json.dumps(cache, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
 
 def _parse_date(entry) -> datetime:
@@ -50,20 +73,46 @@ def _rss_thumbnail(entry) -> str | None:
 
 
 async def _fetch_one(
-    session: aiohttp.ClientSession, feed_info: dict, cutoff: datetime,
-) -> tuple[list, str | None]:
-    """Return (articles, error_message). error_message is None on success."""
+    session:    aiohttp.ClientSession,
+    feed_info:  dict,
+    cutoff:     datetime,
+    http_cache: dict,
+) -> tuple[list, str | None, bool]:
+    """Return (articles, error_message, not_modified).
+    not_modified=True means the upstream returned HTTP 304 and we should
+    reuse previously-built articles for this source."""
     articles = []
+    url = feed_info["url"]
+    prev = http_cache.get(url) or {}
+    cond_headers = {}
+    if prev.get("etag"):
+        cond_headers["If-None-Match"] = prev["etag"]
+    if prev.get("last_modified"):
+        cond_headers["If-Modified-Since"] = prev["last_modified"]
     try:
         async with session.get(
-            feed_info["url"], timeout=aiohttp.ClientTimeout(total=15)
+            url,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers=cond_headers or None,
         ) as resp:
+            if resp.status == 304:
+                return articles, None, True
             if resp.status >= 400:
-                return articles, f"HTTP {resp.status}"
+                return articles, f"HTTP {resp.status}", False
             raw = await resp.read()
+            # Store new validators for next run
+            new_entry = {}
+            if resp.headers.get("ETag"):
+                new_entry["etag"] = resp.headers["ETag"]
+            if resp.headers.get("Last-Modified"):
+                new_entry["last_modified"] = resp.headers["Last-Modified"]
+            if new_entry:
+                http_cache[url] = new_entry
+            elif url in http_cache:
+                http_cache.pop(url, None)
         feed = feedparser.parse(raw)
         if getattr(feed, "bozo", False) and not feed.entries:
-            return articles, f"parse: {feed.bozo_exception!r}"
+            return articles, f"parse: {feed.bozo_exception!r}", False
         for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
             url = entry.get("link", "")
             if not url:
@@ -118,29 +167,36 @@ async def _fetch_one(
             })
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
-        return articles, repr(exc)
-    return articles, None
+        return articles, repr(exc), False
+    return articles, None, False
 
 
 async def fetch_all() -> tuple[list, dict]:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
-    connector = aiohttp.TCPConnector(limit=30, ssl=False)
+    cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
+    http_cache = _load_feed_http_cache()
+    connector  = aiohttp.TCPConnector(limit=30, ssl=False)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
-        tasks = [_fetch_one(session, f, cutoff) for f in RSS_FEEDS]
+        tasks   = [_fetch_one(session, f, cutoff, http_cache) for f in RSS_FEEDS]
         results = await asyncio.gather(*tasks)
 
     source_stats: dict[str, dict] = {}
     articles: list = []
-    failed_sources = 0
-    for feed_info, (batch, error) in zip(RSS_FEEDS, results):
+    failed_sources     = 0
+    not_modified_count = 0
+    for feed_info, (batch, error, not_modified) in zip(RSS_FEEDS, results):
         source_stats[feed_info["name"]] = {
-            "category": feed_info["category"],
-            "count":    len(batch),
-            "error":    error,
+            "category":     feed_info["category"],
+            "count":        len(batch),
+            "error":        error,
+            "not_modified": not_modified,
         }
         if error:
             failed_sources += 1
+        if not_modified:
+            not_modified_count += 1
         articles.extend(batch)
+
+    _save_feed_http_cache(http_cache)
 
     seen, unique = set(), []
     for a in articles:
@@ -149,9 +205,12 @@ async def fetch_all() -> tuple[list, dict]:
             unique.append(a)
 
     unique.sort(key=lambda x: x["date"], reverse=True)
-    print(
-        f"[fetch] {len(unique)} articles (last {ARTICLE_MAX_AGE_HOURS}h) "
-        f"from {len(RSS_FEEDS)} feeds"
-        + (f" ({failed_sources} failed)" if failed_sources else "")
-    )
+    parts = [
+        f"[fetch] {len(unique)} articles (last {ARTICLE_MAX_AGE_HOURS}h) from {len(RSS_FEEDS)} feeds",
+    ]
+    if not_modified_count:
+        parts.append(f"{not_modified_count} cached (304)")
+    if failed_sources:
+        parts.append(f"{failed_sources} failed")
+    print(" ".join(parts) if len(parts) == 1 else parts[0] + " (" + ", ".join(parts[1:]) + ")")
     return unique, source_stats

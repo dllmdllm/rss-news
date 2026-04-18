@@ -179,27 +179,73 @@ def _to_hk_traditional(content: str) -> str:
     return zhconv.convert(content, "zh-hk")
 
 
+_TRANSLATE_SEP = "\n@@@@@\n"   # unlikely to appear in article text
+_TRANSLATE_CHUNK_CHARS = 4000  # Google Translate caps near 5000 chars/request
+
+
 def _translate_to_hk(html_content: str) -> str:
-    """Translate English HTML content to HK Traditional Chinese paragraph by paragraph."""
+    """Translate English HTML → HK Traditional Chinese.
+    Collect all text nodes, batch-translate with a separator, then re-inject —
+    trades per-paragraph serial HTTP calls (O(N)) for ~ceil(total_chars/4000)
+    calls. For a typical 9to5Mac article this drops from ~20 calls to 1–2.
+    """
     try:
         soup = BeautifulSoup(html_content, "html.parser")
         translator = GoogleTranslator(source="auto", target="zh-TW")
         tags = soup.find_all(["p", "h1", "h2", "h3", "h4", "li", "figcaption", "blockquote"])
+        targets = []
         for tag in tags:
             text = tag.get_text(separator=" ", strip=True)
             if text and len(text) > 3:
-                try:
-                    translated = translator.translate(text[:4500])
-                    if translated:
-                        tag.clear()
-                        tag.append(translated)
-                except Exception:
-                    pass
-        result = str(soup)
-        return zhconv.convert(result, "zh-hk")
+                targets.append((tag, text))
+        if not targets:
+            return zhconv.convert(str(soup), "zh-hk")
+
+        texts = [t for _, t in targets]
+        translated_all: list[str] = []
+        # Pack texts into batches that stay under the char cap
+        batch: list[str] = []
+        batch_len = 0
+        for t in texts:
+            prospective = batch_len + len(t) + len(_TRANSLATE_SEP)
+            if batch and prospective > _TRANSLATE_CHUNK_CHARS:
+                translated_all.extend(_translate_batch(translator, batch))
+                batch, batch_len = [], 0
+            batch.append(t)
+            batch_len += len(t) + len(_TRANSLATE_SEP)
+        if batch:
+            translated_all.extend(_translate_batch(translator, batch))
+
+        for (tag, _), out in zip(targets, translated_all):
+            if out:
+                tag.clear()
+                tag.append(out)
+        return zhconv.convert(str(soup), "zh-hk")
     except Exception as exc:
         print(f"[WARN] translation error: {exc!r}")
         return html_content
+
+
+def _translate_batch(translator, texts: list[str]) -> list[str]:
+    """Translate a batch of text chunks. Returns one output per input,
+    falling back to the original on any shape mismatch or API error."""
+    joined = _TRANSLATE_SEP.join(texts)
+    try:
+        out = translator.translate(joined) or ""
+    except Exception:
+        return list(texts)
+    parts = out.split(_TRANSLATE_SEP.strip()) if _TRANSLATE_SEP.strip() in out else out.split(_TRANSLATE_SEP)
+    if len(parts) != len(texts):
+        # Separator got mangled — fall back to per-text translation
+        fallback = []
+        for t in texts:
+            try:
+                r = translator.translate(t[:4500])
+                fallback.append(r or t)
+            except Exception:
+                fallback.append(t)
+        return fallback
+    return [p.strip() for p in parts]
 
 
 async def _urllib_fetch(url: str) -> str | None:
@@ -279,13 +325,19 @@ async def _scrape_one(
                 html = _fix_picture_elements(html)
                 html = _fix_lazy_images(html)
 
-                content = trafilatura.extract(
-                    html,
-                    output_format="html",
-                    include_images=True,
-                    include_links=False,
-                    favor_precision=True,
-                    no_fallback=False,
+                # trafilatura.extract is CPU-bound; run in executor so the
+                # event loop can continue overlapping other HTTP fetches.
+                loop = asyncio.get_running_loop()
+                content = await loop.run_in_executor(
+                    None,
+                    lambda: trafilatura.extract(
+                        html,
+                        output_format="html",
+                        include_images=True,
+                        include_links=False,
+                        favor_precision=True,
+                        no_fallback=False,
+                    ),
                 )
 
                 if content:
@@ -295,16 +347,12 @@ async def _scrape_one(
                     if article["source"] in SIMPLIFIED_SOURCES:
                         content = _to_hk_traditional(content)
                     elif article["source"] in ENGLISH_SOURCES:
-                        # Translation makes N serial GoogleTranslator calls — run
-                        # in executor so the event loop stays responsive while
-                        # other articles continue scraping.
-                        loop = asyncio.get_running_loop()
                         content = await loop.run_in_executor(None, _translate_to_hk, content)
                     article["content"] = content
 
                 # Extract og:image thumbnail if not already set from RSS
                 if not article.get("thumbnail"):
-                    meta = trafilatura.extract_metadata(html)
+                    meta = await loop.run_in_executor(None, trafilatura.extract_metadata, html)
                     if meta and meta.image:
                         article["thumbnail"] = meta.image
 

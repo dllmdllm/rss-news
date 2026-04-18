@@ -157,6 +157,35 @@
   </main>
 
   <script>
+    // ── XSS helpers ───────────────────────────────────────────────
+    const _ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => _ESC[c]); }
+    function safeUrl(u) {
+      const s = String(u ?? "").trim();
+      return /^https?:\/\//i.test(s) ? s : "#";
+    }
+    const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
+    const _SENT_WL = new Set(["positive", "negative", "neutral"]);
+
+    // Sanitize scraped HTML: strip scripts, event handlers, javascript: URLs.
+    // Content comes from trafilatura (trusted pipeline), but source sites
+    // can inject arbitrary HTML via RSS, so scrub defensively.
+    function sanitizeHtml(html) {
+      const doc = new DOMParser().parseFromString(String(html ?? ""), "text/html");
+      doc.querySelectorAll("script, iframe, object, embed, style, link, meta, base, form").forEach(el => el.remove());
+      doc.querySelectorAll("*").forEach(el => {
+        for (const attr of [...el.attributes]) {
+          const name = attr.name.toLowerCase();
+          if (name.startsWith("on")) { el.removeAttribute(attr.name); continue; }
+          if ((name === "href" || name === "src" || name === "xlink:href") &&
+              /^\s*javascript:/i.test(attr.value)) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      });
+      return doc.body.innerHTML;
+    }
+
     // ── Font size (shared with index.html via localStorage) ───────
     const READ_KEY = "rss_read_ids";
     let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
@@ -236,38 +265,40 @@
           ? new Date(art.date).toLocaleString("zh-HK", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
           : "";
 
-        const score = art.score ?? null;
+        const scoreNum = typeof art.score === "number" ? art.score : null;
         let scoreHtml = "";
-        if (score !== null) {
-          const cls = score >= 8 ? "score-high" : score >= 5 ? "score-mid" : "score-low";
-          scoreHtml = `<span class="art-score ${cls}">${score >= 8 ? "🔥 " : ""}重要度 ${score}</span>`;
+        if (scoreNum !== null) {
+          const cls = scoreNum >= 8 ? "score-high" : scoreNum >= 5 ? "score-mid" : "score-low";
+          scoreHtml = `<span class="art-score ${cls}">${scoreNum >= 8 ? "🔥 " : ""}重要度 ${scoreNum}</span>`;
         }
-        const sent      = art.sentiment || "neutral";
-        const sentLabel = { positive: "正面", negative: "負面", neutral: "中性" }[sent] || "中性";
+        const sent      = _SENT_WL.has(art.sentiment) ? art.sentiment : "neutral";
+        const sentLabel = { positive: "正面", negative: "負面", neutral: "中性" }[sent];
         const sentHtml  = `<span class="art-sentiment sent-${sent}">${sentLabel}</span>`;
 
+        const cat = _CAT_WL.has(art.category) ? art.category : "";
+        const srcUrl = safeUrl(art.url);
         document.getElementById("art-meta").innerHTML =
-          `<span class="art-cat cat-${art.category}">${art.category}</span>
-           <a class="art-source" href="${art.url}" target="_blank" rel="noopener">${art.source}</a>
+          `<span class="art-cat cat-${esc(cat)}">${esc(cat)}</span>
+           <a class="art-source" href="${esc(srcUrl)}" target="_blank" rel="noopener">${esc(art.source)}</a>
            ${scoreHtml}${sentHtml}
-           <span class="art-date">${date}</span>`;
+           <span class="art-date">${esc(date)}</span>`;
 
         document.getElementById("art-title").textContent = art.title;
 
         const tagsEl = document.getElementById("art-tags");
         if (art.tags && art.tags.length) {
-          tagsEl.innerHTML = art.tags.map(t => `<span class="art-tag"># ${t}</span>`).join("");
+          tagsEl.innerHTML = art.tags.map(t => `<span class="art-tag"># ${esc(t)}</span>`).join("");
         }
 
         const summaryEl = document.getElementById("art-summary");
         if (art.summary) {
-          const summaryText = art.summary.replace(/\s*・/g, '\n・').trimStart();
-          summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${summaryText}</div>`;
+          const summaryText = String(art.summary).replace(/\s*・/g, '\n・').trimStart();
+          summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${esc(summaryText)}</div>`;
         }
 
         const body = document.getElementById("art-content");
         if (art.content) {
-          body.innerHTML = art.content;
+          body.innerHTML = sanitizeHtml(art.content);
           body.querySelectorAll("img").forEach(img => {
             img.loading = "lazy";
             img.referrerPolicy = "no-referrer";
@@ -276,18 +307,21 @@
             img.onerror = () => { img.style.display = "none"; };
           });
           if (art.thumbnail && body.querySelectorAll("img").length === 0) {
-            const fi = document.createElement("img");
-            fi.src = art.thumbnail;
-            fi.referrerPolicy = "no-referrer";
-            fi.loading = "lazy";
-            fi.style.cssText = "max-width:100%;height:auto;border-radius:6px;margin-bottom:1em;display:block";
-            fi.onerror = () => { fi.style.display = "none"; };
-            body.insertBefore(fi, body.firstChild);
+            const thumb = safeUrl(art.thumbnail);
+            if (thumb !== "#") {
+              const fi = document.createElement("img");
+              fi.src = thumb;
+              fi.referrerPolicy = "no-referrer";
+              fi.loading = "lazy";
+              fi.style.cssText = "max-width:100%;height:auto;border-radius:6px;margin-bottom:1em;display:block";
+              fi.onerror = () => { fi.style.display = "none"; };
+              body.insertBefore(fi, body.firstChild);
+            }
           }
         } else {
           body.innerHTML = `<div class="no-content">
             <p>未能擷取全文</p>
-            <a href="${art.url}" target="_blank" rel="noopener" class="ext-link">閱讀原文 ↗</a>
+            <a href="${esc(srcUrl)}" target="_blank" rel="noopener" class="ext-link">閱讀原文 ↗</a>
           </div>`;
         }
 

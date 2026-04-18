@@ -87,14 +87,22 @@ def save_json(articles: list, source_stats: dict):
     # 2. per-article content files
     active_ids = set()
     written = 0
+    unchanged = 0
     for a in articles:
         content = a.get("content")
         if not content:
             continue
         active_ids.add(a["id"])
         cpath = CONTENT_DIR / f"{a['id']}.json"
-        with open(cpath, "w", encoding="utf-8") as f:
-            json.dump({"content": content}, f, ensure_ascii=False, separators=(",", ":"))
+        new_bytes = json.dumps(
+            {"content": content}, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        # Skip rewriting identical files to keep git diffs minimal and
+        # avoid pointless disk churn on every build.
+        if cpath.exists() and cpath.read_bytes() == new_bytes:
+            unchanged += 1
+            continue
+        cpath.write_bytes(new_bytes)
         written += 1
 
     # Prune content files for articles no longer active
@@ -103,7 +111,7 @@ def save_json(articles: list, source_stats: dict):
         if old_file.stem not in active_ids:
             old_file.unlink()
             dropped += 1
-    print(f"[build] content/ {written} written, {dropped} pruned")
+    print(f"[build] content/ {written} written, {unchanged} unchanged, {dropped} pruned")
 
     # 3. RSS feed
     _write_rss(articles)

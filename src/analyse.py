@@ -9,9 +9,12 @@ from bs4 import BeautifulSoup
 
 MINIMAX_API_KEY      = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_MODEL        = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
-ANALYSE_CONCURRENCY  = 10   # MiniMax-M2.7 allows 500 RPM
-MAX_ATTEMPTS         = 3    # total tries per article
-MAX_BACKOFF_BUDGET   = 30.0 # hard cap on cumulative wait per article (seconds)
+# Token Plan regularly rate-limits at 10 concurrent. Dropped to 5 after repeated
+# 2062 errors caused majority of analyses to fail in a single build run.
+ANALYSE_CONCURRENCY  = 5
+MAX_ATTEMPTS         = 4    # total tries per article (incl. parse-fail retries)
+MAX_BACKOFF_BUDGET   = 60.0 # hard cap on cumulative wait per article (seconds)
+SAVE_CACHE_EVERY     = 20   # incremental cache flush so crash mid-run is not fatal
 
 # Bump when SYSTEM_PROMPT changes materially — forces re-analysis of all
 # cached entries so output format stays consistent across the site.
@@ -71,8 +74,8 @@ def _normalise_summary(raw) -> str:
 def _parse_analysis(raw: str) -> dict | None:
     """Parse JSON from model output, tolerating markdown code fences."""
     text = raw.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\s*```$",          "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```\s*$",          "", text)
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None
@@ -119,10 +122,12 @@ def _needs_full_analysis(cached: dict) -> bool:
 
 
 async def _analyse_one(
-    session: aiohttp.ClientSession,
-    article:  dict,
-    sem:      asyncio.Semaphore,
-    cache:    dict,
+    session:    aiohttp.ClientSession,
+    article:    dict,
+    sem:        asyncio.Semaphore,
+    cache:      dict,
+    save_lock:  asyncio.Lock,
+    counter:    list,
 ) -> dict:
     aid = article["id"]
 
@@ -148,6 +153,10 @@ async def _analyse_one(
     if not text.strip():
         return article
 
+    # Retry on: transient errors (overloaded/rate_limit), HTTP 429/5xx,
+    # network exceptions, AND parse failures (model sometimes leaks reasoning).
+    retry_err_types = {"overloaded_error", "rate_limit_error", "api_error"}
+
     async with sem:
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
@@ -170,15 +179,23 @@ async def _analyse_one(
                     },
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
+                    status = resp.status
                     data = await resp.json(content_type=None)
                     err  = data.get("error") or {}
-                    if err.get("type") == "overloaded_error" and attempt < MAX_ATTEMPTS - 1:
+
+                    should_retry = (
+                        err.get("type") in retry_err_types
+                        or status == 429
+                        or status >= 500
+                    )
+                    if should_retry and attempt < MAX_ATTEMPTS - 1:
                         delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
                         if delay <= 0:
                             break
                         await asyncio.sleep(delay)
                         total_waited += delay
                         continue
+
                     content_blocks = data.get("content") or []
                     raw_text = next(
                         (b.get("text", "").strip() for b in content_blocks if b.get("type") == "text"),
@@ -193,8 +210,21 @@ async def _analyse_one(
                             article["sentiment"] = parsed["sentiment"]
                             article["topic"]     = parsed["topic"]
                             cache[aid]           = parsed
-                        else:
-                            print(f"[WARN] analyse parse failed: {raw_text[:80]}")
+                            async with save_lock:
+                                counter[0] += 1
+                                if counter[0] % SAVE_CACHE_EVERY == 0:
+                                    save_cache(cache)
+                            break
+                        # Parse failed — retry: model sometimes leaks reasoning
+                        # ("The user wants me to...") before emitting JSON.
+                        if attempt < MAX_ATTEMPTS - 1:
+                            delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
+                            if delay > 0:
+                                await asyncio.sleep(delay)
+                                total_waited += delay
+                            continue
+                        print(f"[WARN] analyse parse failed: {raw_text[:80]}")
+                        break
                     elif err:
                         print(f"[WARN] analyse {article['url'][:60]}: {err}")
                     break
@@ -225,9 +255,11 @@ async def analyse_all(articles: list) -> list:
     cached_count = len(articles) - new_count
     print(f"[analyse] {cached_count} cached, {new_count} to generate")
 
-    sem = asyncio.Semaphore(ANALYSE_CONCURRENCY)
+    sem       = asyncio.Semaphore(ANALYSE_CONCURRENCY)
+    save_lock = asyncio.Lock()
+    counter   = [0]   # mutable box shared across tasks
     async with aiohttp.ClientSession() as session:
-        tasks   = [_analyse_one(session, a, sem, cache) for a in articles]
+        tasks   = [_analyse_one(session, a, sem, cache, save_lock, counter) for a in articles]
         results = await asyncio.gather(*tasks)
 
     # Evict stale cache entries for articles that have aged out
