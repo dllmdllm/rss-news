@@ -107,7 +107,9 @@ def save_json(articles: list, source_stats: dict):
         if cpath.exists() and cpath.read_bytes() == new_bytes:
             unchanged += 1
             continue
-        cpath.write_bytes(new_bytes)
+        tmp = cpath.with_suffix(cpath.suffix + ".tmp")
+        tmp.write_bytes(new_bytes)
+        os.replace(tmp, cpath)
         written += 1
 
     # Prune content files for articles no longer active

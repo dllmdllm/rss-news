@@ -181,6 +181,17 @@ def test_parse_batch_length_mismatch_returns_none():
     assert _parse_batch(raw, 2) is None
 
 
+def test_parse_batch_partial_returns_list_with_none():
+    # Shape matches (length 2) but second item is not an object.
+    raw = (
+        '[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""},'
+        '"garbage"]'
+    )
+    out = _parse_batch(raw, 2)
+    assert out is not None and len(out) == 2
+    assert out[0] is not None and out[1] is None
+
+
 def test_parse_batch_single_accepts_bare_object():
     raw = '{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}'
     out = _parse_batch(raw, 1)

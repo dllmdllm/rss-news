@@ -348,6 +348,7 @@
   <script src="vendor/fuse.min.js"></script>
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
+    const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", sortMode = "date";
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let sourceStats = {};
@@ -364,6 +365,9 @@
       const s = String(u ?? "").trim();
       return /^https?:\/\//i.test(s) ? s : "#";
     }
+    // Map category to CSS class; returns "" for unknown values so class
+    // splitting on accidental whitespace can't happen.
+    function catClass(c) { return _CAT_WL.has(c) ? "cat-" + c : ""; }
 
     // ── Font size ─────────────────────────────────────────────────
     let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
@@ -700,16 +704,17 @@
           ? `<div class="card-summary">${esc(String(a.summary).replace(/\s*・/g, '\n・').trimStart())}</div>`
           : "";
 
-        return `<a class="card cat-${esc(a.category)}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${encodeURIComponent(aid)}">
+        const catCls = catClass(a.category);
+        return `<a class="card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${encodeURIComponent(aid)}">
           ${thumb}
           <div class="card-body">
             <div class="card-meta">
-              <span class="cat cat-${esc(a.category)}">${esc(a.category)}</span>
+              <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
               ${scoreBadge}${sentDot}${clusterBadge}
               <span class="date">${esc(date)}</span>
             </div>
-            <div class="card-title cat-${esc(a.category)}">${esc(a.title)}</div>
+            <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
             ${summaryHtml}
           </div>

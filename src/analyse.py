@@ -129,9 +129,12 @@ def _parse_analysis(raw: str) -> dict | None:
         return None
 
 
-def _parse_batch(raw: str, expected: int) -> list[dict] | None:
-    """Parse a JSON array of analyses; returns None on shape mismatch so
-    the caller can retry or fall back to per-article."""
+def _parse_batch(raw: str, expected: int) -> list[dict | None] | None:
+    """Parse a JSON array of analyses. Returns None on total shape mismatch
+    so the caller retries or falls back. When the array shape matches but
+    individual items are malformed, returns a list of same length with
+    None at the failed slots — caller applies successes, fills failures
+    via per-article fallback."""
     text = _strip_fences(raw)
     m_arr = re.search(r"\[.*\]", text, re.DOTALL)
     if m_arr:
@@ -140,13 +143,7 @@ def _parse_batch(raw: str, expected: int) -> list[dict] | None:
         except Exception:
             arr = None
         if isinstance(arr, list) and len(arr) == expected:
-            out: list[dict] = []
-            for obj in arr:
-                p = _normalise_parsed(obj)
-                if not p:
-                    return None
-                out.append(p)
-            return out
+            return [_normalise_parsed(obj) for obj in arr]
     # Accept a bare object when batch size is 1 (some models drop the array)
     if expected == 1:
         single = _parse_analysis(text)
@@ -227,18 +224,20 @@ async def _apply_results(
     save_lock: asyncio.Lock,
     counter:   list,
 ):
-    """Write parsed analyses back to articles + cache, save lazily."""
-    async with save_lock:
-        for a, p in zip(batch, parsed):
-            a["summary"]   = p["summary"]
-            a["score"]     = p["score"]
-            a["tags"]      = p["tags"]
-            a["sentiment"] = p["sentiment"]
-            a["topic"]     = p["topic"]
-            cache[a["id"]] = p
-        prev = counter[0]
-        counter[0] += len(batch)
-        if counter[0] // SAVE_CACHE_EVERY > prev // SAVE_CACHE_EVERY:
+    """Write parsed analyses back to articles + cache, save lazily.
+    asyncio is single-threaded so the mutations below are atomic w.r.t.
+    other coroutines; the lock only serializes the sync disk write."""
+    for a, p in zip(batch, parsed):
+        a["summary"]   = p["summary"]
+        a["score"]     = p["score"]
+        a["tags"]      = p["tags"]
+        a["sentiment"] = p["sentiment"]
+        a["topic"]     = p["topic"]
+        cache[a["id"]] = p
+    prev = counter[0]
+    counter[0] += len(batch)
+    if counter[0] // SAVE_CACHE_EVERY > prev // SAVE_CACHE_EVERY:
+        async with save_lock:
             save_cache(cache)
 
 
@@ -337,11 +336,18 @@ async def _analyse_batch(
                 if raw:
                     parsed = _parse_batch(raw, len(batch))
                     if parsed:
-                        await _apply_results(batch, parsed, cache, save_lock, counter)
-                        batch_ok = True
+                        # parsed has same length as batch; items may be None
+                        # when a single element was malformed — apply the
+                        # good ones and let per-article fallback fill gaps.
+                        ok_arts = [a for a, p in zip(batch, parsed) if p]
+                        ok_parsed = [p for p in parsed if p]
+                        if ok_arts:
+                            await _apply_results(ok_arts, ok_parsed, cache, save_lock, counter)
+                        if len(ok_arts) == len(batch):
+                            batch_ok = True
                         break
-                    # Batch parse failed — likely shape mismatch. Retry once
-                    # in batch mode; further failures fall back to singles.
+                    # Total shape mismatch — retry in batch mode, then fall
+                    # back to per-article for the whole batch.
                     if attempt < MAX_ATTEMPTS - 1:
                         delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
                         if delay > 0:
