@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+import os
+import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -35,10 +37,12 @@ def _load_feed_http_cache() -> dict:
 
 def _save_feed_http_cache(cache: dict):
     _FEED_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _FEED_CACHE_PATH.write_text(
+    tmp = _FEED_CACHE_PATH.with_suffix(_FEED_CACHE_PATH.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(cache, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    os.replace(tmp, _FEED_CACHE_PATH)
 
 
 def _parse_date(entry) -> datetime:
@@ -54,6 +58,15 @@ def _parse_date(entry) -> datetime:
 
 def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
+
+
+def _clean_url(url: str) -> str:
+    """Trim garbage past the first unsafe char. Some feeds (e.g. 明報 娛樂)
+    concatenate `<link>` with `" target="blank"` into the URL, breaking
+    every downstream parser. First whitespace/quote/angle-bracket wins."""
+    if not url:
+        return ""
+    return re.split(r'[\s"<>]', url, maxsplit=1)[0].strip()
 
 
 def _rss_thumbnail(entry) -> str | None:
@@ -114,7 +127,7 @@ async def _fetch_one(
         if getattr(feed, "bozo", False) and not feed.entries:
             return articles, f"parse: {feed.bozo_exception!r}", False
         for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
-            url = entry.get("link", "")
+            url = _clean_url(entry.get("link", ""))
             if not url:
                 continue
 
@@ -196,6 +209,10 @@ async def fetch_all() -> tuple[list, dict]:
             not_modified_count += 1
         articles.extend(batch)
 
+    # Drop cache entries for feeds no longer in RSS_FEEDS so the file
+    # does not grow unbounded as sources get renamed/removed.
+    active_urls = {f["url"] for f in RSS_FEEDS}
+    http_cache = {u: v for u, v in http_cache.items() if u in active_urls}
     _save_feed_http_cache(http_cache)
 
     seen, unique = set(), []

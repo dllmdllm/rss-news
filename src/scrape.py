@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from html import escape as _html_escape
 
 import aiohttp
 import trafilatura
@@ -166,7 +167,7 @@ def _remove_leading_title(content: str, title: str) -> str:
 def _add_featured_image(content: str, thumbnail: str) -> str:
     """Prepend thumbnail as featured image if content has no inline images."""
     if thumbnail and '<img' not in content:
-        img = f'<img src="{thumbnail}" style="max-width:100%;border-radius:6px;margin-bottom:1em">'
+        img = f'<img src="{_html_escape(thumbnail, quote=True)}" style="max-width:100%;border-radius:6px;margin-bottom:1em">'
         # BeautifulSoup wraps fragments with <html><body>…</body></html>,
         # so insert after <body> to avoid being stripped by innerHTML assignment.
         if '<body>' in content:
@@ -312,7 +313,7 @@ async def _scrape_one(
                             print(f"[BLOCK] {article['source']} — falling back to RSS content")
                             rss = article.get("rss_content") or ""
                             thumb = article.get("thumbnail") or ""
-                            img_html = f'<img src="{thumb}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
+                            img_html = f'<img src="{_html_escape(thumb, quote=True)}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
                             if rss or img_html:
                                 content = img_html + rss
                                 if article["source"] in SIMPLIFIED_SOURCES:

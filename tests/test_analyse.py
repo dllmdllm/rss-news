@@ -12,7 +12,9 @@ from src.analyse import (
     _needs_full_analysis,
     _normalise_summary,
     _parse_analysis,
+    _parse_batch,
 )
+from src.fetch import _clean_url
 
 
 # ── _normalise_summary ────────────────────────────────────────────
@@ -139,8 +141,12 @@ def test_needs_when_score_missing():
 
 def test_needs_when_version_stale():
     assert _needs_full_analysis({
-        "summary": "x", "score": 5, "version": ANALYSIS_VERSION - 1
+        "summary": "x", "score": 5, "version": "p-deadbeef"
     }) is True
+
+
+def test_needs_when_version_missing():
+    assert _needs_full_analysis({"summary": "x", "score": 5}) is True
 
 
 def test_no_need_when_current_version():
@@ -154,3 +160,50 @@ def test_needs_when_summary_is_list_repr():
     assert _needs_full_analysis({
         "summary": "['重點一', '重點二']", "score": 5, "version": ANALYSIS_VERSION
     }) is True
+
+
+# ── _parse_batch ─────────────────────────────────────────────────
+
+def test_parse_batch_array_matches_expected():
+    raw = (
+        '[{"summary":"・a","score":5,"tags":["x"],"sentiment":"neutral","topic":""},'
+        '{"summary":"・b","score":8,"tags":[],"sentiment":"negative","topic":""}]'
+    )
+    out = _parse_batch(raw, 2)
+    assert out is not None
+    assert len(out) == 2
+    assert out[0]["summary"] == "・a"
+    assert out[1]["score"] == 8
+
+
+def test_parse_batch_length_mismatch_returns_none():
+    raw = '[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}]'
+    assert _parse_batch(raw, 2) is None
+
+
+def test_parse_batch_single_accepts_bare_object():
+    raw = '{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}'
+    out = _parse_batch(raw, 1)
+    assert out is not None and len(out) == 1
+
+
+def test_parse_batch_strips_fence():
+    raw = '```json\n[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}]\n```'
+    assert _parse_batch(raw, 1) is not None
+
+
+# ── _clean_url ────────────────────────────────────────────────────
+
+def test_clean_url_strips_trailing_quote_garbage():
+    # 明報 娛樂 feeds emit <link>…</link> with " target="blank" embedded.
+    dirty = 'https://example.com/a/b" target="blank"'
+    assert _clean_url(dirty) == "https://example.com/a/b"
+
+
+def test_clean_url_passthrough_for_good_url():
+    assert _clean_url("https://example.com/x") == "https://example.com/x"
+
+
+def test_clean_url_empty():
+    assert _clean_url("") == ""
+    assert _clean_url(None) == ""

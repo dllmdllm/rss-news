@@ -345,7 +345,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7/dist/fuse.min.js"></script>
+  <script src="vendor/fuse.min.js"></script>
   <script>
     const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", sortMode = "date";
@@ -408,6 +408,12 @@
       pendingNew.clear();
       all = pendingData.articles;
       loadedIds = new Set(all.map(a => a.id));
+      // Rebuild Fuse so search sees newly-merged articles and no longer
+      // returns items that aged out of `all`.
+      fuse = new Fuse(all, {
+        keys: ["title", "source", "tags", "summary"],
+        threshold: 0.4, minMatchCharLength: 2,
+      });
       buildSourceFilters();
       buildTagFilters();
       renderFiltered();

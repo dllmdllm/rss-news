@@ -3,13 +3,13 @@
 //   - HTML / articles.json : network-first (fall back to cache when offline)
 //   - content/*.json, images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v1";
+const CACHE   = "rss-news-v2";
 const SHELL   = [
   "./",
   "./index.html",
   "./article.html",
   "./manifest.json",
-  "https://cdn.jsdelivr.net/npm/fuse.js@7/dist/fuse.min.js",
+  "./vendor/fuse.min.js",
 ];
 
 self.addEventListener("install", event => {

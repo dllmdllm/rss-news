@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import sys
 import time
 from collections import defaultdict
@@ -79,8 +80,12 @@ def save_json(articles: list, source_stats: dict):
         "sources":  source_stats,
         "articles": meta,
     }
-    with open(meta_path, "w", encoding="utf-8") as f:
+    # Atomic write: tmp + rename so a crash mid-write cannot leave the
+    # index half-written and break every client that polls it.
+    tmp = meta_path.with_suffix(meta_path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, meta_path)
     meta_kb = meta_path.stat().st_size // 1024
     print(f"[build] articles.json {meta_kb} KB, {len(articles)} articles")
 
@@ -150,7 +155,10 @@ def _write_rss(articles: list):
         + "".join(items)
         + '</channel></rss>'
     )
-    (DATA_DIR / "feed.xml").write_text(rss, encoding="utf-8")
+    feed_path = DATA_DIR / "feed.xml"
+    tmp = feed_path.with_suffix(feed_path.suffix + ".tmp")
+    tmp.write_text(rss, encoding="utf-8")
+    os.replace(tmp, feed_path)
 
 
 def _load_old_articles() -> list:
