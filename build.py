@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
-from bs4 import BeautifulSoup
-
 # Force UTF-8 output on Windows
 if sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -24,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.fetch   import fetch_all
-from src.scrape  import scrape_all
+from src.scrape  import content_quality, scrape_all
 from src.analyse import analyse_all
 
 DOCS_DIR    = ROOT / "docs"
@@ -112,7 +110,7 @@ def save_json(articles: list, source_stats: dict):
         if not quality and old_record:
             quality = old_record.get("quality") or {}
         if not quality:
-            quality = _content_quality(
+            quality = content_quality(
                 content,
                 source=a.get("source", ""),
                 fallback="reused" if old_record else "unknown",
@@ -214,14 +212,6 @@ def _load_old_articles() -> list:
         return []
 
 
-def _load_old_content(article_id: str) -> str | None:
-    """Read previously saved content/{id}.json if still on disk."""
-    data = _load_old_content_record(article_id)
-    if data:
-        return data.get("content")
-    return None
-
-
 def _load_old_content_record(article_id: str) -> dict | None:
     """Read previously saved content/{id}.json as a dict if still on disk."""
     path = CONTENT_DIR / f"{article_id}.json"
@@ -234,28 +224,6 @@ def _load_old_content_record(article_id: str) -> dict | None:
     except Exception:
         return None
     return None
-
-
-def _content_quality(content: str, *, source: str, fallback: str) -> dict:
-    soup = BeautifulSoup(content or "", "html.parser")
-    text = soup.get_text(separator=" ", strip=True)
-    images = len(soup.find_all("img"))
-    chars = len(text)
-    if chars >= 1200:
-        score = 3
-    elif chars >= 500:
-        score = 2
-    elif chars >= 150:
-        score = 1
-    else:
-        score = 0
-    return {
-        "score": score,
-        "chars": chars,
-        "images": images,
-        "source": source,
-        "fallback": fallback,
-    }
 
 
 def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
@@ -304,9 +272,9 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
                 continue
             # Hydrate content from previous build so scrape_all can skip it
             if not a.get("content"):
-                cached = _load_old_content(a["id"])
-                if cached:
-                    a["content"] = cached
+                record = _load_old_content_record(a["id"])
+                if record and record.get("content"):
+                    a["content"] = record["content"]
             articles.append(a)
             existing_ids.add(a["id"])
             added_by_source[source] += 1

@@ -149,8 +149,10 @@ async def _fetch_one(
         elif url in http_cache:
             http_cache.pop(url, None)
         feed = feedparser.parse(raw)
-        if getattr(feed, "bozo", False) and not feed.entries:
-            return articles, f"parse: {feed.bozo_exception!r}", False
+        if getattr(feed, "bozo", False):
+            if not feed.entries:
+                return articles, f"parse: {feed.bozo_exception!r}", False
+            print(f"[WARN] feed {feed_info['name']}: bozo ({feed.bozo_exception!r}) but {len(feed.entries)} entries — proceeding")
         for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
             article_url = _clean_url(entry.get("link", ""))
             if not article_url:

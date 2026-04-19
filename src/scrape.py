@@ -180,7 +180,7 @@ def _to_hk_traditional(content: str) -> str:
     return zhconv.convert(content, "zh-hk")
 
 
-def _content_quality(content: str, *, source: str, fallback: str) -> dict:
+def content_quality(content: str, *, source: str, fallback: str) -> dict:
     soup = BeautifulSoup(content or "", "html.parser")
     text = soup.get_text(separator=" ", strip=True)
     images = len(soup.find_all("img"))
@@ -304,11 +304,19 @@ async def _cloudscraper_fetch(url: str) -> str | None:
 
 
 async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
+    async def _read(resp):
+        # Bail on 4xx/5xx so trafilatura does not treat the error body as
+        # article content — seen a 404 page leak into a card before.
+        if resp.status >= 400:
+            print(f"[WARN] scrape HTTP {resp.status} for {url[:60]}")
+            return ""
+        raw = await resp.read()
+        charset = resp.charset or "utf-8"
+        return raw.decode(charset, errors="replace")
+
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT)) as resp:
-            raw = await resp.read()
-            charset = resp.charset or "utf-8"
-            return raw.decode(charset, errors="replace")
+            return await _read(resp)
     except aiohttp.ClientSSLError as exc:
         print(f"[WARN] scrape TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
         async with session.get(
@@ -316,9 +324,7 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
             timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
             ssl=False,
         ) as resp:
-            raw = await resp.read()
-            charset = resp.charset or "utf-8"
-            return raw.decode(charset, errors="replace")
+            return await _read(resp)
 
 
 async def _scrape_one(
@@ -354,7 +360,7 @@ async def _scrape_one(
                                 if article["source"] in SIMPLIFIED_SOURCES:
                                     content = _to_hk_traditional(content)
                                 article["content"] = content
-                                article["content_quality"] = _content_quality(
+                                article["content_quality"] = content_quality(
                                     content,
                                     source=article["source"],
                                     fallback="rss",
@@ -390,7 +396,7 @@ async def _scrape_one(
                     elif article["source"] in ENGLISH_SOURCES:
                         content = await loop.run_in_executor(None, _translate_to_hk, content)
                     article["content"] = content
-                    article["content_quality"] = _content_quality(
+                    article["content_quality"] = content_quality(
                         content,
                         source=article["source"],
                         fallback="none",

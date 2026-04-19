@@ -11,7 +11,7 @@
         for (const attr of [...el.attributes]) {
           const name = attr.name.toLowerCase();
           if (name.startsWith("on")) { el.removeAttribute(attr.name); continue; }
-          if (name === "href" || name === "src" || name === "xlink:href") {
+          if (name === "href" || name === "src" || name === "xlink:href" || name === "poster") {
             const v = attr.value;
             if (/^\s*(javascript|vbscript):/i.test(v)) {
               el.removeAttribute(attr.name);

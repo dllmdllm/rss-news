@@ -27,7 +27,14 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       toast.classList.add("show");
     }
     function hideToast() { toast.classList.remove("show"); }
-    toastClose.addEventListener("click", hideToast);
+    toastClose.addEventListener("click", () => {
+      // Treat dismissal as "seen" so the next poll does not re-notify for
+      // the same batch the user just waved off.
+      pendingNew.forEach(id => loadedIds.add(id));
+      pendingNew.clear();
+      pendingData = null;
+      hideToast();
+    });
     toastRefresh.addEventListener("click", () => { hideToast(); applyPending(); });
 
     function applyPending() {
@@ -121,22 +128,28 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     // ── Check for updates ─────────────────────────────────────────
+    async function pollForNew() {
+      const res  = await fetch("data/articles.json?" + Date.now());
+      const data = await res.json();
+      sourceStats = data.sources || sourceStats;
+      const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
+      if (newOnes.length > 0) {
+        pendingData = data;
+        pendingNew  = new Set(newOnes.map(a => a.id));
+        updateHeader(data);
+        showToast(newOnes.length);
+      }
+      return { data, newCount: newOnes.length };
+    }
+
     async function checkUpdates() {
       const updEl = document.getElementById("updated");
       if (updEl.classList.contains("busy")) return;
       updEl.classList.add("busy");
       updEl.textContent = "檢查中…";
       try {
-        const res  = await fetch("data/articles.json?" + Date.now());
-        const data = await res.json();
-        sourceStats = data.sources || sourceStats;
-        const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
-        if (newOnes.length > 0) {
-          pendingData = data;
-          pendingNew  = new Set(newOnes.map(a => a.id));
-          updateHeader(data);
-          showToast(newOnes.length);
-        } else {
+        const { data, newCount } = await pollForNew();
+        if (newCount === 0) {
           updEl.classList.add("ok");
           updEl.textContent = "✓ 已是最新";
           setTimeout(() => { updEl.classList.remove("ok"); updateHeader(data); }, 2000);
@@ -166,7 +179,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     function buildFilters() {
       const container = document.getElementById("filters");
       container.innerHTML = CATS.map(c =>
-        `<button class="filter-btn${c === "全部" ? " active" : ""}${c !== "全部" ? " cat-" + esc(c) : ""}" data-cat="${esc(c)}">${esc(c)}</button>`
+        `<button class="filter-btn${c === "全部" ? " active" : ""}${c !== "全部" ? " " + catClass(c) : ""}" data-cat="${esc(c)}">${esc(c)}</button>`
       ).join("");
       container.addEventListener("click", e => {
         const btn = e.target.closest(".filter-btn");
@@ -298,6 +311,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     function render(articles) {
+      kbIndex = -1;
       const grid  = document.getElementById("grid");
       const reads = getRead();
       if (!articles.length) {
@@ -353,18 +367,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     // Background poll
     setInterval(async () => {
       if (document.hidden) return;
-      try {
-        const res  = await fetch("data/articles.json?" + Date.now());
-        const data = await res.json();
-        sourceStats = data.sources || sourceStats;
-        const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
-        if (newOnes.length > 0) {
-          pendingData = data;
-          pendingNew  = new Set(newOnes.map(a => a.id));
-          updateHeader(data);
-          showToast(newOnes.length);
-        }
-      } catch (_) {}
+      try { await pollForNew(); } catch (_) {}
     }, 10 * 60 * 1000);
 
     // ── Keyboard shortcuts ────────────────────────────────────────
@@ -400,6 +403,3 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         if (cards[kbIndex]) cards[kbIndex].click();
       }
     });
-    // Reset keyboard index when list re-renders
-    const _origRender = render;
-    render = function (articles) { kbIndex = -1; return _origRender(articles); };
