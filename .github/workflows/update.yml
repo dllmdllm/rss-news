@@ -54,19 +54,43 @@ jobs:
           $ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm") + " UTC"
           git commit -m "chore: update articles $ts"
           if ($LASTEXITCODE -ne 0) { Write-Error "commit failed"; exit 1 }
-          git fetch origin main --verbose
-          if ($LASTEXITCODE -ne 0) { Write-Error "fetch failed"; exit 1 }
-          git rebase origin/main -X ours
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "rebase failed — aborting"
-            git rebase --abort
+
+          # Retry fetch → rebase → push up to 3 times. Each iteration
+          # re-syncs origin/main so a concurrent push (Codex, or a prior
+          # stuck chore commit) doesn't permanently wedge this one.
+          # After rebase, HEAD is strictly ahead of origin/main, so plain
+          # push is a fast-forward — no force / force-with-lease needed.
+          $pushed = $false
+          for ($i = 1; $i -le 3; $i++) {
+            Write-Host "=== attempt $i ==="
+            git fetch origin main --verbose 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "fetch failed on attempt $i"
+              Start-Sleep -Seconds 3
+              continue
+            }
+            git rebase origin/main -X ours
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "rebase failed on attempt $i — aborting"
+              git rebase --abort
+              Start-Sleep -Seconds 3
+              continue
+            }
+            Write-Host "--- git log before push ---"
+            git log --oneline origin/main..HEAD
+            git push origin HEAD:main --verbose 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "push OK on attempt $i"
+              $pushed = $true
+              break
+            }
+            Write-Host "push failed on attempt $i (exit $LASTEXITCODE)"
+            Start-Sleep -Seconds 5
+          }
+          if (-not $pushed) {
+            Write-Error "push failed after 3 attempts — see output above"
             exit 1
           }
-          # --verbose surfaces the actual reject reason (force-with-lease
-          # mismatch, permissions, branch protection) to the Actions UI.
-          git push --force-with-lease --verbose
-          if ($LASTEXITCODE -ne 0) { Write-Error "push failed — see output above"; exit 1 }
-          Write-Host "push OK"
 
       # Optional: notify Slack on build failure. Enable by uncommenting and
       # adding a SLACK_WEBHOOK_URL secret (Incoming Webhook URL from Slack
