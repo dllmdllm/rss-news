@@ -237,7 +237,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       container.innerHTML = tags.map(t =>
         `<button class="tag-filter-btn" data-tag="${esc(t)}"># ${esc(t)}</button>`
       ).join("");
-      container.addEventListener("click", e => {
+      container.onclick = e => {
         const btn = e.target.closest(".tag-filter-btn");
         if (!btn) return;
         const tag = btn.dataset.tag;
@@ -250,7 +250,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           btn.classList.add("active");
         }
         renderFiltered();
-      });
+      };
     }
 
     // ── Sort toggle ───────────────────────────────────────────────

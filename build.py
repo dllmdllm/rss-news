@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
+from bs4 import BeautifulSoup
+
 # Force UTF-8 output on Windows
 if sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -97,14 +99,25 @@ def save_json(articles: list, source_stats: dict):
     reused = 0
     for a in articles:
         content = a.get("content")
+        old_record = None
         if not content:
-            content = _load_old_content(a["id"])
+            old_record = _load_old_content_record(a["id"])
+            content = old_record.get("content") if old_record else None
             if not content:
                 continue
             a["content"] = content
             reused += 1
         cpath = CONTENT_DIR / f"{a['id']}.json"
         quality = a.get("content_quality") or {}
+        if not quality and old_record:
+            quality = old_record.get("quality") or {}
+        if not quality:
+            quality = _content_quality(
+                content,
+                source=a.get("source", ""),
+                fallback="reused" if old_record else "unknown",
+            )
+        a["content_quality"] = quality
         # Skip rewriting identical files to keep git diffs minimal and
         # avoid pointless disk churn on every build.
         if cpath.exists():
@@ -203,16 +216,46 @@ def _load_old_articles() -> list:
 
 def _load_old_content(article_id: str) -> str | None:
     """Read previously saved content/{id}.json if still on disk."""
+    data = _load_old_content_record(article_id)
+    if data:
+        return data.get("content")
+    return None
+
+
+def _load_old_content_record(article_id: str) -> dict | None:
+    """Read previously saved content/{id}.json as a dict if still on disk."""
     path = CONTENT_DIR / f"{article_id}.json"
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
-            return data.get("content")
+            return data
     except Exception:
         return None
     return None
+
+
+def _content_quality(content: str, *, source: str, fallback: str) -> dict:
+    soup = BeautifulSoup(content or "", "html.parser")
+    text = soup.get_text(separator=" ", strip=True)
+    images = len(soup.find_all("img"))
+    chars = len(text)
+    if chars >= 1200:
+        score = 3
+    elif chars >= 500:
+        score = 2
+    elif chars >= 150:
+        score = 1
+    else:
+        score = 0
+    return {
+        "score": score,
+        "chars": chars,
+        "images": images,
+        "source": source,
+        "fallback": fallback,
+    }
 
 
 def _apply_fallback_summaries(articles: list, old_articles: list) -> list:

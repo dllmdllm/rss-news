@@ -3,7 +3,7 @@
 //   - HTML / articles.json : network-first (fall back to cache when offline)
 //   - content/*.json, images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v4";
+const CACHE   = "rss-news-v5";
 const SHELL   = [
   "./",
   "./index.html",
@@ -31,24 +31,32 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
+function cacheKey(req) {
+  const url = new URL(req.url);
+  url.search = "";
+  return url.toString();
+}
+
 function networkFirst(req) {
+  const key = cacheKey(req);
   return fetch(req)
     .then(res => {
       if (res && res.ok) {
         const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(req, clone)).catch(() => null);
+        caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
       }
       return res;
     })
-    .catch(() => caches.match(req));
+    .catch(() => caches.match(key));
 }
 
 function staleWhileRevalidate(req) {
-  return caches.match(req).then(cached => {
+  const key = cacheKey(req);
+  return caches.match(key).then(cached => {
     const network = fetch(req).then(res => {
       if (res && res.ok) {
         const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(req, clone)).catch(() => null);
+        caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
       }
       return res;
     }).catch(() => cached);

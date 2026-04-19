@@ -37,6 +37,8 @@ def test_save_json_reuses_existing_content_when_current_scrape_has_none(tmp_path
     saved = json.loads((content_dir / "abc123.json").read_text(encoding="utf-8"))
     assert saved["version"] == build.CONTENT_SCHEMA_VERSION
     assert saved["content"] == old_content
+    assert saved["quality"]["fallback"] == "reused"
+    assert saved["quality"]["chars"] == 13
     assert articles[0]["content"] == old_content
 
 

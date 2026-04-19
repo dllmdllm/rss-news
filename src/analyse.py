@@ -321,6 +321,7 @@ async def _analyse_batch(
     timeout    = 30 + 10 * len(batch)
 
     batch_ok = False
+    applied_ids: set[str] = set()
     async with sem:
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
@@ -343,6 +344,7 @@ async def _analyse_batch(
                         ok_parsed = [p for p in parsed if p]
                         if ok_arts:
                             await _apply_results(ok_arts, ok_parsed, cache, save_lock, counter)
+                            applied_ids.update(a["id"] for a in ok_arts)
                         if len(ok_arts) == len(batch):
                             batch_ok = True
                         break
@@ -374,7 +376,7 @@ async def _analyse_batch(
     # Fallback: run each article as its own single-item batch. sem is already
     # released here, so each fallback call re-acquires it independently.
     for a in batch:
-        if not a.get("summary"):
+        if a["id"] not in applied_ids:
             await _analyse_one(session, a, sem, cache, save_lock, counter)
 
 
