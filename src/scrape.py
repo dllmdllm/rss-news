@@ -180,6 +180,28 @@ def _to_hk_traditional(content: str) -> str:
     return zhconv.convert(content, "zh-hk")
 
 
+def _content_quality(content: str, *, source: str, fallback: str) -> dict:
+    soup = BeautifulSoup(content or "", "html.parser")
+    text = soup.get_text(separator=" ", strip=True)
+    images = len(soup.find_all("img"))
+    chars = len(text)
+    if chars >= 1200:
+        score = 3
+    elif chars >= 500:
+        score = 2
+    elif chars >= 150:
+        score = 1
+    else:
+        score = 0
+    return {
+        "score": score,
+        "chars": chars,
+        "images": images,
+        "source": source,
+        "fallback": fallback,
+    }
+
+
 _TRANSLATE_SEP = "\n@@@@@\n"   # unlikely to appear in article text
 _TRANSLATE_CHUNK_CHARS = 4000  # Google Translate caps near 5000 chars/request
 
@@ -281,6 +303,24 @@ async def _cloudscraper_fetch(url: str) -> str | None:
         return None
 
 
+async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT)) as resp:
+            raw = await resp.read()
+            charset = resp.charset or "utf-8"
+            return raw.decode(charset, errors="replace")
+    except aiohttp.ClientSSLError as exc:
+        print(f"[WARN] scrape TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
+            ssl=False,
+        ) as resp:
+            raw = await resp.read()
+            charset = resp.charset or "utf-8"
+            return raw.decode(charset, errors="replace")
+
+
 async def _scrape_one(
     session: aiohttp.ClientSession,
     article: dict,
@@ -292,12 +332,7 @@ async def _scrape_one(
     async with sem:
         for attempt in range(2):
             try:
-                async with session.get(
-                    article["url"], timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT)
-                ) as resp:
-                    raw = await resp.read()
-                    charset = resp.charset or "utf-8"
-                html = raw.decode(charset, errors="replace")
+                html = await _fetch_html(session, article["url"])
 
                 if _is_blocked(html):
                     print(f"[BLOCK] {article['source']} — trying urllib fallback")
@@ -319,6 +354,11 @@ async def _scrape_one(
                                 if article["source"] in SIMPLIFIED_SOURCES:
                                     content = _to_hk_traditional(content)
                                 article["content"] = content
+                                article["content_quality"] = _content_quality(
+                                    content,
+                                    source=article["source"],
+                                    fallback="rss",
+                                )
                             return article
 
                 html = _expand_stheadline_galleries(html)
@@ -350,6 +390,11 @@ async def _scrape_one(
                     elif article["source"] in ENGLISH_SOURCES:
                         content = await loop.run_in_executor(None, _translate_to_hk, content)
                     article["content"] = content
+                    article["content_quality"] = _content_quality(
+                        content,
+                        source=article["source"],
+                        fallback="none",
+                    )
 
                 # Extract og:image thumbnail if not already set from RSS
                 if not article.get("thumbnail"):
@@ -369,7 +414,7 @@ async def _scrape_one(
 
 async def scrape_all(articles: list) -> list:
     sem = asyncio.Semaphore(SCRAPE_CONCURRENCY)
-    connector = aiohttp.TCPConnector(limit=SCRAPE_CONCURRENCY, ssl=False)
+    connector = aiohttp.TCPConnector(limit=SCRAPE_CONCURRENCY)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_scrape_one(session, a, sem) for a in articles]
         results = await asyncio.gather(*tasks)

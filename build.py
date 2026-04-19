@@ -28,6 +28,7 @@ from src.analyse import analyse_all
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
 CONTENT_DIR = DATA_DIR / "content"
+CONTENT_SCHEMA_VERSION = 1
 
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
@@ -90,23 +91,45 @@ def save_json(articles: list, source_stats: dict):
     print(f"[build] articles.json {meta_kb} KB, {len(articles)} articles")
 
     # 2. per-article content files
-    active_ids = set()
+    active_ids = {a["id"] for a in articles}
     written = 0
     unchanged = 0
+    reused = 0
     for a in articles:
         content = a.get("content")
         if not content:
-            continue
-        active_ids.add(a["id"])
+            content = _load_old_content(a["id"])
+            if not content:
+                continue
+            a["content"] = content
+            reused += 1
         cpath = CONTENT_DIR / f"{a['id']}.json"
-        new_bytes = json.dumps(
-            {"content": content}, ensure_ascii=False, separators=(",", ":")
-        ).encode("utf-8")
+        quality = a.get("content_quality") or {}
         # Skip rewriting identical files to keep git diffs minimal and
         # avoid pointless disk churn on every build.
-        if cpath.exists() and cpath.read_bytes() == new_bytes:
-            unchanged += 1
-            continue
+        if cpath.exists():
+            try:
+                old = json.loads(cpath.read_text(encoding="utf-8"))
+            except Exception:
+                old = None
+            if (
+                isinstance(old, dict)
+                and old.get("version") == CONTENT_SCHEMA_VERSION
+                and old.get("content") == content
+                and old.get("quality", {}) == quality
+            ):
+                unchanged += 1
+                continue
+        new_bytes = json.dumps(
+            {
+                "version": CONTENT_SCHEMA_VERSION,
+                "content": content,
+                "scraped_at": datetime.now(timezone.utc).isoformat(),
+                "quality": quality,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
         tmp = cpath.with_suffix(cpath.suffix + ".tmp")
         tmp.write_bytes(new_bytes)
         os.replace(tmp, cpath)
@@ -118,7 +141,10 @@ def save_json(articles: list, source_stats: dict):
         if old_file.stem not in active_ids:
             old_file.unlink()
             dropped += 1
-    print(f"[build] content/ {written} written, {unchanged} unchanged, {dropped} pruned")
+    print(
+        f"[build] content/ {written} written, {unchanged} unchanged, "
+        f"{reused} reused, {dropped} pruned"
+    )
 
     # 3. RSS feed
     _write_rss(articles)
@@ -181,9 +207,12 @@ def _load_old_content(article_id: str) -> str | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8")).get("content")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data.get("content")
     except Exception:
         return None
+    return None
 
 
 def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
@@ -245,6 +274,9 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
         for src, n in added_by_source.items():
             if src in source_stats:
                 source_stats[src]["restored"] = n
+                source_stats[src]["effective_count"] = source_stats[src].get("count", 0) + n
+    for src, stats in source_stats.items():
+        stats.setdefault("effective_count", stats.get("count", 0) + stats.get("restored", 0))
     return articles
 
 

@@ -85,6 +85,35 @@ def _rss_thumbnail(entry) -> str | None:
     return None
 
 
+async def _read_feed(
+    session: aiohttp.ClientSession,
+    url: str,
+    cond_headers: dict,
+    *,
+    ssl=True,
+) -> tuple[int, bytes, dict]:
+    async with session.get(
+        url,
+        timeout=aiohttp.ClientTimeout(total=15),
+        headers=cond_headers or None,
+        ssl=ssl,
+    ) as resp:
+        raw = await resp.read()
+        return resp.status, raw, dict(resp.headers)
+
+
+async def _read_feed_with_tls_fallback(
+    session: aiohttp.ClientSession,
+    url: str,
+    cond_headers: dict,
+) -> tuple[int, bytes, dict]:
+    try:
+        return await _read_feed(session, url, cond_headers)
+    except aiohttp.ClientSSLError as exc:
+        print(f"[WARN] feed TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
+        return await _read_feed(session, url, cond_headers, ssl=False)
+
+
 async def _fetch_one(
     session:    aiohttp.ClientSession,
     feed_info:  dict,
@@ -103,26 +132,22 @@ async def _fetch_one(
     if prev.get("last_modified"):
         cond_headers["If-Modified-Since"] = prev["last_modified"]
     try:
-        async with session.get(
-            url,
-            timeout=aiohttp.ClientTimeout(total=15),
-            headers=cond_headers or None,
-        ) as resp:
-            if resp.status == 304:
-                return articles, None, True
-            if resp.status >= 400:
-                return articles, f"HTTP {resp.status}", False
-            raw = await resp.read()
-            # Store new validators for next run
-            new_entry = {}
-            if resp.headers.get("ETag"):
-                new_entry["etag"] = resp.headers["ETag"]
-            if resp.headers.get("Last-Modified"):
-                new_entry["last_modified"] = resp.headers["Last-Modified"]
-            if new_entry:
-                http_cache[url] = new_entry
-            elif url in http_cache:
-                http_cache.pop(url, None)
+        status, raw, headers = await _read_feed_with_tls_fallback(session, url, cond_headers)
+        if status == 304:
+            return articles, None, True
+        if status >= 400:
+            return articles, f"HTTP {status}", False
+
+        # Store new validators for next run
+        new_entry = {}
+        if headers.get("ETag"):
+            new_entry["etag"] = headers["ETag"]
+        if headers.get("Last-Modified"):
+            new_entry["last_modified"] = headers["Last-Modified"]
+        if new_entry:
+            http_cache[url] = new_entry
+        elif url in http_cache:
+            http_cache.pop(url, None)
         feed = feedparser.parse(raw)
         if getattr(feed, "bozo", False) and not feed.entries:
             return articles, f"parse: {feed.bozo_exception!r}", False
@@ -187,7 +212,7 @@ async def _fetch_one(
 async def fetch_all() -> tuple[list, dict]:
     cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     http_cache = _load_feed_http_cache()
-    connector  = aiohttp.TCPConnector(limit=30, ssl=False)
+    connector  = aiohttp.TCPConnector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks   = [_fetch_one(session, f, cutoff, http_cache) for f in RSS_FEEDS]
         results = await asyncio.gather(*tasks)

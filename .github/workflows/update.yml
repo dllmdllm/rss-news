@@ -28,8 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: python -m pip install --cache-dir "$env:LOCALAPPDATA\pip\Cache" -r requirements.txt
 
       - name: Fetch RSS, scrape & analyse
         run: python build.py
@@ -47,7 +55,10 @@ jobs:
           git commit -m "chore: update articles $ts"
           git fetch origin main
           git rebase origin/main -X ours
-          if ($LASTEXITCODE -ne 0) { git rebase --abort }
+          if ($LASTEXITCODE -ne 0) {
+            git rebase --abort
+            exit 1
+          }
           git push --force-with-lease
 
       # Optional: notify Slack on build failure. Enable by uncommenting and
