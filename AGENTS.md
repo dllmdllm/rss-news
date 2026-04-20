@@ -27,7 +27,7 @@ rss-news/
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── update.yml    # GitHub Actions：每 10 分鐘執行 build.py
+        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py
 ```
 
 ---
@@ -46,13 +46,20 @@ RSS Feed
 
 ## 技術選型
 
-| 用途 | 工具 | 原因 |
-|---|---|---|
-| RSS 解析 | `feedparser` | 穩定，格式相容性好 |
-| 並發抓取 | `asyncio` + `aiohttp` | 同時抓多篇，速度快 |
-| 全文解析 | `trafilatura` | 自動識別正文、保留圖片順序、抗噪聲強 |
-| 數據格式 | JSON | 輕量，方便前端 search / AI 擴展 |
-| 前端 | 純 HTML + Vanilla JS | 快，無框架開銷 |
+| 用途 | 工具 | 版本 | 原因 |
+|---|---|---|---|
+| RSS 解析 | `feedparser` | 6.0.12 | 穩定，格式相容性好 |
+| 並發抓取 | `asyncio` + `aiohttp` | 3.13.5 | 同時抓多篇，速度快 |
+| 全文解析 | `trafilatura` | 2.0.0 | 自動識別正文、保留圖片順序、抗噪聲強 |
+| HTML 解析 | `beautifulsoup4` | 4.14.3 | 自定義元素展開（星島 gallery）、圖片修復 |
+| 繁簡轉換 | `zhconv` | 1.4.3 | 簡體 → 香港繁體 |
+| 翻譯 | `deep-translator` | 1.11.4 | 英文來源自動翻譯 |
+| 反爬蟲繞過 | `cloudscraper` | 1.2.71 | 繞過 Cloudflare 驗證 |
+| 環境變數 | `python-dotenv` | 1.2.2 | 讀取 .env（API Key）|
+| 數據格式 | JSON | — | 輕量，方便前端 search / AI 擴展 |
+| 前端 | 純 HTML + Vanilla JS | — | 快，無框架開銷 |
+| AI 分析 | MiniMax M2.7 | — | 摘要 / 評分 / 標籤 / 情緒 / 話題 |
+| 執行環境 | Python | 3.13.13 | 最新穩定版 |
 
 ---
 
@@ -130,7 +137,7 @@ RSS Feed
 
 - **Phase 1（完成）** — 全文抓取 + 靜態頁面（列表頁 + 文章閱讀頁）
 - **Phase 2（完成）** — AI 分析：摘要、重要性評分、標籤、情緒、話題 clustering
-- **Phase 3** — Client-side 語意搜尋（Fuse.js 或 embedding，無需後端）
+- **Phase 3（完成）** — Client-side 搜尋（Fuse.js，模糊匹配標題/摘要/標籤/來源/分類）
 
 ---
 
@@ -147,7 +154,7 @@ python build.py
 
 ## 自動化
 
-GitHub Actions（`.github/workflows/update.yml`）每 10 分鐘執行一次 `build.py`，
+GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `build.py`，
 若 `docs/data/` 有變更則自動 commit & push。
 
 Secret 名稱：`MINIMAX_API_KEY`（在 repo Settings → Secrets → Actions 設定）

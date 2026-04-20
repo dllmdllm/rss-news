@@ -270,11 +270,17 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
                 dt = dt.replace(tzinfo=timezone.utc)
             if dt <= cutoff:
                 continue
-            # Hydrate content from previous build so scrape_all can skip it
+            # Hydrate content from previous build so scrape_all can skip it.
+            # articles.json no longer stores `content` inline (split into
+            # docs/data/content/*.json), so the key is usually absent here —
+            # ensure it's explicitly present (None) even if hydration misses,
+            # so downstream code that does `a["content"]` doesn't KeyError.
             if not a.get("content"):
                 record = _load_old_content_record(a["id"])
                 if record and record.get("content"):
                     a["content"] = record["content"]
+                else:
+                    a["content"] = None
             articles.append(a)
             existing_ids.add(a["id"])
             added_by_source[source] += 1

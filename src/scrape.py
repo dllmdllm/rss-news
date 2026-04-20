@@ -424,6 +424,6 @@ async def scrape_all(articles: list) -> list:
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_scrape_one(session, a, sem) for a in articles]
         results = await asyncio.gather(*tasks)
-    scraped = sum(1 for a in results if a["content"])
+    scraped = sum(1 for a in results if a.get("content"))
     print(f"[scrape] {scraped}/{len(results)} articles with content")
     return results
