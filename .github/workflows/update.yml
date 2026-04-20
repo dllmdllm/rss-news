@@ -48,7 +48,10 @@ jobs:
         # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
         # picks up WSL bash first from PATH, which can't handle Windows
         # paths like `C:\actions-runner\_work\...` that Actions injects.
-        shell: 'C:\Program Files\Git\bin\bash.exe -eo pipefail {0}'
+        # The runner parses `shell:` by whitespace, so `C:\Program Files\…`
+        # breaks (`Which2: 'C:\Program'` → ArgumentException). Use the 8.3
+        # short name `PROGRA~1` to keep the path whitespace-free.
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe -eo pipefail {0}'
         run: |
           # Bash sidesteps PowerShell's `$ErrorActionPreference = 'stop'`
           # default, which on Windows hosts turns git's stderr progress into
