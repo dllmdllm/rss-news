@@ -153,7 +153,12 @@ async def _fetch_one(
             if not feed.entries:
                 return articles, f"parse: {feed.bozo_exception!r}", False
             print(f"[WARN] feed {feed_info['name']}: bozo ({feed.bozo_exception!r}) but {len(feed.entries)} entries — proceeding")
-        for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
+        # Per-feed override lets mixed-category feeds (星島 main RSS) keep
+        # enough items that category reclassification via `url_category`
+        # actually picks up entertainment/leisure items, which tend to sit
+        # below the top-20 breaking-news slice.
+        max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+        for entry in feed.entries[:max_items]:
             article_url = _clean_url(entry.get("link", ""))
             if not article_url:
                 continue

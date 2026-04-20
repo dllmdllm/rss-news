@@ -13,7 +13,14 @@ RSS_FEEDS = [
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},
     {"name": "明報 本地",          "url": "https://news.mingpao.com/rss/ins/s00001.xml",                           "category": "新聞"},
     {"name": "星島頭條",           "url": "https://www.stheadline.com/rss",                                        "category": "新聞",
-     "url_category": {"/film-drama/": "娛樂", "/entertainment/": "娛樂", "/lifestyle/": "消閒", "/life/": "消閒"}},
+     "max_items": 100,
+     "url_category": {
+         "/film-drama/": "娛樂", "/entertainment/": "娛樂",
+         "/realtime-world/": "國際", "/realtime-china/": "國際",
+         "/lifestyle/": "消閒", "/life/": "消閒",
+         "/food/": "消閒", "/food-safety/": "消閒", "/travel/": "消閒",
+         "/culture/": "消閒", "/parenting/": "消閒", "/health-care/": "消閒",
+     }},
     # 國際
     {"name": "RTHK 國際",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_cinternational.xml", "category": "國際"},
     {"name": "RTHK 大中華",       "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_greaterchina.xml",   "category": "國際"},
