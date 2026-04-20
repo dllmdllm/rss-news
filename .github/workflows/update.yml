@@ -45,58 +45,51 @@ jobs:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 
       - name: Commit & push if changed
+        shell: bash
         run: |
-          # GitHub Actions prepends `$ErrorActionPreference = 'stop'`, which
-          # in PowerShell 5.1 turns git's stderr progress output (e.g. "POST
-          # git-upload-pack") into terminating ErrorRecords the moment it
-          # lands in the pipeline — killing the step in ~400ms before we
-          # ever get to push. Flip it back to 'continue' for this step.
-          $ErrorActionPreference = 'continue'
+          # Use bash to bypass PowerShell's `$ErrorActionPreference = 'stop'`
+          # default, which on Windows hosts turns git's stderr progress into
+          # terminating ErrorRecords and kills the step before push completes.
+          set +e
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/data/articles.json docs/data/analyses.json docs/data/feed.xml docs/data/content
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
-          $ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm") + " UTC"
-          git commit -m "chore: update articles $ts"
-          if ($LASTEXITCODE -ne 0) { Write-Error "commit failed"; exit 1 }
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          ts="$(date -u +'%Y-%m-%d %H:%M') UTC"
+          git commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
 
           # Retry fetch → rebase → push up to 3 times. Each iteration
           # re-syncs origin/main so a concurrent push (Codex, or a prior
           # stuck chore commit) doesn't permanently wedge this one.
           # After rebase, HEAD is strictly ahead of origin/main, so plain
           # push is a fast-forward — no force / force-with-lease needed.
-          $pushed = $false
-          for ($i = 1; $i -le 3; $i++) {
-            Write-Host "=== attempt $i ==="
-            git fetch origin main
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "fetch failed on attempt $i"
-              Start-Sleep -Seconds 3
+          for i in 1 2 3; do
+            echo "=== attempt $i ==="
+            if ! git fetch origin main; then
+              echo "fetch failed on attempt $i"
+              sleep 3
               continue
-            }
-            git rebase origin/main -X ours
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "rebase failed on attempt $i — aborting"
+            fi
+            if ! git rebase origin/main -X ours; then
+              echo "rebase failed on attempt $i — aborting"
               git rebase --abort
-              Start-Sleep -Seconds 3
+              sleep 3
               continue
-            }
-            Write-Host "--- git log before push ---"
+            fi
+            echo "--- git log before push ---"
             git log --oneline origin/main..HEAD
-            git push origin HEAD:main --verbose
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "push OK on attempt $i"
-              $pushed = $true
-              break
-            }
-            Write-Host "push failed on attempt $i (exit $LASTEXITCODE)"
-            Start-Sleep -Seconds 5
-          }
-          if (-not $pushed) {
-            Write-Error "push failed after 3 attempts — see output above"
-            exit 1
-          }
+            if git push origin HEAD:main; then
+              echo "push OK on attempt $i"
+              exit 0
+            fi
+            echo "push failed on attempt $i"
+            sleep 5
+          done
+          echo "push failed after 3 attempts — see output above"
+          exit 1
 
       # Optional: notify Slack on build failure. Enable by uncommenting and
       # adding a SLACK_WEBHOOK_URL secret (Incoming Webhook URL from Slack
