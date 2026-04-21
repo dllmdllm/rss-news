@@ -61,25 +61,24 @@
     .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* font size buttons */
-    .font-btns { display: flex; gap: 3px; }
+    .font-btns { display: flex; gap: 4px; }
     .font-btn, .theme-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
       font-weight: 700; display: flex; align-items: center; justify-content: center;
       transition: background .15s, color .15s, border-color .15s;
     }
     .font-btn:hover, .theme-btn:hover { border-color: var(--accent); color: var(--text); }
     .theme-btn { color: var(--accent); }
-    .font-btn:first-child { font-size: .72rem; }
-    .font-btn:last-child  { font-size: .92rem; }
+    .font-btn:first-child { font-size: .82rem; }
+    .font-btn:last-child  { font-size: 1.02rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
-    .theme-btn svg { width: 15px; height: 15px; }
+    .theme-btn svg { width: 18px; height: 18px; }
 
     /* ── search row ── */
     .search-row {
       padding: 8px 24px; background: var(--bg);
       border-bottom: 1px solid var(--border);
-      position: sticky; top: 47px; z-index: 9;
     }
     .search-input {
       width: 100%; background: var(--surface); border: 1px solid var(--border);
@@ -96,7 +95,6 @@
     .filters {
       padding: 7px 24px; display: flex; flex-wrap: wrap; gap: 6px;
       border-bottom: 1px solid var(--border); background: var(--bg);
-      position: sticky; top: 95px; z-index: 8;
     }
     .filter-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
@@ -130,7 +128,6 @@
     .source-filters {
       padding: 5px 24px 7px; display: none; flex-wrap: wrap; gap: 5px;
       background: var(--bg); border-bottom: 1px solid var(--border);
-      position: sticky; top: 135px; z-index: 7;
     }
     .source-filters.has-sources { display: flex; }
     .source-filter-btn {
@@ -145,7 +142,6 @@
     .tag-filters {
       padding: 5px 24px 7px; display: flex; flex-wrap: wrap; gap: 5px;
       background: var(--bg); border-bottom: 1px solid var(--border);
-      position: sticky; top: 135px; z-index: 6;
     }
     .tag-filter-btn {
       background: transparent; border: 1px solid var(--border); color: var(--muted);
@@ -231,11 +227,11 @@
 
     /* thumbnail */
     .card-thumb {
-      width: 100%; aspect-ratio: 16/9; object-fit: cover;
+      width: 100%; aspect-ratio: 3/2; object-fit: cover;
       background: var(--border); display: block;
     }
     .card-thumb-placeholder {
-      width: 100%; aspect-ratio: 16/9;
+      width: 100%; aspect-ratio: 3/2;
       background: linear-gradient(135deg, #1a1a2e 0%, #2e2e3e 100%);
       display: flex; align-items: center; justify-content: center;
       color: var(--border); font-size: 2rem;
@@ -373,6 +369,25 @@
       border-bottom: 1px solid var(--border);
     }
     .health-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+
+    /* ── mobile ── */
+    @media (max-width: 640px) {
+      header              { padding: 10px 14px; }
+      header h1           { font-size: 1rem; }
+      .search-row,
+      .filters,
+      .source-filters,
+      .tag-filters,
+      .trending-topics    { padding-left: 14px; padding-right: 14px; }
+      .grid               { padding: 14px; gap: 10px;
+                            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+      .card-body          { padding: 9px 10px; gap: 5px; }
+      .card-title         { line-height: 1.4; }
+      body.fs-1 .card-title   { font-size: .92rem; }
+      body.fs-1 .card-summary { font-size: .8rem; }
+      .date               { font-size: .68rem; }
+      .updated            { font-size: .72rem; }
+    }
   </style>
 </head>
 <body>
