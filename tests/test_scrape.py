@@ -85,3 +85,21 @@ def test_scrape_one_emits_minimal_content_when_no_rss(monkeypatch):
 
     assert out["content"]
     assert out["content_quality"]["fallback"] == "minimal"
+
+
+def test_scrape_one_keeps_english_content_untranslated(monkeypatch):
+    async def fake_fetch_html(session, url):
+        return "<html><body><article><p>Hello world from source.</p></article></body></html>"
+
+    monkeypatch.setattr(scrape, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(
+        scrape.trafilatura,
+        "extract",
+        lambda *args, **kwargs: "<body><p>Hello world from source.</p></body>",
+    )
+    monkeypatch.setattr(scrape.trafilatura, "extract_metadata", lambda *args, **kwargs: None)
+
+    article = _article(source="9to5Mac")
+    out = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
+
+    assert "Hello world from source." in out["content"]
