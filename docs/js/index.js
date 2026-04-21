@@ -9,7 +9,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     // splitting on accidental whitespace can't happen.
     function catClass(c) { return _CAT_WL.has(c) ? "cat-" + c : ""; }
     setupFontSize();
-    setupThemeMode();
 
     // ── Theme mode ────────────────────────────────────────────────
     const THEME_KEY = "rss_theme";
@@ -50,6 +49,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         apply(next);
       });
     }
+    setupThemeMode();
 
     // ── Read tracking ─────────────────────────────────────────────
     const READ_KEY = "rss_read_ids";
@@ -430,6 +430,16 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
 
+    function summaryPoints(summary) {
+      const text = String(summary || "").replace(/\r/g, "\n").trim();
+      if (!text) return [];
+      return text
+        .replace(/\s*・\s*/g, "\n")
+        .split(/\n+/)
+        .map(line => line.replace(/^・+/, "").trim())
+        .filter(Boolean);
+    }
+
     function renderFiltered() {
       let list = all;
       // search takes priority — override category/tag if query present
@@ -483,8 +493,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join("")}</div>` : "";
         const isRead = reads.has(a.id);
         const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
-        const summaryHtml = a.summary
-          ? `<div class="card-summary">${esc(String(a.summary).replace(/\s*・/g, '\n・').trimStart())}</div>`
+        const points = summaryPoints(a.summary);
+        const summaryHtml = points.length
+          ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
 
         const catCls = catClass(a.category);

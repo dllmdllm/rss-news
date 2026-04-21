@@ -123,6 +123,21 @@ def test_save_json_prunes_only_articles_missing_from_metadata(tmp_path, monkeypa
     assert not (content_dir / "stale.json").exists()
 
 
+def test_merge_missing_sources_respects_article_max_age(monkeypatch):
+    now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(build, "ARTICLE_MAX_AGE_HOURS", 30)
+    monkeypatch.setattr(build, "datetime", type("FixedDateTime", (datetime,), {
+        "now": classmethod(lambda cls, tz=None: now if tz else now.replace(tzinfo=None)),
+    }))
+
+    recent = _topic_article("recent", "fallback", now, 29, source="Missing source")
+    old = _topic_article("old", "fallback", now, 31, source="Missing source")
+
+    merged = build._merge_missing_sources([], [recent, old], {"Missing source": {"count": 0}})
+
+    assert [a["id"] for a in merged] == ["recent"]
+
+
 def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"

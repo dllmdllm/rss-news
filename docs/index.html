@@ -65,6 +65,7 @@
       transition: background .15s, color .15s, border-color .15s;
     }
     .font-btn:hover, .theme-btn:hover { border-color: var(--accent); color: var(--text); }
+    .theme-btn { color: var(--accent); }
     .font-btn:first-child { font-size: .72rem; }
     .font-btn:last-child  { font-size: .92rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
@@ -289,7 +290,9 @@
     .card-title.cat-科技 { color: #e8b87c; }
     .card-title.cat-網媒 { color: #b87ce8; }
 
-    .card-summary { color: #aaa; line-height: 1.55; margin-top: 2px; white-space: pre-line; }
+    .card-summary { color: #aaa; line-height: 1.55; margin-top: 2px; display: flex; flex-direction: column; gap: 2px; }
+    .card-summary-line { position: relative; padding-left: 1em; }
+    .card-summary-line::before { content: "・"; position: absolute; left: 0; top: 0; }
     .card-tags    { display: flex; flex-wrap: wrap; gap: 4px; }
     .tag-chip {
       font-size: .68rem; background: #1e1a30; color: #a78bfa;

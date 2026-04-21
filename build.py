@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv
 load_dotenv()
 
-from src.fetch   import fetch_all
+from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all
 from src.scrape  import content_quality, scrape_all
 from src.analyse import analyse_all
 
@@ -335,7 +335,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
 def _merge_missing_sources(articles: list, old_articles: list, source_stats: dict) -> list:
     """If a source/category produced 0 articles this run (fetch failed),
     fall back to its articles from the previous build to avoid blank categories."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     new_sources = {a["source"] for a in articles}
     old_by_source: dict[str, list] = defaultdict(list)
     for a in old_articles:

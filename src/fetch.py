@@ -19,7 +19,7 @@ from src.feeds import (
     SIMPLIFIED_SOURCES,
 )
 
-ARTICLE_MAX_AGE_HOURS = 48
+ARTICLE_MAX_AGE_HOURS = 30
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 

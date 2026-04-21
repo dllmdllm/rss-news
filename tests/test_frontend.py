@@ -50,6 +50,89 @@ def test_frontend_javascript_syntax(script):
     assert result.returncode == 0, result.stderr
 
 
+def test_index_bootstrap_renders_articles_without_runtime_error():
+    node = _require_node()
+    js = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.innerHTML = "";
+            this.textContent = "";
+            this.className = "";
+            this.dataset = {};
+            this.style = {};
+            this.tagName = "DIV";
+            this.value = "";
+            this.classList = {
+              add: () => null,
+              remove: () => null,
+              contains: () => false,
+              toggle: () => null,
+            };
+          }
+          addEventListener() {}
+          querySelectorAll() { return []; }
+        }
+
+        const els = new Map();
+        for (const id of [
+          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
+          "updated", "health-overlay", "health-close", "health-body", "search",
+          "filters", "source-filters", "tag-filters", "trending-topics",
+          "sort-toggle", "grid", "font-dec", "font-inc",
+        ]) {
+          els.set(id, new El(id));
+        }
+
+        const document = {
+          body: new El("body"),
+          getElementById: id => els.get(id) || new El(id),
+          querySelector: () => ({ setAttribute() {} }),
+          querySelectorAll: () => [],
+          addEventListener() {},
+        };
+        const context = {
+          console,
+          document,
+          window: { matchMedia: () => ({ matches: false }), addEventListener() {} },
+          navigator: {},
+          localStorage: { getItem: () => null, setItem() {} },
+          setInterval() {},
+          setTimeout,
+          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          Fuse: class {
+            constructor(items) { this.items = items; }
+            search() { return []; }
+          },
+          fetch: async () => ({
+            json: async () => JSON.parse(fs.readFileSync("docs/data/articles.json", "utf8")),
+          }),
+        };
+        context.globalThis = context;
+
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
+        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
+
+        setTimeout(() => {
+          if (!els.get("grid").innerHTML.includes("class=\\"card")) {
+            throw new Error("index did not render article cards");
+          }
+        }, 0);
+        """
+    )
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_tag_filters_are_scoped_per_category():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
@@ -112,6 +195,32 @@ def test_index_has_ai_sort_button():
     assert 'data-sort="ai"' in html
     assert ">AI</button>" in html
     assert 'id="trending-topics"' in html
+
+
+def test_index_summary_points_normalise_bullets():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "summaryPoints")
+    js = fn + """
+    const cases = [
+      ["・one・two", ["one", "two"]],
+      ["one\\ntwo", ["one", "two"]],
+      [" ・one\\n・two ", ["one", "two"]],
+    ];
+    for (const [input, expected] of cases) {
+      const actual = summaryPoints(input);
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error("bad summary points: " + JSON.stringify(actual));
+      }
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
