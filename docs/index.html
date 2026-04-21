@@ -16,8 +16,17 @@
       --muted:   #888;
       --link:    #a89ff7;
     }
+    body.theme-light {
+      --bg:      #fafaf8;
+      --surface: #ffffff;
+      --border:  #e6e6e0;
+      --accent:  #1a6b9a;
+      --text:    #141414;
+      --muted:   #777;
+      --link:    #1a6b9a;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; min-height: 100vh; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; min-height: 100vh; transition: background .18s, color .18s; }
 
     /* ── header ── */
     header {
@@ -49,16 +58,17 @@
 
     /* font size buttons */
     .font-btns { display: flex; gap: 3px; }
-    .font-btn {
+    .font-btn, .theme-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
       font-weight: 700; display: flex; align-items: center; justify-content: center;
       transition: background .15s, color .15s, border-color .15s;
     }
-    .font-btn:hover { border-color: var(--accent); color: var(--text); }
+    .font-btn:hover, .theme-btn:hover { border-color: var(--accent); color: var(--text); }
     .font-btn:first-child { font-size: .72rem; }
     .font-btn:last-child  { font-size: .92rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
+    .theme-btn svg { width: 15px; height: 15px; }
 
     /* ── search row ── */
     .search-row {
@@ -104,6 +114,12 @@
     .filter-btn.cat-科技.active { background: #3d2e1a; border-color: #e8b87c; color: #e8b87c; }
     .filter-btn.cat-網媒:hover  { border-color: #b87ce8; color: #b87ce8; }
     .filter-btn.cat-網媒.active { background: #2a1a3d; border-color: #b87ce8; color: #b87ce8; }
+    body.theme-light .filter-btn.cat-新聞.active { background: #fff0f0; }
+    body.theme-light .filter-btn.cat-國際.active { background: #edf6ff; }
+    body.theme-light .filter-btn.cat-娛樂.active { background: #fff0fa; }
+    body.theme-light .filter-btn.cat-消閒.active { background: #effaf1; }
+    body.theme-light .filter-btn.cat-科技.active { background: #fff6e8; }
+    body.theme-light .filter-btn.cat-網媒.active { background: #f5edff; }
 
     /* ── source filters ── */
     .source-filters {
@@ -145,6 +161,9 @@
       padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: .78rem;
       display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
       transition: background .15s, border-color .15s, color .15s;
+    }
+    body.theme-light .trending-topic-btn {
+      background: #fff; border-color: var(--border);
     }
     .trending-topic-btn:hover {
       border-color: #fbbf24; color: #fbbf24;
@@ -216,6 +235,9 @@
       display: flex; align-items: center; justify-content: center;
       color: var(--border); font-size: 2rem;
     }
+    body.theme-light .card-thumb-placeholder {
+      background: linear-gradient(135deg, #eef3f7 0%, #f7f2ed 100%);
+    }
 
     /* card body */
     .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
@@ -227,6 +249,12 @@
     .cat-消閒   { background: #1a3d22; color: #7ce890; }
     .cat-科技   { background: #3d2e1a; color: #e8b87c; }
     .cat-網媒   { background: #2a1a3d; color: #b87ce8; }
+    body.theme-light .cat-新聞 { background: #fff0f0; color: #b94a4a; }
+    body.theme-light .cat-國際 { background: #edf6ff; color: #2f73a8; }
+    body.theme-light .cat-娛樂 { background: #fff0fa; color: #b64686; }
+    body.theme-light .cat-消閒 { background: #effaf1; color: #328746; }
+    body.theme-light .cat-科技 { background: #fff6e8; color: #a36a22; }
+    body.theme-light .cat-網媒 { background: #f5edff; color: #7d4ab0; }
     .source     { font-size: .75rem; color: var(--accent); font-weight: 600; }
     .date       { font-size: .72rem; color: var(--muted); margin-left: auto; }
 
@@ -234,6 +262,9 @@
     .score-high  { background: #7c1f1f; color: #f87171; }
     .score-mid   { background: #4a3a00; color: #fbbf24; }
     .score-low   { background: #1e1e2e; color: var(--muted); }
+    body.theme-light .score-high { background: #fee2e2; color: #dc2626; }
+    body.theme-light .score-mid  { background: #fef3c7; color: #b45309; }
+    body.theme-light .score-low  { background: #f1f1ee; color: var(--muted); }
 
     .sentiment       { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .sent-positive   { background: #4ade80; }
@@ -246,6 +277,8 @@
       cursor: pointer; flex-shrink: 0;
     }
     .cluster-badge:hover { background: #2a4060; }
+    body.theme-light .cluster-badge { background: #edf6ff; color: #2f73a8; border-color: #cfe5f7; }
+    body.theme-light .cluster-badge:hover { background: #dceffc; }
 
     /* card title — colour by category, size by font level */
     .card-title          { font-weight: 500; line-height: 1.5; }
@@ -262,6 +295,8 @@
       font-size: .68rem; background: #1e1a30; color: #a78bfa;
       border: 1px solid #3b2f60; padding: 1px 7px; border-radius: 4px;
     }
+    body.theme-light .card-summary { color: #555; }
+    body.theme-light .tag-chip { background: #f5edff; color: #7d4ab0; border-color: #dfccf5; }
     .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
     /* ── font size levels ── */
@@ -299,6 +334,7 @@
       max-width: 560px; width: 100%; padding: 20px 22px;
       box-shadow: 0 12px 40px #000c;
     }
+    body.theme-light .health-modal { box-shadow: 0 12px 40px #0002; }
     .health-head {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 14px;
@@ -344,6 +380,7 @@
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
         <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
       </div>
+      <button class="theme-btn" id="theme-toggle" title="切換日夜模式" aria-label="切換日夜模式"></button>
       <span id="updated" class="updated"></span>
     </div>
   </header>

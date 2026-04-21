@@ -9,6 +9,47 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     // splitting on accidental whitespace can't happen.
     function catClass(c) { return _CAT_WL.has(c) ? "cat-" + c : ""; }
     setupFontSize();
+    setupThemeMode();
+
+    // ── Theme mode ────────────────────────────────────────────────
+    const THEME_KEY = "rss_theme";
+    function setupThemeMode() {
+      const btn = document.getElementById("theme-toggle");
+      if (!btn) return;
+
+      function preferredTheme() {
+        const saved = localStorage.getItem(THEME_KEY);
+        if (saved === "light" || saved === "dark") return saved;
+        return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      }
+
+      function icon(theme) {
+        if (theme === "light") {
+          return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M21 12.8A8.5 8.5 0 1111.2 3 6.5 6.5 0 0021 12.8z"/>
+          </svg>`;
+        }
+        return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>`;
+      }
+
+      function apply(theme) {
+        document.body.classList.toggle("theme-light", theme === "light");
+        document.body.classList.toggle("theme-dark", theme === "dark");
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#fafaf8" : "#0f0f13");
+        btn.innerHTML = icon(theme);
+        btn.dataset.theme = theme;
+      }
+
+      apply(preferredTheme());
+      btn.addEventListener("click", () => {
+        const next = btn.dataset.theme === "light" ? "dark" : "light";
+        localStorage.setItem(THEME_KEY, next);
+        apply(next);
+      });
+    }
 
     // ── Read tracking ─────────────────────────────────────────────
     const READ_KEY = "rss_read_ids";
