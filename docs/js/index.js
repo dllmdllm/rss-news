@@ -205,13 +205,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       }
       updEl.classList.remove("busy");
     }
-    // Click on the dot opens source-health modal; click on text checks for updates.
-    document.getElementById("updated").addEventListener("click", e => {
-      if (e.target.tagName === "SPAN" && e.target.title) {
-        openHealthModal();
-      } else {
-        checkUpdates();
-      }
+    // Click the update timestamp to inspect source health.
+    document.getElementById("updated").addEventListener("click", () => {
+      openHealthModal();
     });
 
     // ── Search ────────────────────────────────────────────────────

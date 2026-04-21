@@ -223,6 +223,14 @@ def test_index_summary_points_normalise_bullets():
     assert result.returncode == 0, result.stderr
 
 
+def test_index_update_timestamp_opens_source_health():
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    listener = source[source.index('document.getElementById("updated").addEventListener("click"'):]
+    listener = listener[:listener.index("// ── Search")]
+    assert "openHealthModal();" in listener
+    assert "checkUpdates();" not in listener
+
+
 def test_article_page_applies_saved_light_theme():
     node = _require_node()
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
