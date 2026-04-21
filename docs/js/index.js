@@ -492,7 +492,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           : "";
         const thumbUrl = safeUrl(a.thumbnail);
         const thumb = (a.thumbnail && thumbUrl !== "#")
-          ? `<img class="card-thumb" src="${esc(thumbUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
+          ? `<img class="card-thumb" src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>📰</div>'">`
           : `<div class="card-thumb-placeholder">📰</div>`;
 
         const score = (typeof a.score === "number") ? a.score : null;

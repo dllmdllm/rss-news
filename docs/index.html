@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#7c6af7">
+  <!-- Some image hosts (e.g. static.cnbetacdn.com) return 403 when the
+       Referer is an unrelated domain like github.io. Stripping it lets
+       card thumbnails load the same way article.html already does. -->
+  <meta name="referrer" content="no-referrer">
   <link rel="manifest" href="manifest.json">
   <title>新聞快訊</title>
   <style>
