@@ -36,6 +36,24 @@ _LAZY_ATTRS = [
 ]
 
 
+def _is_mingpao_url(url: str) -> bool:
+    return "mingpao.com" in (url or "").lower()
+
+
+def _is_mingpao_article(article: dict) -> bool:
+    return str(article.get("source", "")).startswith("明報") or _is_mingpao_url(article.get("url", ""))
+
+
+def _extra_headers_for_url(url: str) -> dict:
+    if not _is_mingpao_url(url):
+        return {}
+    return {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en;q=0.6",
+        "Referer": "https://news.mingpao.com/",
+    }
+
+
 def _expand_stheadline_galleries(html: str) -> str:
     """
     星島頭條 uses <gallery-N> custom elements populated at runtime by JS.
@@ -200,6 +218,26 @@ def content_quality(content: str, *, source: str, fallback: str) -> dict:
     }
 
 
+def _split_fallback_text(text: str) -> list[str]:
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if not text:
+        return []
+    if text.count("・") >= 2:
+        return ["・" + item.strip(" ・") for item in text.split("・") if item.strip(" ・")]
+
+    sentences = [s.strip() for s in re.split(r"(?<=[。！？；])\s*", text) if s.strip()]
+    return sentences or [text]
+
+
+def _format_rss_fallback_html(rss: str) -> str:
+    soup = BeautifulSoup(rss or "", "html.parser")
+    text = soup.get_text(" ", strip=True)
+    parts = _split_fallback_text(text)
+    if not parts:
+        return ""
+    return "".join(f"<p>{_html_escape(part)}</p>" for part in parts)
+
+
 def _rss_fallback_content(
     article: dict,
     *,
@@ -207,7 +245,7 @@ def _rss_fallback_content(
     allow_minimal: bool = False,
 ) -> str | None:
     """Build readable article content from RSS text and thumbnail."""
-    rss = article.get("rss_content") or ""
+    rss = _format_rss_fallback_html(article.get("rss_content") or "")
     thumb = article.get("thumbnail") or ""
     img_html = (
         f'<img src="{_html_escape(thumb, quote=True)}" '
@@ -238,13 +276,14 @@ def _rss_fallback_content(
     return content
 
 
-async def _urllib_fetch(url: str) -> str | None:
+async def _urllib_fetch(url: str, extra_headers: dict | None = None) -> str | None:
     """Fetch using urllib.request in thread pool — bypasses Cloudflare TLS fingerprinting."""
     try:
         import urllib.request
         loop = asyncio.get_running_loop()
         def _fetch():
-            req = urllib.request.Request(url, headers=HTTP_HEADERS)
+            headers = {**HTTP_HEADERS, **(extra_headers or {})}
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=_FALLBACK_TIMEOUT) as resp:
                 raw = resp.read()
                 charset = resp.headers.get_content_charset() or "utf-8"
@@ -255,14 +294,14 @@ async def _urllib_fetch(url: str) -> str | None:
         return None
 
 
-async def _cloudscraper_fetch(url: str) -> str | None:
+async def _cloudscraper_fetch(url: str, extra_headers: dict | None = None) -> str | None:
     """Bypass Cloudflare using cloudscraper (runs in thread pool)."""
     try:
         import cloudscraper
         loop = asyncio.get_running_loop()
         def _fetch():
             scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
-            r = scraper.get(url, timeout=_FALLBACK_TIMEOUT)
+            r = scraper.get(url, timeout=_FALLBACK_TIMEOUT, headers=extra_headers or None)
             return r.text
         return await loop.run_in_executor(None, _fetch)
     except Exception as exc:
@@ -282,7 +321,11 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
         return raw.decode(charset, errors="replace")
 
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT)) as resp:
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
+            headers=_extra_headers_for_url(url) or None,
+        ) as resp:
             return await _read(resp)
     except aiohttp.ClientSSLError as exc:
         print(f"[WARN] scrape TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
@@ -290,6 +333,7 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
             url,
             timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
             ssl=False,
+            headers=_extra_headers_for_url(url) or None,
         ) as resp:
             return await _read(resp)
 
@@ -306,15 +350,27 @@ async def _scrape_one(
         for attempt in range(2):
             try:
                 html = await _fetch_html(session, article["url"])
+                extra_headers = _extra_headers_for_url(article["url"])
+
+                if not html and _is_mingpao_article(article):
+                    print(f"[MINGPAO] empty/blocked response — trying urllib fallback")
+                    html = await _urllib_fetch(article["url"], extra_headers)
+                    if html and not _is_blocked(html):
+                        print(f"[MINGPAO] urllib succeeded")
+                    else:
+                        print(f"[MINGPAO] trying cloudscraper fallback")
+                        html = await _cloudscraper_fetch(article["url"], extra_headers)
+                        if html and not _is_blocked(html):
+                            print(f"[MINGPAO] cloudscraper succeeded")
 
                 if _is_blocked(html):
                     print(f"[BLOCK] {article['source']} — trying urllib fallback")
-                    html = await _urllib_fetch(article["url"])
+                    html = await _urllib_fetch(article["url"], extra_headers)
                     if html and not _is_blocked(html):
                         print(f"[UNBLOCK] {article['source']} — urllib succeeded")
                     else:
                         print(f"[BLOCK] {article['source']} — trying cloudscraper fallback")
-                        html = await _cloudscraper_fetch(article["url"])
+                        html = await _cloudscraper_fetch(article["url"], extra_headers)
                         if html and not _is_blocked(html):
                             print(f"[UNBLOCK] {article['source']} — cloudscraper succeeded")
                         else:

@@ -29,6 +29,24 @@ def test_rss_fallback_content_uses_rss_and_thumbnail():
     assert article["content_quality"]["images"] == 1
 
 
+def test_rss_fallback_content_splits_bullet_text_into_paragraphs():
+    article = _article(rss_content="・第一點・第二點・第三點")
+
+    content = scrape._rss_fallback_content(article, fallback="rss-empty")
+
+    assert content.count("<p>") == 3
+    assert "・第一點" in content
+
+
+def test_rss_fallback_content_splits_long_sentence_text_into_paragraphs():
+    article = _article(rss_content="第一句。第二句！第三句？")
+
+    content = scrape._rss_fallback_content(article, fallback="rss-empty")
+
+    assert content.count("<p>") == 3
+    assert "<p>第一句。</p>" in content
+
+
 def test_rss_fallback_content_returns_none_without_rss_or_thumbnail():
     article = _article(rss_content=None, thumbnail=None)
 
@@ -70,6 +88,33 @@ def test_scrape_one_falls_back_to_rss_when_extraction_is_empty(monkeypatch):
     assert out["content"]
     assert "RSS fallback text" in out["content"]
     assert out["content_quality"]["fallback"] == "rss-empty"
+
+
+def test_scrape_one_retries_mingpao_empty_response_with_urllib(monkeypatch):
+    async def fake_fetch_html(session, url):
+        return ""
+
+    async def fake_urllib_fetch(url, extra_headers=None):
+        return "<html><body><article><p>明報完整內文。</p></article></body></html>"
+
+    async def fake_cloudscraper_fetch(url, extra_headers=None):
+        raise AssertionError("cloudscraper should not run after urllib succeeds")
+
+    monkeypatch.setattr(scrape, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(scrape, "_urllib_fetch", fake_urllib_fetch)
+    monkeypatch.setattr(scrape, "_cloudscraper_fetch", fake_cloudscraper_fetch)
+    monkeypatch.setattr(
+        scrape.trafilatura,
+        "extract",
+        lambda *args, **kwargs: "<body><p>明報完整內文。</p></body>",
+    )
+    monkeypatch.setattr(scrape.trafilatura, "extract_metadata", lambda *args, **kwargs: None)
+
+    article = _article(source="明報 本地", url="https://news.mingpao.com/ins/test")
+    out = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
+
+    assert "明報完整內文" in out["content"]
+    assert out["content_quality"]["fallback"] == "none"
 
 
 def test_scrape_one_emits_minimal_content_when_no_rss(monkeypatch):
