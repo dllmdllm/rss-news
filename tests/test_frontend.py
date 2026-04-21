@@ -78,10 +78,40 @@ def test_index_tag_filters_are_scoped_per_category():
     assert result.returncode == 0, result.stderr
 
 
+def test_index_trending_topics_are_scoped_per_category():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "trendingTopicsForCategory")
+    js = fn + """
+    const topics = [
+      { topic: "特朗普", article_ids: ["n1", "i1"], count: 2 },
+      { topic: "晶片", article_ids: ["t1", "t2"], count: 2 },
+    ];
+    const articles = [
+      { id: "n1", category: "新聞" },
+      { id: "i1", category: "國際" },
+      { id: "t1", category: "科技" },
+      { id: "t2", category: "科技" },
+    ];
+    const news = trendingTopicsForCategory(topics, articles, "新聞").map(t => t.topic);
+    const tech = trendingTopicsForCategory(topics, articles, "科技").map(t => t.topic);
+    if (JSON.stringify(news) !== JSON.stringify(["特朗普"])) throw new Error("bad news topics: " + JSON.stringify(news));
+    if (JSON.stringify(tech) !== JSON.stringify(["晶片"])) throw new Error("bad tech topics: " + JSON.stringify(tech));
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     assert 'data-sort="ai"' in html
     assert ">AI</button>" in html
+    assert 'id="trending-topics"' in html
 
 
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():

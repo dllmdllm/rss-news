@@ -29,6 +29,8 @@ DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
 CONTENT_DIR = DATA_DIR / "content"
 CONTENT_SCHEMA_VERSION = 1
+TRENDING_WINDOW_HOURS = 4
+TRENDING_LIMIT = 10
 
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
@@ -61,6 +63,70 @@ def cluster_articles(articles: list) -> list:
     return articles
 
 
+def _parse_article_datetime(value: str):
+    try:
+        dt = datetime.fromisoformat(value)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def build_trending_topics(
+    articles: list,
+    *,
+    now: datetime | None = None,
+    hours: int = TRENDING_WINDOW_HOURS,
+    limit: int = TRENDING_LIMIT,
+) -> list:
+    """Return hot AI topics with at least two recent articles."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
+    groups: dict[str, list[dict]] = defaultdict(list)
+
+    for article in articles:
+        topic = (article.get("topic") or "").strip()
+        if not topic:
+            continue
+        dt = _parse_article_datetime(article.get("date", ""))
+        if not dt or dt < cutoff:
+            continue
+        groups[topic].append(article)
+
+    trending = []
+    for topic, rows in groups.items():
+        if len(rows) < 2:
+            continue
+
+        sources = sorted({row.get("source", "") for row in rows if row.get("source")})
+        scores = [row.get("score") for row in rows if isinstance(row.get("score"), int)]
+        dates = [
+            dt for dt in (_parse_article_datetime(row.get("date", "")) for row in rows)
+            if dt
+        ]
+        latest_dt = max(dates) if dates else None
+        avg_score = round(sum(scores) / len(scores), 1) if scores else 5.0
+        age_hours = ((now - latest_dt).total_seconds() / 3600) if latest_dt else hours
+        recency = max(0.0, hours - min(max(age_hours, 0), hours))
+        heat = round(len(rows) * 8 + len(sources) * 5 + avg_score * 3 + recency * 2, 2)
+        sorted_rows = sorted(rows, key=lambda row: row.get("date", ""), reverse=True)
+
+        trending.append({
+            "topic": topic,
+            "count": len(rows),
+            "sources": sources[:5],
+            "source_count": len(sources),
+            "avg_score": avg_score,
+            "latest_date": latest_dt.isoformat() if latest_dt else "",
+            "article_ids": [row["id"] for row in sorted_rows],
+            "heat": heat,
+        })
+
+    trending.sort(key=lambda item: (item["heat"], item["count"], item["latest_date"]), reverse=True)
+    return trending[:limit]
+
+
 def save_json(articles: list, source_stats: dict):
     """Write three artefacts:
       - data/articles.json          metadata only (index page)
@@ -79,6 +145,7 @@ def save_json(articles: list, source_stats: dict):
     payload = {
         "updated":  datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
         "sources":  source_stats,
+        "trending_topics": build_trending_topics(articles),
         "articles": meta,
     }
     # Atomic write: tmp + rename so a crash mid-write cannot leave the

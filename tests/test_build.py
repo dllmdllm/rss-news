@@ -1,6 +1,6 @@
 import json
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import build
 
@@ -16,6 +16,52 @@ def _article(article_id: str, content=None):
         "summary": "summary",
         "content": content,
     }
+
+
+def _topic_article(article_id: str, topic: str, now: datetime, hours_ago: int, source: str = "Test source"):
+    article = _article(article_id, content="<p>full text</p>")
+    article.update({
+        "date": (now - timedelta(hours=hours_ago)).isoformat(),
+        "source": source,
+        "topic": topic,
+        "score": 8,
+    })
+    return article
+
+
+def test_build_trending_topics_groups_recent_articles_only():
+    now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
+    articles = [
+        _topic_article("t1", "特朗普關稅", now, 1, source="A"),
+        _topic_article("t2", "特朗普關稅", now, 2, source="B"),
+        _topic_article("old", "特朗普關稅", now, 5, source="C"),
+        _topic_article("solo", "單篇新聞", now, 1, source="D"),
+    ]
+
+    topics = build.build_trending_topics(articles, now=now, hours=4, limit=10)
+
+    assert len(topics) == 1
+    assert topics[0]["topic"] == "特朗普關稅"
+    assert topics[0]["count"] == 2
+    assert topics[0]["source_count"] == 2
+    assert topics[0]["article_ids"] == ["t1", "t2"]
+
+
+def test_save_json_writes_trending_topics(tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    build.save_json([
+        _topic_article("t1", "公共交通事故", now, 1, source="A"),
+        _topic_article("t2", "公共交通事故", now, 2, source="B"),
+    ], {})
+
+    payload = json.loads((data_dir / "articles.json").read_text(encoding="utf-8"))
+    assert payload["trending_topics"][0]["topic"] == "公共交通事故"
 
 
 def test_save_json_reuses_existing_content_when_current_scrape_has_none(tmp_path, monkeypatch):

@@ -134,6 +134,28 @@
     .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
     .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
 
+    /* trending topics */
+    .trending-topics {
+      padding: 7px 24px; display: flex; flex-wrap: wrap; gap: 6px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+    }
+    .trending-topics:empty { display: none; }
+    .trending-topic-btn {
+      background: #171723; border: 1px solid #34344a; color: var(--text);
+      padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: .78rem;
+      display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .trending-topic-btn:hover {
+      border-color: #fbbf24; color: #fbbf24;
+    }
+    .trending-topic-btn.active {
+      background: #3a2b10; border-color: #fbbf24; color: #fbbf24;
+    }
+    .trending-topic-meta {
+      color: var(--muted); font-size: .72rem; white-space: nowrap;
+    }
+
     /* ── new-articles toast ── */
     .news-toast {
       position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
@@ -330,6 +352,7 @@
     <input class="search-input" id="search" type="search" placeholder="搜尋標題、來源、標籤…" autocomplete="off">
   </div>
 
+  <div class="trending-topics" id="trending-topics"></div>
   <div class="filters"        id="filters"></div>
   <div class="source-filters" id="source-filters"></div>
   <div class="tag-filters"    id="tag-filters"></div>
