@@ -42,6 +42,12 @@ RSS_FEEDS = [
     {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒"},
     {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒"},
     {"name": "The Witness",       "url": "https://thewitnesshk.com/feed/",                                        "category": "網媒"},
+    # HK01 — no RSS; uses public JSON feed API (web-data.api.hk01.com)
+    {"name": "HK01 突發",          "url": "https://web-data.api.hk01.com/v2/feed/category/6",                      "category": "新聞", "fetcher": "hk01"},
+    {"name": "HK01 社會",          "url": "https://web-data.api.hk01.com/v2/feed/category/2",                      "category": "新聞", "fetcher": "hk01"},
+    {"name": "HK01 國際",          "url": "https://web-data.api.hk01.com/v2/feed/category/19",                     "category": "國際", "fetcher": "hk01"},
+    {"name": "HK01 中國",          "url": "https://web-data.api.hk01.com/v2/feed/zone/5",                          "category": "國際", "fetcher": "hk01"},
+    {"name": "HK01 娛樂",          "url": "https://web-data.api.hk01.com/v2/feed/zone/2",                          "category": "娛樂", "fetcher": "hk01"},
 ]
 
 MAX_ITEMS_PER_FEED = 20

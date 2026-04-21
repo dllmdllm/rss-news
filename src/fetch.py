@@ -175,6 +175,73 @@ async def _read_feed_with_tls_fallback(
         return await _read_feed(session, url, cond_headers, ssl=False)
 
 
+async def _fetch_hk01(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """HK01 has no RSS. Hit the same JSON endpoint the site itself uses
+    (`/v2/feed/{category|zone}/{id}`) and adapt the payload to our article
+    shape. The API ignores conditional-request headers, so not_modified
+    is always False here."""
+    articles: list = []
+    url = feed_info["url"]
+    try:
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={"Accept": "application/json"},
+        ) as resp:
+            if resp.status >= 400:
+                return articles, f"HTTP {resp.status}", False
+            data = await resp.json(content_type=None)
+    except Exception as exc:
+        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+        return articles, repr(exc), False
+
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    for item in (data.get("items") or [])[:max_items]:
+        if item.get("type") != 1:
+            continue  # skip sponsored cards / videos
+        d = item.get("data") or {}
+        article_url = _clean_url(d.get("publishUrl") or "")
+        if not article_url:
+            continue
+        ts = d.get("publishTime")
+        if not ts:
+            continue
+        try:
+            date = datetime.fromtimestamp(int(ts), timezone.utc)
+        except Exception:
+            continue
+        if date < cutoff:
+            continue
+
+        thumbnail = (d.get("mainImage") or {}).get("cdnUrl") \
+            or (d.get("originalImage") or {}).get("cdnUrl") \
+            or None
+        description = (d.get("description") or "").strip() or None
+
+        category = feed_info["category"]
+        for pattern, cat in (feed_info.get("url_category") or {}).items():
+            if pattern in article_url:
+                category = cat
+                break
+
+        articles.append({
+            "id":          _make_id(article_url),
+            "title":       d.get("title", "(no title)"),
+            "url":         article_url,
+            "date":        date.isoformat(),
+            "source":      feed_info["name"],
+            "category":    category,
+            "content":     None,
+            "thumbnail":   thumbnail,
+            "rss_content": description,
+        })
+    return articles, None, False
+
+
 async def _fetch_one(
     session:    aiohttp.ClientSession,
     feed_info:  dict,
@@ -184,6 +251,8 @@ async def _fetch_one(
     """Return (articles, error_message, not_modified).
     not_modified=True means the upstream returned HTTP 304 and we should
     reuse previously-built articles for this source."""
+    if feed_info.get("fetcher") == "hk01":
+        return await _fetch_hk01(session, feed_info, cutoff)
     articles = []
     url = feed_info["url"]
     prev = http_cache.get(url) or {}

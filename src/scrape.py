@@ -44,6 +44,84 @@ def _is_mingpao_article(article: dict) -> bool:
     return str(article.get("source", "")).startswith("明報") or _is_mingpao_url(article.get("url", ""))
 
 
+def _is_hk01_url(url: str) -> bool:
+    return "hk01.com" in (url or "").lower()
+
+
+def _hk01_tokens_to_text(tokens: list) -> str:
+    """Flatten HK01 htmlTokens paragraphs into plain text.
+    Only 'text' tokens observed in practice; unknown types fall back to content."""
+    if not tokens:
+        return ""
+    return "".join(t.get("content", "") for t in tokens if isinstance(t, dict))
+
+
+def _build_hk01_content(html: str) -> str | None:
+    """Render HK01 article content from its embedded __NEXT_DATA__ JSON so image
+    order is preserved. HK01 is a Next.js app that ships an empty article body
+    and hydrates client-side, so trafilatura sees only a handful of paragraphs
+    pre-rendered for SEO and none of the inline images. Return assembled HTML
+    fragment or None if the page shape is unexpected."""
+    m = re.search(
+        r'<script id="__NEXT_DATA__"[^>]*>(.+?)</script>',
+        html,
+        re.DOTALL,
+    )
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except Exception:
+        return None
+
+    article = (
+        data.get("props", {})
+        .get("initialProps", {})
+        .get("pageProps", {})
+        .get("article")
+    ) or {}
+    blocks = article.get("blocks") or []
+    if not blocks:
+        return None
+
+    parts: list[str] = []
+    def _emit_image(img: dict):
+        url = (img or {}).get("cdnUrl")
+        if not url:
+            return
+        caption = (img or {}).get("caption") or ""
+        safe_url = _html_escape(url, quote=True)
+        if caption:
+            parts.append(
+                f'<figure><img src="{safe_url}" alt="{_html_escape(caption)}">'
+                f'<figcaption>{_html_escape(caption)}</figcaption></figure>'
+            )
+        else:
+            parts.append(f'<img src="{safe_url}">')
+
+    for block in blocks:
+        btype = block.get("blockType")
+        if btype == "summary":
+            for para in block.get("summary") or []:
+                text = (para or "").strip()
+                if text:
+                    parts.append(f"<p>{_html_escape(text)}</p>")
+        elif btype == "image":
+            _emit_image(block.get("image") or {})
+        elif btype == "gallery":
+            for img in block.get("images") or []:
+                _emit_image(img)
+        elif btype == "text":
+            for para in block.get("htmlTokens") or []:
+                text = _hk01_tokens_to_text(para).strip()
+                if text:
+                    parts.append(f"<p>{_html_escape(text)}</p>")
+        # related / code / video / ads → skipped on purpose
+    if not parts:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
+
+
 def _extra_headers_for_url(url: str) -> dict:
     if not _is_mingpao_url(url):
         return {}
@@ -383,20 +461,30 @@ async def _scrape_one(
                 html = _fix_picture_elements(html)
                 html = _fix_lazy_images(html)
 
-                # trafilatura.extract is CPU-bound; run in executor so the
-                # event loop can continue overlapping other HTTP fetches.
                 loop = asyncio.get_running_loop()
-                content = await loop.run_in_executor(
-                    None,
-                    lambda: trafilatura.extract(
-                        html,
-                        output_format="html",
-                        include_images=True,
-                        include_links=False,
-                        favor_precision=True,
-                        no_fallback=False,
-                    ),
-                )
+                # HK01 ships an empty article body and hydrates from
+                # __NEXT_DATA__, so trafilatura never sees the inline
+                # images. Build content from the JSON blocks instead to
+                # preserve the original image/text order; fall back to
+                # trafilatura if the page shape is unexpected.
+                content = None
+                if _is_hk01_url(article["url"]):
+                    content = _build_hk01_content(html)
+
+                if content is None:
+                    # trafilatura.extract is CPU-bound; run in executor so the
+                    # event loop can continue overlapping other HTTP fetches.
+                    content = await loop.run_in_executor(
+                        None,
+                        lambda: trafilatura.extract(
+                            html,
+                            output_format="html",
+                            include_images=True,
+                            include_links=False,
+                            favor_precision=True,
+                            no_fallback=False,
+                        ),
+                    )
 
                 if content:
                     content = _fix_graphic_tags(content)
