@@ -107,6 +107,19 @@ def _save_feed_http_cache(cache: dict):
 
 
 def _parse_date(entry) -> datetime:
+    # Prefer feedparser's already-normalised struct_time — it handles both
+    # RFC 2822 (<pubDate>) and ISO 8601 (<updated> in Atom / HKEPC) feeds.
+    # parsedate_to_datetime only understands RFC 2822, so feeds like HKEPC
+    # that ship ISO dates used to fall through to datetime.min and get
+    # filtered out by the cutoff.
+    import calendar
+    for attr in ("published_parsed", "updated_parsed"):
+        val = getattr(entry, attr, None)
+        if val:
+            try:
+                return datetime.fromtimestamp(calendar.timegm(val), tz=timezone.utc)
+            except Exception:
+                pass
     for attr in ("published", "updated"):
         val = getattr(entry, attr, None)
         if val:
