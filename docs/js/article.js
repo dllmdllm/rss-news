@@ -44,12 +44,13 @@
     applySavedTheme();
     setupFontSize();
     const READ_KEY = "rss_read_ids";
+    let currentSourceUrl = "";
 
     // ── Share ─────────────────────────────────────────────────────
     document.getElementById("share-btn").addEventListener("click", async () => {
       const btn   = document.getElementById("share-btn");
       const title = document.getElementById("art-title").textContent;
-      const url   = location.href;
+      const url   = currentSourceUrl || location.href;
       try {
         if (navigator.share) {
           await navigator.share({ title, url });
@@ -118,6 +119,7 @@
 
         const cat = _CAT_WL.has(art.category) ? art.category : "";
         const srcUrl = safeUrl(art.url);
+        currentSourceUrl = srcUrl !== "#" ? srcUrl : "";
         document.getElementById("art-meta").innerHTML =
           `<span class="art-cat cat-${esc(cat)}">${esc(cat)}</span>
            <a class="art-source" href="${esc(srcUrl)}" target="_blank" rel="noopener">${esc(art.source)}</a>

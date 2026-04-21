@@ -261,6 +261,13 @@ def test_article_page_applies_saved_light_theme():
     assert result.returncode == 0, result.stderr
 
 
+def test_article_share_uses_original_source_url():
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert "let currentSourceUrl" in source
+    assert "const url   = currentSourceUrl || location.href;" in source
+    assert 'currentSourceUrl = srcUrl !== "#" ? srcUrl : "";' in source
+
+
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
