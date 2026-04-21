@@ -74,7 +74,7 @@
     .share-btn.copied { border-color: #4ade80; color: #4ade80; }
 
     /* article layout */
-    main { max-width: 780px; margin: 0 auto; padding: 32px 24px 80px; }
+    main { max-width: 780px; margin: 0 auto; padding: 28px 24px 80px; }
 
     .art-meta {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -156,15 +156,27 @@
     }
 
     /* ── font size levels ── */
-    body.fs-0 h1#art-title { font-size: 1.3rem; }
+    body.fs-0 h1#art-title { font-size: 1.15rem; }
     body.fs-0 .content     { font-size: .85rem; }
     body.fs-0 .summary-box { font-size: .78rem; }
-    body.fs-1 h1#art-title { font-size: 1.6rem; }   /* default */
+    body.fs-1 h1#art-title { font-size: 1.35rem; }   /* default */
     body.fs-1 .content     { font-size: 1rem; }
     body.fs-1 .summary-box { font-size: .88rem; }
-    body.fs-2 h1#art-title { font-size: 2rem; }
+    body.fs-2 h1#art-title { font-size: 1.55rem; }
     body.fs-2 .content     { font-size: 1.25rem; }
     body.fs-2 .summary-box { font-size: 1.05rem; }
+
+    @media (max-width: 640px) {
+      .topbar { padding: 10px 14px; gap: 8px; }
+      .topbar-right { gap: 6px; }
+      .topbar-source { display: none; }
+      main { padding: 22px 16px 64px; }
+      h1#art-title { line-height: 1.45; margin-bottom: 18px; }
+      body.fs-0 h1#art-title { font-size: 1.05rem; }
+      body.fs-1 h1#art-title { font-size: 1.2rem; }
+      body.fs-2 h1#art-title { font-size: 1.38rem; }
+      .content img { margin: .75em 0; }
+    }
   </style>
 </head>
 <body>
