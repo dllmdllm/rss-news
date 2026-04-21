@@ -202,7 +202,12 @@ def content_quality(content: str, *, source: str, fallback: str) -> dict:
     }
 
 
-def _rss_fallback_content(article: dict, *, fallback: str) -> str | None:
+def _rss_fallback_content(
+    article: dict,
+    *,
+    fallback: str,
+    allow_minimal: bool = False,
+) -> str | None:
     """Build readable article content from RSS text and thumbnail."""
     rss = article.get("rss_content") or ""
     thumb = article.get("thumbnail") or ""
@@ -212,7 +217,16 @@ def _rss_fallback_content(article: dict, *, fallback: str) -> str | None:
         if thumb else ""
     )
     if not (rss or img_html):
-        return None
+        if not allow_minimal:
+            return None
+        title = _html_escape(article.get("title") or "未能擷取全文")
+        url = _html_escape(article.get("url") or "#", quote=True)
+        rss = (
+            f"<p><strong>{title}</strong></p>"
+            "<p>暫時未能從來源擷取全文或 RSS 摘要。</p>"
+            f'<p><a href="{url}" target="_blank" rel="noopener">閱讀原文</a></p>'
+        )
+        fallback = "minimal"
 
     content = img_html + rss
     if article["source"] in SIMPLIFIED_SOURCES:
@@ -376,7 +390,7 @@ async def _scrape_one(
                             print(f"[UNBLOCK] {article['source']} — cloudscraper succeeded")
                         else:
                             print(f"[BLOCK] {article['source']} — falling back to RSS content")
-                            _rss_fallback_content(article, fallback="rss-blocked")
+                            _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
                             return article
 
                 html = _expand_stheadline_galleries(html)
@@ -414,7 +428,7 @@ async def _scrape_one(
                         fallback="none",
                     )
                 else:
-                    if _rss_fallback_content(article, fallback="rss-empty"):
+                    if _rss_fallback_content(article, fallback="rss-empty", allow_minimal=True):
                         print(f"[FALLBACK] {article['source']} — trafilatura returned no content; used RSS")
 
                 # Extract og:image thumbnail if not already set from RSS

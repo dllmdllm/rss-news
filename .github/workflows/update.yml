@@ -44,6 +44,9 @@ jobs:
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
 
+      - name: Run tests
+        run: python -m pytest tests -q
+
       - name: Commit & push if changed
         # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
         # picks up WSL bash first from PATH, which can't handle Windows
