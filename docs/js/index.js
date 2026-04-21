@@ -151,9 +151,28 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       } else {
         const sourceRank = s => s.error ? 0 : (s.count === 0 && !s.not_modified) ? 1 : s.not_modified ? 2 : 3;
         entries.sort(([, a], [, b]) => sourceRank(a) - sourceRank(b));
-        body.innerHTML = entries.map(([name, s]) => {
+        const legend = `<div class="health-legend">
+          <span class="health-legend-item"><span class="health-dot health-ok"></span>新抓取</span>
+          <span class="health-legend-item"><span class="health-dot health-cache"></span>沿用 cache（HTTP 304）</span>
+          <span class="health-legend-item"><span class="health-dot health-warn"></span>空 · 無 cache</span>
+          <span class="health-legend-item"><span class="health-dot health-bad"></span>抓取失敗</span>
+        </div>`;
+        body.innerHTML = legend + entries.map(([name, s]) => {
           const effectiveCount = Number(s.effective_count ?? s.count) || 0;
-          const cls = s.error ? "health-bad" : (effectiveCount === 0 && !s.not_modified) ? "health-warn" : "health-ok";
+          let cls, tip;
+          if (s.error) {
+            cls = "health-bad";
+            tip = "抓取失敗";
+          } else if (effectiveCount === 0 && !s.not_modified) {
+            cls = "health-warn";
+            tip = "今次抓唔到，亦冇 cache 可用";
+          } else if (s.not_modified) {
+            cls = "health-cache";
+            tip = "來源回 HTTP 304（feed 未變），沿用上次文章";
+          } else {
+            cls = "health-ok";
+            tip = "今次有新抓取內容";
+          }
           let meta;
           if (s.error) {
             meta = `<span class="health-err">${esc(String(s.error).slice(0, 60))}</span>`;
@@ -163,7 +182,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             meta = `<span class="health-meta">${effectiveCount} 篇${s.restored ? ` · 沿用 ${Number(s.restored) || 0}` : ""}</span>`;
           }
           return `<div class="health-row">
-            <span class="health-dot ${cls}"></span>
+            <span class="health-dot ${cls}" title="${esc(tip)}"></span>
             <span class="health-name">${esc(name)}</span>
             <span class="health-cat">${esc(s.category || "")}</span>
             ${meta}
