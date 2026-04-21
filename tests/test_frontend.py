@@ -223,6 +223,44 @@ def test_index_summary_points_normalise_bullets():
     assert result.returncode == 0, result.stderr
 
 
+def test_article_page_applies_saved_light_theme():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "applySavedTheme")
+    js = fn + """
+    const classes = new Set();
+    const document = {
+      body: {
+        classList: {
+          toggle(name, on) {
+            if (on) classes.add(name);
+            else classes.delete(name);
+          },
+        },
+      },
+      querySelector() {
+        return { setAttribute(name, value) { this[name] = value; globalThis.themeColor = value; } };
+      },
+    };
+    const localStorage = { getItem: key => key === "rss_theme" ? "light" : null };
+    const window = { matchMedia: () => ({ matches: false }) };
+    applySavedTheme();
+    if (!classes.has("theme-light") || classes.has("theme-dark")) {
+      throw new Error("saved light theme was not applied");
+    }
+    if (globalThis.themeColor !== "#fafaf8") {
+      throw new Error("theme color not updated: " + globalThis.themeColor);
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")

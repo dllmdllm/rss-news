@@ -25,6 +25,23 @@
       });
       return doc.body.innerHTML;
     }
+
+    function applySavedTheme() {
+      let theme = "dark";
+      try {
+        const saved = localStorage.getItem("rss_theme");
+        if (saved === "light" || saved === "dark") {
+          theme = saved;
+        } else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) {
+          theme = "light";
+        }
+      } catch (_) {}
+      document.body.classList.toggle("theme-light", theme === "light");
+      document.body.classList.toggle("theme-dark", theme === "dark");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#fafaf8" : "#0f0f13");
+    }
+
+    applySavedTheme();
     setupFontSize();
     const READ_KEY = "rss_read_ids";
 
