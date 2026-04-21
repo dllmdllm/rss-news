@@ -36,12 +36,22 @@ TRENDING_LIMIT = 10
 # the metadata payload. Full content lives at data/content/{id}.json.
 _CONTENT_FIELDS = ("content", "rss_content")
 
+TOPIC_ALIASES = [
+    (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
+    (("宏福苑", "宏新閣", "火警聽證", "居民上樓"), "宏福苑跟進"),
+    (("高市早苗", "靖國", "日本首相"), "日本政局"),
+    (("蘋果", "庫克", "特努斯", "Ternus", "Apple"), "蘋果CEO交接"),
+    (("機械人", "機器人", "人形機械", "半馬"), "機械人發展"),
+    (("港股", "恆指", "新股", "IPO"), "港股市場"),
+    (("天氣", "天文台", "雷暴", "驟雨"), "香港天氣"),
+]
+
 
 def cluster_articles(articles: list) -> list:
     """Group articles sharing the same AI-assigned topic into clusters."""
     topic_groups: dict[str, list[str]] = defaultdict(list)
     for a in articles:
-        topic = (a.get("topic") or "").strip()
+        topic = normalise_topic(a)
         if topic:
             topic_groups[topic].append(a["id"])
 
@@ -61,6 +71,19 @@ def cluster_articles(articles: list) -> list:
     clusters_found = len({v[0] for v in id_to_cluster.values()})
     print(f"[cluster] {clusters_found} topic clusters found")
     return articles
+
+
+def normalise_topic(article: dict) -> str:
+    raw = (article.get("topic") or "").strip()
+    haystack = " ".join(
+        str(article.get(field, ""))
+        for field in ("topic", "title", "summary")
+        if article.get(field)
+    )
+    for keywords, canonical in TOPIC_ALIASES:
+        if any(keyword in haystack for keyword in keywords):
+            return canonical
+    return raw
 
 
 def _parse_article_datetime(value: str):
@@ -86,7 +109,7 @@ def build_trending_topics(
     groups: dict[str, list[dict]] = defaultdict(list)
 
     for article in articles:
-        topic = (article.get("topic") or "").strip()
+        topic = normalise_topic(article)
         if not topic:
             continue
         dt = _parse_article_datetime(article.get("date", ""))

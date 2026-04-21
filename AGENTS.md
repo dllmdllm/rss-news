@@ -53,7 +53,7 @@ RSS Feed
 | 全文解析 | `trafilatura` | 2.0.0 | 自動識別正文、保留圖片順序、抗噪聲強 |
 | HTML 解析 | `beautifulsoup4` | 4.14.3 | 自定義元素展開（星島 gallery）、圖片修復 |
 | 繁簡轉換 | `zhconv` | 1.4.3 | 簡體 → 香港繁體 |
-| 翻譯 | `deep-translator` | 1.11.4 | 英文來源自動翻譯 |
+| 標題翻譯 | MiniMax M2.7 | — | 英文 RSS 標題批量翻譯；全文保留原文以提升速度與穩定性 |
 | 反爬蟲繞過 | `cloudscraper` | 1.2.71 | 繞過 Cloudflare 驗證 |
 | 環境變數 | `python-dotenv` | 1.2.2 | 讀取 .env（API Key）|
 | 數據格式 | JSON | — | 輕量，方便前端 search / AI 擴展 |

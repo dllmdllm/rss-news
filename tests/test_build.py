@@ -47,6 +47,19 @@ def test_build_trending_topics_groups_recent_articles_only():
     assert topics[0]["article_ids"] == ["t1", "t2"]
 
 
+def test_topic_normalisation_groups_related_wording():
+    now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
+    articles = [
+        _topic_article("t1", "特朗普伊朗政策", now, 1, source="A"),
+        _topic_article("t2", "霍爾木茲海峽危機", now, 2, source="B"),
+    ]
+
+    topics = build.build_trending_topics(articles, now=now, hours=4, limit=10)
+
+    assert topics[0]["topic"] == "伊朗局勢"
+    assert topics[0]["count"] == 2
+
+
 def test_save_json_writes_trending_topics(tmp_path, monkeypatch):
     now = datetime.now(timezone.utc)
     data_dir = tmp_path / "data"

@@ -20,10 +20,71 @@ from src.feeds import (
 )
 
 ARTICLE_MAX_AGE_HOURS = 48
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 
 # Conditional-request cache: maps feed URL → {"etag": ..., "last_modified": ...}
 # Saves bandwidth when the upstream feed has not changed (HTTP 304 path).
 _FEED_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "feed_http_cache.json"
+
+
+def _parse_title_translations(raw: str, expected: int) -> list[str] | None:
+    text = re.sub(r"^\s*```(?:json)?\s*", "", raw.strip())
+    text = re.sub(r"\s*```\s*$", "", text)
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(0))
+    except Exception:
+        return None
+    if not isinstance(data, list) or len(data) != expected:
+        return None
+    return [zhconv.convert(str(item).strip(), "zh-hk") for item in data]
+
+
+async def _translate_titles_minimax(
+    session: aiohttp.ClientSession,
+    titles: list[str],
+) -> list[str]:
+    if not titles or not MINIMAX_API_KEY:
+        return titles
+
+    numbered = "\n".join(f"{i + 1}. {title}" for i, title in enumerate(titles))
+    user_text = (
+        "Translate the following news titles into Hong Kong Traditional Chinese.\n"
+        "Return only a JSON array of strings, same order and same length. "
+        "Do not add explanations.\n\n"
+        f"{numbered}"
+    )
+    try:
+        async with session.post(
+            "https://api.minimax.io/anthropic/v1/messages",
+            headers={
+                "x-api-key": MINIMAX_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MINIMAX_MODEL,
+                "max_tokens": max(300, len(titles) * 80),
+                "system": "You are a concise news title translator. Output valid JSON only.",
+                "messages": [{"role": "user", "content": user_text}],
+            },
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            data = await resp.json(content_type=None)
+    except Exception as exc:
+        print(f"[WARN] MiniMax title translation failed: {exc!r}")
+        return titles
+
+    if data.get("error"):
+        print(f"[WARN] MiniMax title translation error: {data.get('error')!r}")
+        return titles
+    blocks = data.get("content") or []
+    raw = next((b.get("text", "").strip() for b in blocks if b.get("type") == "text"), "")
+    translated = _parse_title_translations(raw, len(titles)) if raw else None
+    return translated or titles
 
 
 def _load_feed_http_cache() -> dict:
@@ -158,6 +219,7 @@ async def _fetch_one(
         # actually picks up entertainment/leisure items, which tend to sit
         # below the top-20 breaking-news slice.
         max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+        pending_title_translations: list[dict] = []
         for entry in feed.entries[:max_items]:
             article_url = _clean_url(entry.get("link", ""))
             if not article_url:
@@ -180,17 +242,6 @@ async def _fetch_one(
             title = entry.get("title", "(no title)")
             if feed_info["name"] in SIMPLIFIED_SOURCES:
                 title = zhconv.convert(title, "zh-hk")
-            elif feed_info["name"] in ENGLISH_SOURCES:
-                try:
-                    from deep_translator import GoogleTranslator
-                    loop = asyncio.get_running_loop()
-                    translated = await loop.run_in_executor(
-                        None,
-                        lambda t=title: GoogleTranslator(source="auto", target="zh-TW").translate(t),
-                    )
-                    title = zhconv.convert(translated or title, "zh-hk")
-                except Exception:
-                    pass
 
             # Allow per-feed URL-based category override
             category = feed_info["category"]
@@ -199,7 +250,7 @@ async def _fetch_one(
                     category = cat
                     break
 
-            articles.append({
+            article = {
                 "id":          _make_id(article_url),
                 "title":       title,
                 "url":         article_url,
@@ -209,7 +260,15 @@ async def _fetch_one(
                 "content":     None,
                 "thumbnail":   thumbnail,
                 "rss_content": rss_content,
-            })
+            }
+            articles.append(article)
+            if feed_info["name"] in ENGLISH_SOURCES:
+                pending_title_translations.append(article)
+        if pending_title_translations:
+            titles = [article["title"] for article in pending_title_translations]
+            translated = await _translate_titles_minimax(session, titles)
+            for article, title in zip(pending_title_translations, translated):
+                article["title"] = title
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return articles, repr(exc), False

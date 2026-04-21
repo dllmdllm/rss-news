@@ -50,5 +50,6 @@ SCRAPE_CONCURRENCY = 15
 # Sources that publish in Simplified Chinese — will be auto-converted to HK Traditional
 SIMPLIFIED_SOURCES = {"cnBeta"}
 
-# Sources that publish in English — will be auto-translated to HK Traditional Chinese
+# Sources that publish English titles/content. Titles are translated with MiniMax;
+# article bodies remain in the original language for speed and reliability.
 ENGLISH_SOURCES = {"9to5Mac", "The Collective HK"}
