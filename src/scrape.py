@@ -202,6 +202,30 @@ def content_quality(content: str, *, source: str, fallback: str) -> dict:
     }
 
 
+def _rss_fallback_content(article: dict, *, fallback: str) -> str | None:
+    """Build readable article content from RSS text and thumbnail."""
+    rss = article.get("rss_content") or ""
+    thumb = article.get("thumbnail") or ""
+    img_html = (
+        f'<img src="{_html_escape(thumb, quote=True)}" '
+        'style="max-width:100%;border-radius:6px;margin-bottom:1em">'
+        if thumb else ""
+    )
+    if not (rss or img_html):
+        return None
+
+    content = img_html + rss
+    if article["source"] in SIMPLIFIED_SOURCES:
+        content = _to_hk_traditional(content)
+    article["content"] = content
+    article["content_quality"] = content_quality(
+        content,
+        source=article["source"],
+        fallback=fallback,
+    )
+    return content
+
+
 _TRANSLATE_SEP = "\n@@@@@\n"   # unlikely to appear in article text
 _TRANSLATE_CHUNK_CHARS = 4000  # Google Translate caps near 5000 chars/request
 
@@ -352,19 +376,7 @@ async def _scrape_one(
                             print(f"[UNBLOCK] {article['source']} — cloudscraper succeeded")
                         else:
                             print(f"[BLOCK] {article['source']} — falling back to RSS content")
-                            rss = article.get("rss_content") or ""
-                            thumb = article.get("thumbnail") or ""
-                            img_html = f'<img src="{_html_escape(thumb, quote=True)}" style="max-width:100%;border-radius:6px;margin-bottom:1em">' if thumb else ""
-                            if rss or img_html:
-                                content = img_html + rss
-                                if article["source"] in SIMPLIFIED_SOURCES:
-                                    content = _to_hk_traditional(content)
-                                article["content"] = content
-                                article["content_quality"] = content_quality(
-                                    content,
-                                    source=article["source"],
-                                    fallback="rss",
-                                )
+                            _rss_fallback_content(article, fallback="rss-blocked")
                             return article
 
                 html = _expand_stheadline_galleries(html)
@@ -401,6 +413,9 @@ async def _scrape_one(
                         source=article["source"],
                         fallback="none",
                     )
+                else:
+                    if _rss_fallback_content(article, fallback="rss-empty"):
+                        print(f"[FALLBACK] {article['source']} — trafilatura returned no content; used RSS")
 
                 # Extract og:image thumbnail if not already set from RSS
                 if not article.get("thumbnail"):

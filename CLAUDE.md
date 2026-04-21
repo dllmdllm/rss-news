@@ -212,15 +212,18 @@ img + content
 
 ### GitHub Actions push 策略
 
-`.github/workflows/update.yml` 使用 `rebase -X ours` + `--force-with-lease`：
+`.github/workflows/update.yml` 每 20 分鐘觸發一次，commit `docs/data/` 後會最多重試 3 次：
 
 ```bash
-git rebase origin/main -X ours || (git rebase --abort && true)
-git push --force-with-lease
+git fetch origin main
+git rebase origin/main -X ours
+git push origin HEAD:main
 ```
 
-原因：每 10 分鐘觸發，多個 workflow run 同時操作 `articles.json` / `analyses.json`
-會出現 push rejected。`-X ours` 讓新生成的 JSON 永遠覆蓋舊版本。
+原因：workflow 可能同 Codex 或上一個自動更新 commit 同時推送，會出現 push rejected。
+每次 retry 都先重新 fetch/rebase，rebase 後 HEAD 嚴格 ahead of `origin/main`，
+所以用 plain fast-forward push，**不需要** `--force` 或 `--force-with-lease`。
+`-X ours` 只用於 rebase 衝突時保留本次新生成的 `docs/data/` 內容。
 
 ### 圖片 hotlink 保護
 

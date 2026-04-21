@@ -188,7 +188,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         btn.classList.add("active");
         activeCat = btn.dataset.cat;
         activeSource = "";
+        activeTag = "";
         buildSourceFilters();
+        buildTagFilters();
         renderFiltered();
       });
     }
@@ -239,16 +241,29 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       };
     }
 
-    function buildTagFilters() {
+    function topTagsForCategory(articles, category) {
       const tagCounts = {};
-      all.forEach(a => (a.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-      const tags = Object.entries(tagCounts)
+      const scope = category === "全部"
+        ? articles
+        : articles.filter(a => a.category === category);
+      scope.forEach(a => (a.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+      return Object.entries(tagCounts)
         .filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t]) => t);
+    }
+
+    function buildTagFilters() {
+      const tags = topTagsForCategory(all, activeCat);
       const container = document.getElementById("tag-filters");
-      if (!tags.length) { container.style.display = "none"; return; }
+      if (!tags.length) {
+        container.style.display = "none";
+        container.innerHTML = "";
+        activeTag = "";
+        return;
+      }
+      if (activeTag && !tags.includes(activeTag)) activeTag = "";
       container.style.display = "";
       container.innerHTML = tags.map(t =>
-        `<button class="tag-filter-btn" data-tag="${esc(t)}"># ${esc(t)}</button>`
+        `<button class="tag-filter-btn${activeTag === t ? " active" : ""}" data-tag="${esc(t)}"># ${esc(t)}</button>`
       ).join("");
       container.onclick = e => {
         const btn = e.target.closest(".tag-filter-btn");
@@ -276,11 +291,38 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       renderFiltered();
     });
 
+    function articleTime(article) {
+      const ts = Date.parse(article.date || "");
+      return Number.isFinite(ts) ? ts : 0;
+    }
+
+    function compareByDate(a, b) {
+      return articleTime(b) - articleTime(a);
+    }
+
+    function aiRankScore(article, now = Date.now()) {
+      const score = typeof article.score === "number" ? article.score : 5;
+      const clusterSize = Math.max(1, Number(article.cluster_size) || 1);
+      const clusterBonus = Math.min(clusterSize - 1, 4) * 3;
+      const ageHours = (now - articleTime(article)) / 36e5;
+      const recencyBonus = Number.isFinite(ageHours)
+        ? Math.max(0, 6 - Math.min(Math.max(ageHours, 0), 48) / 8)
+        : 0;
+      return score * 10 + clusterBonus + recencyBonus;
+    }
+
     function getSorted(articles) {
       if (sortMode === "score") {
         return [...articles].sort((a, b) => {
           const sa = a.score ?? 5, sb = b.score ?? 5;
-          return sb !== sa ? sb - sa : (b.date || "") > (a.date || "") ? 1 : -1;
+          return sb !== sa ? sb - sa : compareByDate(a, b);
+        });
+      }
+      if (sortMode === "ai") {
+        const now = Date.now();
+        return [...articles].sort((a, b) => {
+          const delta = aiRankScore(b, now) - aiRankScore(a, now);
+          return delta || compareByDate(a, b);
         });
       }
       return articles;
