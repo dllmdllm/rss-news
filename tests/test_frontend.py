@@ -192,9 +192,39 @@ def test_index_trending_topics_are_scoped_per_category():
 
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert 'data-sort="date"' in html
+    assert ">最新</button>" in html
     assert 'data-sort="ai"' in html
     assert ">AI</button>" in html
     assert 'id="trending-topics"' in html
+
+
+def test_index_latest_sort_orders_by_date():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    funcs = "\n".join(
+        _extract_js_function(source, name)
+        for name in ["articleTime", "compareByDate", "aiRankScore", "getSorted"]
+    )
+    js = funcs + """
+    let sortMode = "date";
+    const articles = [
+      { id: "old", date: "2026-04-20T10:00:00+08:00" },
+      { id: "new", date: "2026-04-22T10:00:00+08:00" },
+      { id: "mid", date: "2026-04-21T10:00:00+08:00" },
+    ];
+    const ids = getSorted(articles).map(a => a.id);
+    if (JSON.stringify(ids) !== JSON.stringify(["new", "mid", "old"])) {
+      throw new Error("latest sort was not date-desc: " + JSON.stringify(ids));
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_index_summary_points_normalise_bullets():

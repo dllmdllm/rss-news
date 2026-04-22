@@ -446,7 +446,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           return delta || compareByDate(a, b);
         });
       }
-      return articles;
+      return [...articles].sort(compareByDate);
     }
 
     function filterCluster(cid) {
