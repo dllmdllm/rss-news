@@ -449,6 +449,32 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       return [...articles].sort(compareByDate);
     }
 
+    function clusterKey(article) {
+      const cid = String(article.cluster_id || "");
+      const size = Number(article.cluster_size) || 1;
+      return (size > 1 && /^[0-9a-f]{1,16}$/i.test(cid)) ? cid : "";
+    }
+
+    function compactClusters(articles) {
+      const picked = new Map();
+      const singles = [];
+      for (const article of articles) {
+        const key = clusterKey(article);
+        if (!key) {
+          singles.push(article);
+          continue;
+        }
+        const current = picked.get(key);
+        if (!current) {
+          picked.set(key, article);
+          continue;
+        }
+        const ranked = getSorted([current, article]);
+        picked.set(key, ranked[0]);
+      }
+      return [...singles, ...picked.values()];
+    }
+
     function filterCluster(cid) {
       activeTag = "";
       activeTopic = "";
@@ -481,7 +507,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         if (activeSource) list = list.filter(a => a.source === activeSource);
         if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
       }
-      render(getSorted(list));
+      render(getSorted(compactClusters(list)));
     }
 
     function scoreClass(score) {

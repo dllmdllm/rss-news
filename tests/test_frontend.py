@@ -227,6 +227,48 @@ def test_index_latest_sort_orders_by_date():
     assert result.returncode == 0, result.stderr
 
 
+def test_index_compacts_clusters_to_one_representative():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    funcs = "\n".join(
+        _extract_js_function(source, name)
+        for name in [
+            "articleTime",
+            "compareByDate",
+            "aiRankScore",
+            "getSorted",
+            "clusterKey",
+            "compactClusters",
+        ]
+    )
+    js = funcs + """
+    let sortMode = "date";
+    const articles = [
+      { id: "cluster-old", cluster_id: "abcdef12", cluster_size: 3, date: "2026-04-20T10:00:00+08:00" },
+      { id: "cluster-new", cluster_id: "abcdef12", cluster_size: 3, date: "2026-04-22T10:00:00+08:00" },
+      { id: "single", date: "2026-04-21T10:00:00+08:00" },
+    ];
+    const ids = getSorted(compactClusters(articles)).map(a => a.id);
+    if (JSON.stringify(ids) !== JSON.stringify(["cluster-new", "single"])) {
+      throw new Error("cluster compaction picked wrong representative: " + JSON.stringify(ids));
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_index_cluster_badge_expands_all_sources():
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "filterCluster")
+    assert "compactClusters" not in fn
+    assert "all.filter(a => a.cluster_id === cid)" in fn
+
+
 def test_index_summary_points_normalise_bullets():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
