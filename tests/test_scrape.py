@@ -183,6 +183,35 @@ def test_build_oncc_content_preserves_text_image_order():
     assert "第二張圖說明。" in content
 
 
+def test_build_oncc_content_splits_blob_text_into_paragraphs():
+    html = """
+    <html><body>
+      <main>
+        <div class="photo"><img src="/photo.jpg" alt="主圖"></div>
+        <div class="content">
+          新聞標題 2026年04月22日 10:03 Tweet 東網電視 更多新聞短片
+          主圖圖說。
+          第一段內容，交代事件起因。
+          第二段內容，交代最新進展。
+          第三段內容，補充背景資料。
+          上一則 下一則 on.cc東網
+        </div>
+      </main>
+    </body></html>
+    """
+
+    content = scrape._build_oncc_content(
+        html,
+        "https://hk.on.cc/hk/bkn/cnt/news/20260422/bkn-20260422100352979-0422_00822_001.html",
+    )
+
+    assert content is not None
+    assert content.count("<p>") >= 3
+    assert "Tweet" not in content
+    assert "上一則" not in content
+    assert "photo.jpg" in content
+
+
 def test_scrape_one_uses_oncc_parser_before_trafilatura(monkeypatch):
     async def fake_fetch_html(session, url):
         return """

@@ -168,6 +168,30 @@ def _normalise_oncc_text(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def _clean_oncc_text(text: str) -> str:
+    text = _normalise_oncc_text(text)
+    text = re.sub(
+        r"^.*?\d{4}年\d{2}月\d{2}日\s+\d{1,2}:\d{2}\s+Tweet\s+東網電視\s+更多新聞短片\s*",
+        "",
+        text,
+    )
+    text = re.sub(r"\bTweet\s+東網電視\s+更多新聞短片\s*", "", text)
+    text = re.sub(r"\s*上一則\s+下一則\s+on\.cc東網.*$", "", text)
+    return _normalise_oncc_text(text)
+
+
+def _split_oncc_paragraphs(text: str) -> list[str]:
+    text = _clean_oncc_text(text)
+    if not text:
+        return []
+    # on.cc sometimes stores the whole article as one text blob. Split on
+    # Chinese sentence boundaries so the reader still gets readable paragraphs.
+    if len(text) < 140 and len(re.findall(r"[。！？；]", text)) < 2:
+        return [text]
+    parts = [p.strip() for p in re.split(r"(?<=[。！？；])\s+", text) if p.strip()]
+    return parts or [text]
+
+
 def _oncc_image_url(img, base_url: str) -> str:
     for attr in (
         "src", "data-src", "data-original", "data-lazy-src",
@@ -196,16 +220,29 @@ def _oncc_caption_for_image(img) -> str:
 
 
 def _oncc_best_container(soup: BeautifulSoup):
+    selector_nodes = []
     for selector in _ONCC_CONTAINER_SELECTORS:
         node = soup.select_one(selector)
-        if node and (node.find("img") or len(node.get_text(strip=True)) >= 80):
-            return node
-    candidates = soup.find_all(["main", "section", "div"])
+        if node:
+            selector_nodes.append(node)
+            parent = node.parent
+            while parent and parent.name not in {"body", "html", "[document]"}:
+                selector_nodes.append(parent)
+                parent = parent.parent
+
+    candidates = selector_nodes + soup.find_all(["main", "section", "div"])
     if not candidates:
         return soup.body or soup
+    unique = []
+    seen_ids = set()
+    for node in candidates:
+        ident = id(node)
+        if ident not in seen_ids and not _is_oncc_skip_node(node):
+            seen_ids.add(ident)
+            unique.append(node)
     return max(
-        candidates,
-        key=lambda node: len(node.get_text(" ", strip=True)) + 250 * len(node.find_all("img")),
+        unique or candidates,
+        key=lambda node: len(_clean_oncc_text(node.get_text(" ", strip=True))) + 600 * len(node.find_all("img")),
     )
 
 
@@ -226,13 +263,13 @@ def _build_oncc_content(html: str, url: str) -> str | None:
     seen_images: set[str] = set()
 
     def emit_text(text: str):
-        text = _normalise_oncc_text(text)
-        if len(text) < 6:
-            return
-        if text in seen_text:
-            return
-        seen_text.add(text)
-        parts.append(f"<p>{_html_escape(text)}</p>")
+        for para in _split_oncc_paragraphs(text):
+            if len(para) < 6:
+                continue
+            if para in seen_text:
+                continue
+            seen_text.add(para)
+            parts.append(f"<p>{_html_escape(para)}</p>")
 
     def emit_image(img):
         src = _oncc_image_url(img, url)
