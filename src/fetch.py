@@ -6,10 +6,12 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import urljoin
 
 import aiohttp
 import feedparser
 import zhconv
+from bs4 import BeautifulSoup
 
 from src.feeds import (
     ENGLISH_SOURCES,
@@ -168,6 +170,90 @@ def _rss_thumbnail(entry) -> str | None:
     return None
 
 
+def _parse_oncc_datetime(url: str) -> datetime:
+    match = re.search(r"/(\d{8})/bkn-(\d{14})", url)
+    if not match:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.strptime(match.group(2), "%Y%m%d%H%M%S")
+        return dt.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _oncc_link_title(anchor) -> str:
+    text = anchor.get_text(" ", strip=True)
+    if text:
+        return text
+    img = anchor.find("img")
+    if img:
+        return (img.get("alt") or img.get("title") or "").strip()
+    return ""
+
+
+def _oncc_link_thumbnail(anchor, base_url: str) -> str | None:
+    img = anchor.find("img")
+    if not img:
+        return None
+    src = (
+        img.get("src")
+        or img.get("data-src")
+        or img.get("data-original")
+        or img.get("data-lazy-src")
+        or ""
+    ).strip()
+    return urljoin(base_url, src) if src else None
+
+
+def _parse_oncc_index(html: str, feed_info: dict, cutoff: datetime) -> list[dict]:
+    """Extract on.cc BKN links from a channel index page.
+
+    on.cc index pages are not RSS feeds, but article URLs carry a stable
+    timestamp (`bkn-YYYYMMDDHHMMSS...`) that is enough for our freshness
+    cutoff. Keep this parser deliberately broad because the page markup shifts
+    often while the URL shape stays stable.
+    """
+    soup = BeautifulSoup(html or "", "html.parser")
+    base_url = feed_info["url"]
+    section = feed_info.get("oncc_section") or ""
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    articles: list[dict] = []
+    seen: set[str] = set()
+
+    for anchor in soup.find_all("a", href=True):
+        article_url = urljoin(base_url, anchor.get("href", ""))
+        if "hk.on.cc/hk/bkn/cnt/" not in article_url:
+            continue
+        if section and f"/cnt/{section}/" not in article_url:
+            continue
+        if article_url in seen:
+            continue
+
+        date = _parse_oncc_datetime(article_url)
+        if date < cutoff:
+            continue
+
+        title = _oncc_link_title(anchor)
+        if not title:
+            continue
+
+        seen.add(article_url)
+        articles.append({
+            "id":          _make_id(article_url),
+            "title":       title,
+            "url":         article_url,
+            "date":        date.isoformat(),
+            "source":      feed_info["name"],
+            "category":    feed_info["category"],
+            "content":     None,
+            "thumbnail":   _oncc_link_thumbnail(anchor, base_url),
+            "rss_content": None,
+        })
+        if len(articles) >= max_items:
+            break
+    return articles
+
+
 async def _read_feed(
     session: aiohttp.ClientSession,
     url: str,
@@ -264,6 +350,53 @@ async def _fetch_hk01(
     return articles, None, False
 
 
+async def _fetch_oncc(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """Fetch on.cc channel index pages and adapt article links to our shape.
+
+    The channel pages do not expose useful conditional-request validators in a
+    way we rely on, so not_modified is always False here.
+    """
+    url = feed_info["url"]
+    try:
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en;q=0.6",
+            },
+        ) as resp:
+            if resp.status >= 400:
+                return [], f"HTTP {resp.status}", False
+            raw = await resp.read()
+            charset = resp.charset or "utf-8"
+    except aiohttp.ClientSSLError:
+        try:
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=15),
+                ssl=False,
+            ) as resp:
+                if resp.status >= 400:
+                    return [], f"HTTP {resp.status}", False
+                raw = await resp.read()
+                charset = resp.charset or "utf-8"
+        except Exception as exc:
+            print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+            return [], repr(exc), False
+    except Exception as exc:
+        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+        return [], repr(exc), False
+
+    html = raw.decode(charset, errors="replace")
+    articles = _parse_oncc_index(html, feed_info, cutoff)
+    return articles, None, False
+
+
 async def _fetch_one(
     session:    aiohttp.ClientSession,
     feed_info:  dict,
@@ -275,6 +408,8 @@ async def _fetch_one(
     reuse previously-built articles for this source."""
     if feed_info.get("fetcher") == "hk01":
         return await _fetch_hk01(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "oncc":
+        return await _fetch_oncc(session, feed_info, cutoff)
     articles = []
     url = feed_info["url"]
     prev = http_cache.get(url) or {}

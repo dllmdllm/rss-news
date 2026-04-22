@@ -12,6 +12,7 @@ RSS_FEEDS = [
     # 新聞
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},
     {"name": "明報 本地",          "url": "https://news.mingpao.com/rss/ins/s00001.xml",                           "category": "新聞"},
+    {"name": "東網 本地",          "url": "https://hk.on.cc/hk/news/index.html",                                    "category": "新聞", "fetcher": "oncc", "oncc_section": "news"},
     {"name": "星島頭條",           "url": "https://www.stheadline.com/rss",                                        "category": "新聞",
      "max_items": 100,
      "url_category": {
@@ -26,8 +27,10 @@ RSS_FEEDS = [
     {"name": "RTHK 大中華",       "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_greaterchina.xml",   "category": "國際"},
     {"name": "明報 國際",          "url": "https://news.mingpao.com/rss/ins/s00005.xml",                           "category": "國際"},
     {"name": "明報 中國",          "url": "https://news.mingpao.com/rss/ins/s00004.xml",                           "category": "國際"},
+    {"name": "東網 國際",          "url": "https://hk.on.cc/hk/intnews/index.html",                                 "category": "國際", "fetcher": "oncc", "oncc_section": "intnews"},
     # 娛樂
     {"name": "明報 娛樂",          "url": "https://news.mingpao.com/rss/ins/s00007.xml",                           "category": "娛樂"},
+    {"name": "東網 娛樂",          "url": "https://hk.on.cc/hk/entertainment/index.html",                           "category": "娛樂", "fetcher": "oncc", "oncc_section": "entertainment"},
     # 消閒
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},
