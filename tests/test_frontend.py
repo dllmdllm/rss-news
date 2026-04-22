@@ -276,6 +276,59 @@ def test_article_share_uses_original_source_url():
     assert 'currentSourceUrl = srcUrl !== "#" ? srcUrl : "";' in source
 
 
+def test_article_nav_uses_session_context():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'const NAV_CONTEXT_KEY = "rss_article_nav_context";',
+        _extract_js_function(source, "articleUrl"),
+        _extract_js_function(source, "readNavContext"),
+        _extract_js_function(source, "setNavLink"),
+        _extract_js_function(source, "setupArticleNav"),
+        """
+        const els = new Map();
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.href = "";
+            this.attrs = {};
+            this.classes = new Set(["disabled"]);
+            this.classList = {
+              add: name => this.classes.add(name),
+              remove: name => this.classes.delete(name),
+              contains: name => this.classes.has(name),
+            };
+          }
+          removeAttribute(name) { delete this.attrs[name]; if (name === "href") this.href = ""; }
+          setAttribute(name, value) { this.attrs[name] = value; }
+        }
+        els.set("nav-prev", new El("nav-prev"));
+        els.set("nav-next", new El("nav-next"));
+        const document = { getElementById: id => els.get(id) };
+        const sessionStorage = {
+          getItem: key => key === NAV_CONTEXT_KEY ? JSON.stringify({ ids: ["a", "b", "c"] }) : null,
+        };
+        setupArticleNav("b", [{ id: "x" }, { id: "b" }, { id: "y" }]);
+        if (!els.get("nav-prev").href.endsWith("article.html?id=a")) {
+          throw new Error("prev link not set: " + els.get("nav-prev").href);
+        }
+        if (!els.get("nav-next").href.endsWith("article.html?id=c")) {
+          throw new Error("next link not set: " + els.get("nav-next").href);
+        }
+        if (els.get("nav-prev").classes.has("disabled") || els.get("nav-next").classes.has("disabled")) {
+          throw new Error("nav links should be enabled");
+        }
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")

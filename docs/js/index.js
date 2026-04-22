@@ -53,9 +53,20 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
 
     // ── Read tracking ─────────────────────────────────────────────
     const READ_KEY = "rss_read_ids";
+    const NAV_CONTEXT_KEY = "rss_article_nav_context";
     function getRead() {
       try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); }
       catch { return new Set(); }
+    }
+
+    function saveArticleNavContext(articles) {
+      try {
+        const ids = articles.map(a => a.id).filter(Boolean);
+        sessionStorage.setItem(NAV_CONTEXT_KEY, JSON.stringify({
+          ids,
+          savedAt: Date.now(),
+        }));
+      } catch (_) {}
     }
 
     // ── Toast ─────────────────────────────────────────────────────
@@ -482,6 +493,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       kbIndex = -1;
       const grid  = document.getElementById("grid");
       const reads = getRead();
+      saveArticleNavContext(articles);
       if (!articles.length) {
         grid.innerHTML = '<div class="empty">沒有文章</div>';
         return;

@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv
 load_dotenv()
 
-from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all
+from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
 from src.analyse import analyse_all
 
@@ -398,6 +398,7 @@ async def main():
     print(f"[time] fetch   {time.monotonic()-t:.1f}s")
 
     articles = _merge_missing_sources(articles, old_articles, source_stats)
+    await retranslate_english_titles(articles)
 
     t = time.monotonic();  articles = await scrape_all(articles)
     print(f"[time] scrape  {time.monotonic()-t:.1f}s")

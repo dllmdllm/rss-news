@@ -67,7 +67,12 @@ async def _translate_titles_minimax(
             },
             json={
                 "model": MINIMAX_MODEL,
-                "max_tokens": max(300, len(titles) * 80),
+                # MiniMax-M2.7 prepends an internal "thinking" segment before the
+                # JSON answer. If the budget truncates the thinking, the answer
+                # never arrives and _parse_title_translations returns None,
+                # causing us to silently fall back to English titles. Budget
+                # generously so the final array always fits.
+                "max_tokens": max(1200, len(titles) * 200),
                 "system": "You are a concise news title translator. Output valid JSON only.",
                 "messages": [{"role": "user", "content": user_text}],
             },
@@ -84,7 +89,11 @@ async def _translate_titles_minimax(
     blocks = data.get("content") or []
     raw = next((b.get("text", "").strip() for b in blocks if b.get("type") == "text"), "")
     translated = _parse_title_translations(raw, len(titles)) if raw else None
-    return translated or titles
+    if not translated:
+        print(f"[WARN] title translation parse failed ({len(titles)} titles); "
+              f"raw head: {raw[:120]!r}")
+        return titles
+    return translated
 
 
 def _load_feed_http_cache() -> dict:
@@ -355,6 +364,49 @@ async def _fetch_one(
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return articles, repr(exc), False
     return articles, None, False
+
+
+_CJK_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+
+
+def _looks_untranslated(title: str) -> bool:
+    """English-source titles re-hydrated from a prior build (where the
+    translation step may have silently failed) stay in English. Detect by
+    absence of CJK characters so we can re-run translation on them."""
+    return bool(title) and not _CJK_RE.search(title)
+
+
+async def retranslate_english_titles(articles: list) -> None:
+    """Re-translate ENGLISH_SOURCES titles that are still English in-place.
+
+    Covers two cases the fetch loop can't: (a) articles hydrated from a prior
+    build whose translation was silently truncated, and (b) 304-cached feeds
+    that never re-entered the translation path this run. Mutates `articles`
+    directly."""
+    if not MINIMAX_API_KEY:
+        return
+    pending = [
+        a for a in articles
+        if a.get("source") in ENGLISH_SOURCES and _looks_untranslated(a.get("title", ""))
+    ]
+    if not pending:
+        return
+    titles = [a["title"] for a in pending]
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
+        # Translate in chunks of 10 to keep each response well under the token
+        # budget and avoid one straggler blocking the whole batch.
+        translated: list[str] = []
+        for i in range(0, len(titles), 10):
+            chunk = titles[i:i + 10]
+            out = await _translate_titles_minimax(session, chunk)
+            translated.extend(out)
+    changed = 0
+    for article, new_title in zip(pending, translated):
+        if new_title and new_title != article["title"]:
+            article["title"] = new_title
+            changed += 1
+    if changed:
+        print(f"[fetch] retranslated {changed}/{len(pending)} stale English titles")
 
 
 async def fetch_all() -> tuple[list, dict]:

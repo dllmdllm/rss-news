@@ -44,7 +44,67 @@
     applySavedTheme();
     setupFontSize();
     const READ_KEY = "rss_read_ids";
+    const NAV_CONTEXT_KEY = "rss_article_nav_context";
     let currentSourceUrl = "";
+
+    function articleUrl(id) {
+      return "article.html?id=" + encodeURIComponent(id);
+    }
+
+    function readNavContext(currentId, articles) {
+      try {
+        const raw = sessionStorage.getItem(NAV_CONTEXT_KEY);
+        const ctx = raw ? JSON.parse(raw) : null;
+        const ids = Array.isArray(ctx?.ids)
+          ? ctx.ids.map(String).filter(Boolean)
+          : [];
+        if (ids.includes(currentId)) return ids;
+      } catch (_) {}
+      return articles.map(a => a.id).filter(Boolean);
+    }
+
+    function setNavLink(el, id) {
+      if (!el) return;
+      if (!id) {
+        el.removeAttribute("href");
+        el.classList.add("disabled");
+        el.setAttribute("aria-disabled", "true");
+        return;
+      }
+      el.href = articleUrl(id);
+      el.classList.remove("disabled");
+      el.removeAttribute("aria-disabled");
+    }
+
+    function setupArticleNav(currentId, articles) {
+      const ids = readNavContext(currentId, articles);
+      const idx = ids.indexOf(currentId);
+      const prevId = idx > 0 ? ids[idx - 1] : "";
+      const nextId = idx >= 0 && idx < ids.length - 1 ? ids[idx + 1] : "";
+      setNavLink(document.getElementById("nav-prev"), prevId);
+      setNavLink(document.getElementById("nav-next"), nextId);
+    }
+
+    function clickNav(id) {
+      const link = document.getElementById(id);
+      if (link && link.href && !link.classList.contains("disabled")) {
+        location.href = link.href;
+      }
+    }
+
+    document.addEventListener("keydown", e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        clickNav("nav-prev");
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        clickNav("nav-next");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        location.href = "index.html";
+      }
+    });
 
     // ── Share ─────────────────────────────────────────────────────
     document.getElementById("share-btn").addEventListener("click", async () => {
@@ -90,6 +150,7 @@
         const data = await metaRes.json();
         const art  = data.articles.find(a => a.id === id);
         if (!art) { location.href = "index.html"; return; }
+        setupArticleNav(id, data.articles);
         if (contentRes.ok) {
           try {
             const c = await contentRes.json();

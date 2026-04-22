@@ -53,6 +53,9 @@ def test_index_and_article_pages_render_in_browser():
                 page.locator("#art-body").wait_for(state="visible", timeout=10_000)
                 assert page.locator("#art-title").inner_text().strip()
                 assert page.locator("#art-content").inner_text().strip()
+                assert "disabled" in page.locator("#nav-prev").get_attribute("class")
+                assert "disabled" not in page.locator("#nav-next").get_attribute("class")
+                assert page.locator("#nav-next").get_attribute("href")
                 browser.close()
         except Exception as exc:
             pytest.skip(f"playwright browser runtime unavailable: {exc}")
