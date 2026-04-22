@@ -1,6 +1,7 @@
 const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "date";
+    let expandedClusterId = "";
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let trendingTopics = [];
     let sourceStats = {};
@@ -476,6 +477,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     function filterCluster(cid) {
+      expandedClusterId = cid;
       activeTag = "";
       activeTopic = "";
       document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
@@ -493,6 +495,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     function renderFiltered() {
+      expandedClusterId = "";
       let list = all;
       // search takes priority — override category/tag if query present
       if (searchQuery && fuse) {
@@ -540,8 +543,11 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const sentDot   = `<span class="sentiment sent-${sentiment}"></span>`;
         // cluster_id is 8-hex MD5; still clamp to [0-9a-f] to be defensive
         const cid = /^[0-9a-f]{1,16}$/i.test(a.cluster_id || "") ? a.cluster_id : "";
-        const clusterBadge = (a.cluster_size > 1 && cid)
-          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${cid}')">${Number(a.cluster_size)} 來源</span>` : "";
+        const isCluster = Number(a.cluster_size) > 1 && cid;
+        const isExpandedCluster = isCluster && expandedClusterId === cid;
+        const isClusterStack = isCluster && !isExpandedCluster;
+        const clusterBadge = isCluster
+          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${cid}')">${Number(a.cluster_size)} 來源${isClusterStack ? " · 點擊展開" : ""}</span>` : "";
         const tags = (a.tags || []).length
           ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join("")}</div>` : "";
         const isRead = reads.has(a.id);
@@ -552,7 +558,10 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           : "";
 
         const catCls = catClass(a.category);
-        return `<a class="card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}" href="article.html?id=${encodeURIComponent(aid)}">
+        const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
+        const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
+        const cardClick = isClusterStack ? ` onclick="event.preventDefault();filterCluster('${cid}')"` : "";
+        return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           ${thumb}
           <div class="card-body">
             <div class="card-meta">

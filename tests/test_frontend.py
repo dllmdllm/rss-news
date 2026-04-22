@@ -269,6 +269,16 @@ def test_index_cluster_badge_expands_all_sources():
     assert "all.filter(a => a.cluster_id === cid)" in fn
 
 
+def test_index_cluster_cards_are_stacked_and_click_to_expand():
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert ".card.cluster-stack" in html
+    assert ".card.cluster-expanded" in html
+    assert 'isClusterStack ? `#cluster-${cid}`' in source
+    assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
+    assert 'isClusterStack ? " · 點擊展開" : ""' in source
+
+
 def test_index_summary_points_normalise_bullets():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
