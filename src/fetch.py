@@ -117,6 +117,12 @@ def _save_feed_http_cache(cache: dict):
     os.replace(tmp, _FEED_CACHE_PATH)
 
 
+def _as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _parse_date(entry) -> datetime:
     # Prefer feedparser's already-normalised struct_time — it handles both
     # RFC 2822 (<pubDate>) and ISO 8601 (<updated> in Atom / HKEPC) feeds.
@@ -135,7 +141,7 @@ def _parse_date(entry) -> datetime:
         val = getattr(entry, attr, None)
         if val:
             try:
-                return parsedate_to_datetime(val)
+                return _as_utc(parsedate_to_datetime(val))
             except Exception:
                 pass
     return datetime.min.replace(tzinfo=timezone.utc)

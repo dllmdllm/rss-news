@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
-from src.fetch import _parse_oncc_index, _parse_title_translations
+from src.fetch import _parse_date, _parse_oncc_index, _parse_title_translations
 
 
 def test_parse_title_translations_accepts_json_array():
@@ -13,6 +14,24 @@ def test_parse_title_translations_rejects_wrong_length():
     raw = '["只有一個標題"]'
 
     assert _parse_title_translations(raw, 2) is None
+
+
+def test_parse_date_normalises_naive_rfc_date_to_utc():
+    entry = SimpleNamespace(published="Wed, 22 Apr 2026 10:30:00")
+
+    parsed = _parse_date(entry)
+
+    assert parsed == datetime(2026, 4, 22, 10, 30, tzinfo=timezone.utc)
+    assert parsed.tzinfo == timezone.utc
+
+
+def test_parse_date_converts_rfc_date_with_offset_to_utc():
+    entry = SimpleNamespace(published="Wed, 22 Apr 2026 18:30:00 +0800")
+
+    parsed = _parse_date(entry)
+
+    assert parsed == datetime(2026, 4, 22, 10, 30, tzinfo=timezone.utc)
+    assert parsed.tzinfo == timezone.utc
 
 
 def test_parse_oncc_index_extracts_recent_section_articles():
