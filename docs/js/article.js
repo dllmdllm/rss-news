@@ -126,6 +126,103 @@
       </div>`;
     }
 
+    function articleTimestamp(article) {
+      const ts = Date.parse(article.date || "");
+      return Number.isFinite(ts) ? ts : 0;
+    }
+
+    function entityValues(article, key) {
+      const values = article?.entities?.[key];
+      return Array.isArray(values)
+        ? values.map(v => String(v || "").trim()).filter(Boolean)
+        : [];
+    }
+
+    function intersection(a, b) {
+      const set = new Set(b);
+      return a.filter(x => set.has(x));
+    }
+
+    function relatedReasons(current, other) {
+      const reasons = [];
+      if (current.cluster_id && current.cluster_id === other.cluster_id) {
+        reasons.push("同一事件");
+      }
+      if (current.topic && current.topic === other.topic) {
+        reasons.push("同話題：" + current.topic);
+      }
+      const groups = [
+        ["人物", "people"],
+        ["公司", "companies"],
+        ["地點", "places"],
+        ["日期", "dates"],
+        ["數字", "numbers"],
+      ];
+      for (const [label, key] of groups) {
+        const shared = intersection(entityValues(current, key), entityValues(other, key));
+        if (shared.length) reasons.push("同" + label + "：" + shared[0]);
+      }
+      if (current.event_type && current.event_type === other.event_type) {
+        reasons.push("同類型：" + current.event_type);
+      }
+      return reasons;
+    }
+
+    function relatedScore(current, other, now = Date.now()) {
+      if (!other || other.id === current.id) return 0;
+      const reasons = relatedReasons(current, other);
+      if (!reasons.length) return 0;
+
+      let score = 0;
+      if (current.cluster_id && current.cluster_id === other.cluster_id) score += 100;
+      if (current.topic && current.topic === other.topic) score += 35;
+      for (const key of ["people", "companies", "places", "dates", "numbers"]) {
+        score += intersection(entityValues(current, key), entityValues(other, key)).length * 14;
+      }
+      if (current.event_type && current.event_type === other.event_type) score += 8;
+
+      const ageHours = (now - articleTimestamp(other)) / 36e5;
+      if (Number.isFinite(ageHours)) score += Math.max(0, 8 - Math.min(Math.max(ageHours, 0), 72) / 9);
+      return score;
+    }
+
+    function relatedArticles(current, articles, limit = 6) {
+      const now = Date.now();
+      return articles
+        .filter(a => a && a.id !== current.id)
+        .map(article => ({
+          article,
+          score: relatedScore(current, article, now),
+          reasons: relatedReasons(current, article),
+        }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => (b.score - a.score) || (articleTimestamp(b.article) - articleTimestamp(a.article)))
+        .slice(0, limit);
+    }
+
+    function renderRelatedArticles(current, articles) {
+      const section = document.getElementById("related-section");
+      const list = document.getElementById("related-list");
+      if (!section || !list) return;
+      const rows = relatedArticles(current, articles);
+      if (!rows.length) return;
+      list.innerHTML = rows.map(({ article, reasons }) => {
+        const date = article.date
+          ? new Date(article.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "";
+        const reason = reasons.slice(0, 2).join(" · ");
+        return `<a class="related-card" href="${esc(articleUrl(article.id))}">
+          <div class="related-meta">
+            <span class="related-source">${esc(article.source || "")}</span>
+            <span>${esc(date)}</span>
+          </div>
+          <div class="related-card-title">${esc(article.title || "")}</div>
+          <div class="related-reason">${esc(reason)}</div>
+        </a>`;
+      }).join("");
+      section.style.display = "";
+    }
+
     document.addEventListener("keydown", e => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "ArrowLeft") {
@@ -267,6 +364,7 @@
 
         document.getElementById("loading").style.display = "none";
         document.getElementById("art-body").style.display = "block";
+        renderRelatedArticles(art, data.articles);
       } catch {
         document.getElementById("loading").textContent = "載入失敗";
       }

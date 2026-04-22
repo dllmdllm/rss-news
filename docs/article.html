@@ -170,6 +170,30 @@
     .fact-chip.fact-type { color: #fbbf24; border-color: #4a3a00; background: #2b2208; }
     body.theme-light .fact-chip.fact-type { color: #9a6700; border-color: #f3d58a; background: #fff8e6; }
 
+    .related-section {
+      margin-top: 34px; padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .related-title {
+      font-size: .86rem; color: var(--accent); font-weight: 700;
+      margin-bottom: 12px; letter-spacing: .05em;
+    }
+    .related-list { display: grid; gap: 10px; }
+    .related-card {
+      display: block; text-decoration: none; color: inherit;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); padding: 11px 12px;
+      transition: border-color .15s, transform .1s;
+    }
+    .related-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .related-meta {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      color: var(--muted); font-size: .72rem; margin-bottom: 5px;
+    }
+    .related-source { color: var(--accent); font-weight: 700; }
+    .related-card-title { color: var(--text); line-height: 1.45; font-size: .92rem; }
+    .related-reason { color: var(--muted); font-size: .74rem; margin-top: 6px; }
+
     /* ── article nav (prev / back / next) ── */
     .article-nav {
       display: flex; gap: 10px;
@@ -237,6 +261,10 @@
       <div id="art-facts"></div>
       <div id="art-summary"></div>
       <div class="content" id="art-content"></div>
+      <section class="related-section" id="related-section" style="display:none">
+        <div class="related-title">相關新聞</div>
+        <div class="related-list" id="related-list"></div>
+      </section>
       <nav class="article-nav" id="article-nav" aria-label="文章導航">
         <a class="nav-link nav-prev disabled" id="nav-prev" rel="prev" aria-label="上一篇"><span class="nav-label">← 上一篇</span></a>
         <a class="nav-link nav-back" id="nav-back" href="index.html" aria-label="返回列表"><span class="nav-label">返回</span></a>

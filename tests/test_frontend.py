@@ -435,6 +435,67 @@ def test_article_fact_items_group_entities():
     assert result.returncode == 0, result.stderr
 
 
+def test_article_related_articles_prioritise_cluster_and_entities():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        _extract_js_function(source, "articleTimestamp"),
+        _extract_js_function(source, "entityValues"),
+        _extract_js_function(source, "intersection"),
+        _extract_js_function(source, "relatedReasons"),
+        _extract_js_function(source, "relatedScore"),
+        _extract_js_function(source, "relatedArticles"),
+        """
+        const current = {
+          id: "a",
+          cluster_id: "c1",
+          topic: "關稅",
+          event_type: "政治",
+          date: "2026-04-22T10:00:00+08:00",
+          entities: { people: ["特朗普"], places: ["美國"], numbers: ["49國"] },
+        };
+        const rows = relatedArticles(current, [
+          current,
+          {
+            id: "b",
+            cluster_id: "c1",
+            topic: "關稅",
+            event_type: "政治",
+            date: "2026-04-22T09:00:00+08:00",
+            entities: { people: ["特朗普"], places: ["美國"] },
+          },
+          {
+            id: "c",
+            cluster_id: "x",
+            topic: "其他",
+            event_type: "政治",
+            date: "2026-04-22T11:00:00+08:00",
+            entities: { people: ["特朗普"] },
+          },
+        ], 2);
+        if (rows[0].article.id !== "b") throw new Error("cluster article should rank first");
+        if (!rows[0].reasons.includes("同一事件") || !rows[0].reasons.includes("同人物：特朗普")) {
+          throw new Error("missing related reasons: " + JSON.stringify(rows[0].reasons));
+        }
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_article_page_has_related_section():
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert 'id="related-section"' in html
+    assert "相關新聞" in html
+    assert "renderRelatedArticles(art, data.articles);" in source
+
+
 def test_article_nav_uses_session_context():
     node = _require_node()
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
