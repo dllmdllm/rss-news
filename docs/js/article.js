@@ -170,16 +170,24 @@
 
     function relatedScore(current, other, now = Date.now()) {
       if (!other || other.id === current.id) return 0;
-      const reasons = relatedReasons(current, other);
-      if (!reasons.length) return 0;
+      const sameCluster = current.cluster_id && current.cluster_id === other.cluster_id;
+      const sameTopic = current.topic && current.topic === other.topic;
+      const peopleHits = intersection(entityValues(current, "people"), entityValues(other, "people")).length;
+      const companyHits = intersection(entityValues(current, "companies"), entityValues(other, "companies")).length;
+      const strongEntityHits = peopleHits + companyHits;
+      if (!sameCluster && !sameTopic && strongEntityHits === 0) return 0;
 
       let score = 0;
-      if (current.cluster_id && current.cluster_id === other.cluster_id) score += 100;
-      if (current.topic && current.topic === other.topic) score += 35;
-      for (const key of ["people", "companies", "places", "dates", "numbers"]) {
-        score += intersection(entityValues(current, key), entityValues(other, key)).length * 14;
+      if (sameCluster) score += 100;
+      if (sameTopic) score += 35;
+      score += peopleHits * 22;
+      score += companyHits * 18;
+      for (const key of ["places", "dates", "numbers"]) {
+        score += intersection(entityValues(current, key), entityValues(other, key)).length * 4;
       }
-      if (current.event_type && current.event_type === other.event_type) score += 8;
+      if (current.event_type && current.event_type === other.event_type && (sameCluster || sameTopic || strongEntityHits > 0)) {
+        score += 3;
+      }
 
       const ageHours = (now - articleTimestamp(other)) / 36e5;
       if (Number.isFinite(ageHours)) score += Math.max(0, 8 - Math.min(Math.max(ageHours, 0), 72) / 9);

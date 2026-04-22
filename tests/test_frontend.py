@@ -488,6 +488,52 @@ def test_article_related_articles_prioritise_cluster_and_entities():
     assert result.returncode == 0, result.stderr
 
 
+def test_article_related_articles_ignore_weak_type_or_place_only_matches():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        _extract_js_function(source, "articleTimestamp"),
+        _extract_js_function(source, "entityValues"),
+        _extract_js_function(source, "intersection"),
+        _extract_js_function(source, "relatedReasons"),
+        _extract_js_function(source, "relatedScore"),
+        _extract_js_function(source, "relatedArticles"),
+        """
+        const current = {
+          id: "a",
+          topic: "蘋果CEO交接",
+          event_type: "科技",
+          date: "2026-04-22T10:00:00+08:00",
+          entities: { places: ["美國"], numbers: ["49國"] },
+        };
+        const rows = relatedArticles(current, [
+          {
+            id: "weak-type",
+            topic: "AI晶片",
+            event_type: "科技",
+            date: "2026-04-22T11:00:00+08:00",
+            entities: {},
+          },
+          {
+            id: "weak-place",
+            topic: "汽車市場",
+            event_type: "財經",
+            date: "2026-04-22T11:00:00+08:00",
+            entities: { places: ["美國"] },
+          },
+        ]);
+        if (rows.length !== 0) throw new Error("weak matches should not be related: " + rows.map(r => r.article.id));
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_article_page_has_related_section():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
