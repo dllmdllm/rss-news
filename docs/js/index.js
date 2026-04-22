@@ -494,6 +494,30 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         .filter(Boolean);
     }
 
+    function keyFactItems(article) {
+      const items = [];
+      const type = String(article.event_type || "").trim();
+      if (type) items.push({ label: type, cls: "fact-type" });
+      const entities = article.entities || {};
+      for (const key of ["people", "companies", "places", "dates", "numbers"]) {
+        const values = Array.isArray(entities[key]) ? entities[key] : [];
+        for (const value of values) {
+          const label = String(value || "").trim();
+          if (label) items.push({ label, cls: "" });
+          if (items.length >= 5) return items;
+        }
+      }
+      return items;
+    }
+
+    function keyFactsHtml(article) {
+      const items = keyFactItems(article);
+      if (!items.length) return "";
+      return `<div class="key-facts">${items.map(item =>
+        `<span class="fact-chip ${item.cls}">${esc(item.label)}</span>`
+      ).join("")}</div>`;
+    }
+
     function renderFiltered() {
       expandedClusterId = "";
       let list = all;
@@ -556,6 +580,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const summaryHtml = points.length
           ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
+        const factsHtml = keyFactsHtml(a);
 
         const catCls = catClass(a.category);
         const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
@@ -572,6 +597,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
+            ${factsHtml}
             ${summaryHtml}
           </div>
         </a>`;

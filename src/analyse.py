@@ -31,7 +31,9 @@ SYSTEM_PROMPT = (
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'
-    '"topic":"標準化話題名稱，唔超過10字"}'
+    '"topic":"標準化話題名稱，唔超過10字",'
+    '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
+    '"entities":{"people":["人物"],"companies":["公司/機構"],"places":["地點"],"dates":["日期"],"numbers":["關鍵數字"]}}'
 )
 
 # Derive version from the prompt hash so the cache auto-invalidates whenever
@@ -79,6 +81,42 @@ def _normalise_summary(raw) -> str:
     return text
 
 
+def _normalise_string_list(raw, *, limit: int = 4, max_len: int = 24) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [x for x in re.split(r"[,，、\n]+", raw) if x.strip()]
+    elif not isinstance(raw, list):
+        return []
+
+    out = []
+    seen = set()
+    for item in raw:
+        text = str(item or "").strip().lstrip("#").strip()
+        if not text:
+            continue
+        text = re.sub(r"\s+", " ", text)[:max_len]
+        if text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalise_entities(raw) -> dict:
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "people":    _normalise_string_list(raw.get("people"), limit=4),
+        "companies": _normalise_string_list(raw.get("companies"), limit=4),
+        "places":    _normalise_string_list(raw.get("places"), limit=4),
+        "dates":     _normalise_string_list(raw.get("dates"), limit=4),
+        "numbers":   _normalise_string_list(raw.get("numbers"), limit=4),
+    }
+
+
 def _normalise_parsed(data: dict) -> dict | None:
     """Coerce a parsed JSON object into our canonical analysis dict."""
     if not isinstance(data, dict):
@@ -104,6 +142,8 @@ def _normalise_parsed(data: dict) -> dict | None:
             "tags":      [str(t).strip().lstrip("#") for t in tags_raw[:3] if str(t).strip()],
             "sentiment": sentiment,
             "topic":     str(data.get("topic", "")).strip()[:20],
+            "event_type": str(data.get("event_type", "")).strip()[:12],
+            "entities":  _normalise_entities(data.get("entities")),
             "version":   ANALYSIS_VERSION,
         }
     except Exception:
@@ -233,6 +273,8 @@ async def _apply_results(
         a["tags"]      = p["tags"]
         a["sentiment"] = p["sentiment"]
         a["topic"]     = p["topic"]
+        a["event_type"] = p.get("event_type", "")
+        a["entities"]   = p.get("entities", _normalise_entities({}))
         cache[a["id"]] = p
     prev = counter[0]
     counter[0] += len(batch)
@@ -398,6 +440,8 @@ async def analyse_all(articles: list) -> list:
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
             a["topic"]     = c.get("topic", "")
+            a["event_type"] = c.get("event_type", "")
+            a["entities"]   = _normalise_entities(c.get("entities"))
         else:
             pending.append(a)
 

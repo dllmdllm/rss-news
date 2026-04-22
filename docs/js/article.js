@@ -92,6 +92,40 @@
       }
     }
 
+    function articleFactItems(article) {
+      const items = [];
+      const type = String(article.event_type || "").trim();
+      if (type) items.push({ label: "類型", value: type, cls: "fact-type" });
+      const entities = article.entities || {};
+      const groups = [
+        ["人物", "people"],
+        ["公司", "companies"],
+        ["地點", "places"],
+        ["日期", "dates"],
+        ["數字", "numbers"],
+      ];
+      for (const [label, key] of groups) {
+        const values = Array.isArray(entities[key]) ? entities[key] : [];
+        for (const value of values.slice(0, 4)) {
+          const text = String(value || "").trim();
+          if (text) items.push({ label, value: text, cls: "" });
+        }
+      }
+      return items.slice(0, 14);
+    }
+
+    function renderArticleFacts(article) {
+      const items = articleFactItems(article);
+      const el = document.getElementById("art-facts");
+      if (!el || !items.length) return;
+      el.innerHTML = `<div class="facts-box">
+        <span class="facts-label">AI 重點</span>
+        <div class="facts-grid">${items.map(item =>
+          `<span class="fact-chip ${item.cls}">${esc(item.label)}：${esc(item.value)}</span>`
+        ).join("")}</div>
+      </div>`;
+    }
+
     document.addEventListener("keydown", e => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "ArrowLeft") {
@@ -193,6 +227,8 @@
         if (art.tags && art.tags.length) {
           tagsEl.innerHTML = art.tags.map(t => `<span class="art-tag"># ${esc(t)}</span>`).join("");
         }
+
+        renderArticleFacts(art);
 
         const summaryEl = document.getElementById("art-summary");
         if (art.summary) {

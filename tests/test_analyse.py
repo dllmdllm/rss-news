@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.analyse import (
     ANALYSIS_VERSION,
     _needs_full_analysis,
+    _normalise_entities,
     _normalise_summary,
     _parse_analysis,
     _parse_batch,
@@ -62,13 +63,19 @@ def test_normalise_single_bullet_passthrough():
 # ── _parse_analysis ──────────────────────────────────────────────
 
 def test_parse_plain_json():
-    raw = '{"summary":"・a\\n・b","score":7,"tags":["x","y"],"sentiment":"negative","topic":"test"}'
+    raw = '{"summary":"・a\\n・b","score":7,"tags":["x","y"],"sentiment":"negative","topic":"test","event_type":"事故","entities":{"people":["張三"],"companies":["港鐵"],"places":["大埔"],"dates":["4月22日"],"numbers":["8人"]}}'
     out = _parse_analysis(raw)
     assert out["summary"] == "・a\n・b"
     assert out["score"] == 7
     assert out["tags"] == ["x", "y"]
     assert out["sentiment"] == "negative"
     assert out["topic"] == "test"
+    assert out["event_type"] == "事故"
+    assert out["entities"]["people"] == ["張三"]
+    assert out["entities"]["companies"] == ["港鐵"]
+    assert out["entities"]["places"] == ["大埔"]
+    assert out["entities"]["dates"] == ["4月22日"]
+    assert out["entities"]["numbers"] == ["8人"]
     assert out["version"] == ANALYSIS_VERSION
 
 
@@ -120,6 +127,21 @@ def test_parse_summary_as_list():
     raw = '{"summary":["重點一","重點二"],"score":5,"tags":[],"sentiment":"neutral","topic":""}'
     out = _parse_analysis(raw)
     assert out["summary"] == "・重點一\n・重點二"
+
+
+def test_normalise_entities_accepts_strings_and_caps_lists():
+    out = _normalise_entities({
+        "people": "張三、李四",
+        "companies": ["港鐵", "港鐵", "政府", "公司A", "公司B"],
+        "places": None,
+        "dates": 123,
+        "numbers": ["123456789012345678901234567890"],
+    })
+    assert out["people"] == ["張三", "李四"]
+    assert out["companies"] == ["港鐵", "政府", "公司A", "公司B"]
+    assert out["places"] == []
+    assert out["dates"] == []
+    assert out["numbers"] == ["123456789012345678901234"]
 
 
 def test_parse_garbage_returns_none():

@@ -154,6 +154,21 @@
       display: block; font-size: .72rem; color: var(--accent);
       font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;
     }
+    .facts-box {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 12px 14px; border-radius: 6px; margin-bottom: 14px;
+    }
+    .facts-label {
+      display: block; font-size: .72rem; color: var(--accent);
+      font-weight: 700; margin-bottom: 8px; letter-spacing: .05em;
+    }
+    .facts-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fact-chip {
+      font-size: .76rem; color: var(--content); background: var(--summary-bg);
+      border: 1px solid var(--border); padding: 3px 9px; border-radius: 4px;
+    }
+    .fact-chip.fact-type { color: #fbbf24; border-color: #4a3a00; background: #2b2208; }
+    body.theme-light .fact-chip.fact-type { color: #9a6700; border-color: #f3d58a; background: #fff8e6; }
 
     /* ── article nav (prev / back / next) ── */
     .article-nav {
@@ -219,6 +234,7 @@
       <div class="art-meta" id="art-meta"></div>
       <h1 id="art-title"></h1>
       <div class="art-tags" id="art-tags"></div>
+      <div id="art-facts"></div>
       <div id="art-summary"></div>
       <div class="content" id="art-content"></div>
       <nav class="article-nav" id="article-nav" aria-label="文章導航">

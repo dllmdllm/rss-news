@@ -305,6 +305,34 @@ def test_index_summary_points_normalise_bullets():
     assert result.returncode == 0, result.stderr
 
 
+def test_index_key_fact_items_prioritise_event_entities():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "keyFactItems")
+    js = fn + """
+    const items = keyFactItems({
+      event_type: "事故",
+      entities: {
+        people: ["張三"],
+        companies: ["港鐵"],
+        places: ["大埔"],
+        dates: ["4月22日"],
+        numbers: ["8人"],
+      },
+    }).map(x => x.label);
+    if (JSON.stringify(items) !== JSON.stringify(["事故", "張三", "港鐵", "大埔", "4月22日"])) {
+      throw new Error("bad key facts: " + JSON.stringify(items));
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_update_timestamp_opens_source_health():
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     listener = source[source.index('document.getElementById("updated").addEventListener("click"'):]
@@ -356,6 +384,29 @@ def test_article_share_uses_original_source_url():
     assert "let currentSourceUrl" in source
     assert "const url   = currentSourceUrl || location.href;" in source
     assert 'currentSourceUrl = srcUrl !== "#" ? srcUrl : "";' in source
+
+
+def test_article_fact_items_group_entities():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "articleFactItems")
+    js = fn + """
+    const items = articleFactItems({
+      event_type: "財經",
+      entities: { companies: ["蘋果"], places: ["美國"], numbers: ["600億美元"] },
+    });
+    const labels = items.map(x => x.label + ":" + x.value);
+    if (JSON.stringify(labels) !== JSON.stringify(["類型:財經", "公司:蘋果", "地點:美國", "數字:600億美元"])) {
+      throw new Error("bad article facts: " + JSON.stringify(labels));
+    }
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_article_nav_uses_session_context():
