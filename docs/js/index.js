@@ -497,13 +497,20 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     function keyFactItems(article) {
       const items = [];
       const type = String(article.event_type || "").trim();
-      if (type) items.push({ label: type, cls: "fact-type" });
+      if (type) items.push({ label: "類型", value: type, cls: "fact-type" });
       const entities = article.entities || {};
-      for (const key of ["people", "companies", "places", "dates", "numbers"]) {
+      const groups = [
+        ["人物", "people"],
+        ["公司", "companies"],
+        ["地點", "places"],
+        ["日期", "dates"],
+        ["數字", "numbers"],
+      ];
+      for (const [name, key] of groups) {
         const values = Array.isArray(entities[key]) ? entities[key] : [];
         for (const value of values) {
-          const label = String(value || "").trim();
-          if (label) items.push({ label, cls: "" });
+          const text = String(value || "").trim();
+          if (text) items.push({ label: name, value: text, cls: "" });
           if (items.length >= 5) return items;
         }
       }
@@ -514,7 +521,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const items = keyFactItems(article);
       if (!items.length) return "";
       return `<div class="key-facts">${items.map(item =>
-        `<span class="fact-chip ${item.cls}">${esc(item.label)}</span>`
+        `<span class="fact-chip ${item.cls}">${esc(item.label)}：${esc(item.value)}</span>`
       ).join("")}</div>`;
     }
 
