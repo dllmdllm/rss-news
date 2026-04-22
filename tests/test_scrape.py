@@ -148,3 +148,65 @@ def test_scrape_one_keeps_english_content_untranslated(monkeypatch):
     out = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
 
     assert "Hello world from source." in out["content"]
+
+
+def test_build_oncc_content_preserves_text_image_order():
+    html = """
+    <html><body>
+      <div id="articleContent">
+        <p>第一段文字，介紹新聞背景。</p>
+        <div class="photo">
+          <img data-src="/hk/bkn/cnt/news/20260422/photo1.jpg" alt="第一張圖">
+          <div class="caption">第一張圖說明。</div>
+        </div>
+        <p>第二段文字，接續圖片之後。</p>
+        <figure>
+          <img src="https://hk.on.cc/hk/bkn/cnt/news/20260422/photo2.jpg" alt="第二張圖">
+          <figcaption>第二張圖說明。</figcaption>
+        </figure>
+      </div>
+    </body></html>
+    """
+
+    content = scrape._build_oncc_content(
+        html,
+        "https://hk.on.cc/hk/bkn/cnt/news/20260422/bkn-20260422093012345-0422_00822_001.html",
+    )
+
+    assert content is not None
+    first = content.index("第一段文字")
+    photo1 = content.index("photo1.jpg")
+    second = content.index("第二段文字")
+    photo2 = content.index("photo2.jpg")
+    assert first < photo1 < second < photo2
+    assert "第一張圖說明。" in content
+    assert "第二張圖說明。" in content
+
+
+def test_scrape_one_uses_oncc_parser_before_trafilatura(monkeypatch):
+    async def fake_fetch_html(session, url):
+        return """
+        <html><body><div id="articleContent">
+          <p>東網第一段完整內文。</p>
+          <img src="https://hk.on.cc/a.jpg" alt="現場圖片">
+          <p>東網第二段完整內文。</p>
+        </div></body></html>
+        """
+
+    monkeypatch.setattr(scrape, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(
+        scrape.trafilatura,
+        "extract",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("trafilatura should not run")),
+    )
+    monkeypatch.setattr(scrape.trafilatura, "extract_metadata", lambda *args, **kwargs: None)
+
+    article = _article(
+        url="https://hk.on.cc/hk/bkn/cnt/news/20260422/bkn-20260422093012345-0422_00822_001.html",
+        source="東網 本地",
+    )
+    out = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
+
+    assert "東網第一段完整內文" in out["content"]
+    assert 'src="https://hk.on.cc/a.jpg"' in out["content"]
+    assert out["content_quality"]["fallback"] == "none"

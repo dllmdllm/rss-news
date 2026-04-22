@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 from html import escape as _html_escape
+from urllib.parse import urljoin
 
 import aiohttp
 import trafilatura
@@ -46,6 +47,10 @@ def _is_mingpao_article(article: dict) -> bool:
 
 def _is_hk01_url(url: str) -> bool:
     return "hk01.com" in (url or "").lower()
+
+
+def _is_oncc_url(url: str) -> bool:
+    return "hk.on.cc" in (url or "").lower()
 
 
 def _hk01_tokens_to_text(tokens: list) -> str:
@@ -118,6 +123,162 @@ def _build_hk01_content(html: str) -> str | None:
                     parts.append(f"<p>{_html_escape(text)}</p>")
         # related / code / video / ads → skipped on purpose
     if not parts:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
+
+
+_ONCC_CONTAINER_SELECTORS = [
+    "article",
+    "#articleContent",
+    "#article_content",
+    ".articleContent",
+    ".article_content",
+    ".newsContent",
+    ".news_content",
+    ".content",
+]
+
+_ONCC_SKIP_RE = re.compile(
+    r"(advert|banner|share|social|related|recommend|keyword|tag|nav|menu|breadcrumb|"
+    r"video|player|comment|toolbar|button|date|time)",
+    re.IGNORECASE,
+)
+
+_ONCC_TEXT_HINT_RE = re.compile(r"(paragraph|article|content|text|body|desc|intro)", re.IGNORECASE)
+_ONCC_CAPTION_RE = re.compile(r"(caption|cap|desc|photo_text|phototext|txt|text)", re.IGNORECASE)
+
+
+def _node_token(node) -> str:
+    return " ".join(
+        str(v)
+        for v in (
+            node.get("id", ""),
+            " ".join(node.get("class", []) if isinstance(node.get("class"), list) else [node.get("class", "")]),
+            node.name or "",
+        )
+        if v
+    )
+
+
+def _is_oncc_skip_node(node) -> bool:
+    return bool(_ONCC_SKIP_RE.search(_node_token(node)))
+
+
+def _normalise_oncc_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _oncc_image_url(img, base_url: str) -> str:
+    for attr in (
+        "src", "data-src", "data-original", "data-lazy-src",
+        "data-url", "data-image", "data-actualsrc",
+    ):
+        val = (img.get(attr) or "").strip()
+        if val:
+            return urljoin(base_url, val)
+    return ""
+
+
+def _oncc_caption_for_image(img) -> str:
+    for parent in [img.parent, img.parent.parent if img.parent else None]:
+        if not parent:
+            continue
+        for candidate in parent.find_all(["figcaption", "span", "div", "p"], recursive=True):
+            if candidate is img or candidate.find("img"):
+                continue
+            token = _node_token(candidate)
+            if not _ONCC_CAPTION_RE.search(token):
+                continue
+            text = _normalise_oncc_text(candidate.get_text(" ", strip=True))
+            if text:
+                return text
+    return _normalise_oncc_text(img.get("alt") or img.get("title") or "")
+
+
+def _oncc_best_container(soup: BeautifulSoup):
+    for selector in _ONCC_CONTAINER_SELECTORS:
+        node = soup.select_one(selector)
+        if node and (node.find("img") or len(node.get_text(strip=True)) >= 80):
+            return node
+    candidates = soup.find_all(["main", "section", "div"])
+    if not candidates:
+        return soup.body or soup
+    return max(
+        candidates,
+        key=lambda node: len(node.get_text(" ", strip=True)) + 250 * len(node.find_all("img")),
+    )
+
+
+def _build_oncc_content(html: str, url: str) -> str | None:
+    """Extract on.cc article text and images in DOM order.
+
+    on.cc pages are not RSS and often rely on gallery/lazy image markup. This
+    parser intentionally follows the source DOM instead of asking trafilatura to
+    infer structure, so inline photos stay close to their surrounding text.
+    """
+    soup = BeautifulSoup(html or "", "html.parser")
+    for node in soup.find_all(["script", "style", "noscript", "iframe", "form"]):
+        node.decompose()
+
+    root = _oncc_best_container(soup)
+    parts: list[str] = []
+    seen_text: set[str] = set()
+    seen_images: set[str] = set()
+
+    def emit_text(text: str):
+        text = _normalise_oncc_text(text)
+        if len(text) < 6:
+            return
+        if text in seen_text:
+            return
+        seen_text.add(text)
+        parts.append(f"<p>{_html_escape(text)}</p>")
+
+    def emit_image(img):
+        src = _oncc_image_url(img, url)
+        if not src or src in seen_images:
+            return
+        seen_images.add(src)
+        caption = _oncc_caption_for_image(img)
+        safe_src = _html_escape(src, quote=True)
+        safe_alt = _html_escape(caption or img.get("alt") or "", quote=True)
+        if caption:
+            parts.append(
+                f'<figure><img src="{safe_src}" alt="{safe_alt}">'
+                f'<figcaption>{_html_escape(caption)}</figcaption></figure>'
+            )
+        else:
+            parts.append(f'<img src="{safe_src}" alt="{safe_alt}">')
+
+    def walk(node):
+        if getattr(node, "name", None) is None:
+            return
+        if _is_oncc_skip_node(node):
+            return
+        if node.name == "img":
+            emit_image(node)
+            return
+        if node.name in {"p", "h2", "h3", "blockquote", "li"}:
+            if not node.find("img"):
+                emit_text(node.get_text(" ", strip=True))
+                return
+        if node.name in {"div", "section"}:
+            has_nested_blocks = node.find(
+                ["p", "h2", "h3", "blockquote", "li", "figure", "img"],
+                recursive=False,
+            )
+            token = _node_token(node)
+            if not has_nested_blocks and _ONCC_TEXT_HINT_RE.search(token):
+                emit_text(node.get_text(" ", strip=True))
+                return
+        for child in list(getattr(node, "children", [])):
+            walk(child)
+
+    walk(root)
+    if not parts:
+        return None
+    text_chars = len(BeautifulSoup("".join(parts), "html.parser").get_text(strip=True))
+    if text_chars < 80 and not seen_images:
         return None
     return "<html><body>" + "".join(parts) + "</body></html>"
 
@@ -470,6 +631,8 @@ async def _scrape_one(
                 content = None
                 if _is_hk01_url(article["url"]):
                     content = _build_hk01_content(html)
+                elif _is_oncc_url(article["url"]):
+                    content = _build_oncc_content(html, article["url"])
 
                 if content is None:
                     # trafilatura.extract is CPU-bound; run in executor so the
