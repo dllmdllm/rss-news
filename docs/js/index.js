@@ -2,6 +2,8 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "date";
     let expandedClusterId = "";
+    let expandedClusterSummaryId = "";
+    let currentRenderArticles = [];
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let trendingTopics = [];
     let sourceStats = {};
@@ -478,10 +480,23 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
 
     function filterCluster(cid) {
       expandedClusterId = cid;
+      expandedClusterSummaryId = "";
       activeTag = "";
       activeTopic = "";
       document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
       render(getSorted(all.filter(a => a.cluster_id === cid)));
+    }
+
+    function toggleClusterSummary(cid) {
+      expandedClusterSummaryId = expandedClusterSummaryId === cid ? "" : cid;
+      render(currentRenderArticles);
+    }
+
+    function handleClusterSummaryKey(event, cid) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleClusterSummary(cid);
     }
 
     function summaryPoints(summary) {
@@ -492,6 +507,48 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         .split(/\n+/)
         .map(line => line.replace(/^・+/, "").trim())
         .filter(Boolean);
+    }
+
+    function clusterDigestItems(articles, limit = 5) {
+      const seen = new Set();
+      const items = [];
+      for (const article of articles) {
+        for (const point of summaryPoints(article.summary)) {
+          const normalized = point.replace(/\s+/g, "").toLowerCase();
+          if (!normalized || seen.has(normalized)) continue;
+          seen.add(normalized);
+          items.push(point);
+          if (items.length >= limit) return items;
+        }
+      }
+      return items;
+    }
+
+    function clusterSummaryHtml(cid) {
+      const articles = getSorted(all.filter(a => a.cluster_id === cid));
+      if (!articles.length) return "";
+      const digest = clusterDigestItems(articles);
+      const digestHtml = digest.length
+        ? `<ul class="cluster-digest-list">${digest.map(point => `<li>${esc(point)}</li>`).join("")}</ul>`
+        : `<div class="cluster-empty-summary">暫時未有足夠摘要</div>`;
+      const sourceRows = articles.map(article => {
+        const points = summaryPoints(article.summary).slice(0, 2);
+        const pointsHtml = points.length
+          ? `<div class="cluster-source-points">${points.map(point => `<div>${esc(point)}</div>`).join("")}</div>`
+          : "";
+        return `<div class="cluster-source-row">
+          <div class="cluster-source-head">
+            <span class="cluster-source-name">${esc(article.source || "未知來源")}</span>
+            <span class="cluster-source-title">${esc(article.title || "")}</span>
+          </div>
+          ${pointsHtml}
+        </div>`;
+      }).join("");
+      return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}">
+        <div class="cluster-ai-title">AI 綜合摘要</div>
+        ${digestHtml}
+        <div class="cluster-source-list">${sourceRows}</div>
+      </div>`;
     }
 
     function keyFactItems(article) {
@@ -527,6 +584,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
 
     function renderFiltered() {
       expandedClusterId = "";
+      expandedClusterSummaryId = "";
       let list = all;
       // search takes priority — override category/tag if query present
       if (searchQuery && fuse) {
@@ -551,6 +609,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
 
     function render(articles) {
       kbIndex = -1;
+      currentRenderArticles = articles;
       const grid  = document.getElementById("grid");
       const reads = getRead();
       saveArticleNavContext(articles);
@@ -579,8 +638,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const isClusterStack = isCluster && !isExpandedCluster;
         const clusterBadge = isCluster
           ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${cid}')">${Number(a.cluster_size)} 來源${isClusterStack ? " · 點擊展開" : ""}</span>` : "";
-        const tags = (a.tags || []).length
-          ? `<div class="card-tags">${a.tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join("")}</div>` : "";
+        const clusterSummaryButton = isClusterStack
+          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要"}</span>`
+          : "";
+        const tagChips = (a.tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join("");
+        const tags = (tagChips || clusterSummaryButton)
+          ? `<div class="card-tags">${tagChips}${clusterSummaryButton}</div>` : "";
         const isRead = reads.has(a.id);
         const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
         const points = summaryPoints(a.summary);
@@ -588,6 +651,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
         const factsHtml = keyFactsHtml(a);
+        const clusterSummary = isClusterStack && expandedClusterSummaryId === cid ? clusterSummaryHtml(cid) : "";
 
         const catCls = catClass(a.category);
         const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
@@ -604,6 +668,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
+            ${clusterSummary}
             ${factsHtml}
             ${summaryHtml}
           </div>

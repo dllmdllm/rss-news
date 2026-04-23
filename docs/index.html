@@ -337,8 +337,54 @@
       font-size: .68rem; background: #1e1a30; color: #a78bfa;
       border: 1px solid #3b2f60; padding: 1px 7px; border-radius: 4px;
     }
+    .cluster-ai-btn {
+      margin-left: auto;
+      font-size: .68rem; font-weight: 700; color: #67e8f9;
+      background: #082f3a; border: 1px solid #155e75;
+      padding: 1px 8px; border-radius: 4px; cursor: pointer;
+      white-space: nowrap;
+    }
+    .cluster-ai-btn:hover,
+    .cluster-ai-btn.active {
+      color: #ecfeff; background: #0e7490; border-color: #22d3ee;
+    }
+    .cluster-ai-summary {
+      margin-top: 2px; padding: 10px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: #0b1220; color: var(--text);
+      display: flex; flex-direction: column; gap: 9px;
+    }
+    .cluster-ai-title {
+      font-size: .76rem; font-weight: 800; color: #67e8f9;
+      letter-spacing: .02em;
+    }
+    .cluster-digest-list {
+      margin: 0; padding-left: 18px; color: #d6e4ee;
+      line-height: 1.55; font-size: .82rem;
+    }
+    .cluster-source-list { display: flex; flex-direction: column; gap: 7px; }
+    .cluster-source-row {
+      padding-top: 7px; border-top: 1px solid var(--border);
+    }
+    .cluster-source-head {
+      display: flex; gap: 7px; align-items: baseline;
+      font-size: .76rem; line-height: 1.45;
+    }
+    .cluster-source-name {
+      flex: 0 0 auto; color: var(--accent); font-weight: 800;
+    }
+    .cluster-source-title { color: var(--text); }
+    .cluster-source-points {
+      margin-top: 4px; color: var(--muted); font-size: .74rem; line-height: 1.45;
+    }
+    .cluster-empty-summary { color: var(--muted); font-size: .8rem; }
     body.theme-light .card-summary { color: #555; }
     body.theme-light .tag-chip { background: #f5edff; color: #7d4ab0; border-color: #dfccf5; }
+    body.theme-light .cluster-ai-btn { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+    body.theme-light .cluster-ai-btn:hover,
+    body.theme-light .cluster-ai-btn.active { background: #cffafe; color: #155e75; border-color: #22d3ee; }
+    body.theme-light .cluster-ai-summary { background: #f8fbfc; }
+    body.theme-light .cluster-digest-list { color: #24333d; }
     .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
 
     /* ── font size levels ── */

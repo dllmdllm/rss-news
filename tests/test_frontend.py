@@ -274,9 +274,39 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     assert ".card.cluster-stack" in html
     assert ".card.cluster-expanded" in html
+    assert ".cluster-ai-btn" in html
+    assert ".cluster-ai-summary" in html
     assert 'isClusterStack ? `#cluster-${cid}`' in source
     assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
     assert 'isClusterStack ? " · 點擊展開" : ""' in source
+    assert "AI 綜合摘要" in source
+    assert "clusterSummaryHtml(cid)" in source
+
+
+def test_index_cluster_digest_dedupes_summary_points():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        _extract_js_function(source, "summaryPoints"),
+        _extract_js_function(source, "clusterDigestItems"),
+        """
+        const rows = clusterDigestItems([
+          { source: "A", summary: "・共同重點\\n・A角度" },
+          { source: "B", summary: "共同重點\\nB角度" },
+        ]);
+        const expected = ["共同重點", "A角度", "B角度"];
+        if (JSON.stringify(rows) !== JSON.stringify(expected)) {
+          throw new Error("bad digest rows: " + JSON.stringify(rows));
+        }
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_index_summary_points_normalise_bullets():
