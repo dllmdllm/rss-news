@@ -211,9 +211,14 @@
     function renderRelatedArticles(current, articles) {
       const section = document.getElementById("related-section");
       const list = document.getElementById("related-list");
-      if (!section || !list) return;
+      const toggle = document.getElementById("related-toggle");
+      if (!section || !list || !toggle) return;
       const rows = relatedArticles(current, articles);
-      if (!rows.length) return;
+      if (!rows.length) {
+        section.style.display = "none";
+        list.innerHTML = "";
+        return;
+      }
       list.innerHTML = rows.map(({ article, reasons }) => {
         const date = article.date
           ? new Date(article.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
@@ -228,6 +233,14 @@
           <div class="related-reason">${esc(reason)}</div>
         </a>`;
       }).join("");
+      list.classList.add("collapsed");
+      toggle.textContent = `顯示 ${rows.length} 篇`;
+      toggle.setAttribute("aria-expanded", "false");
+      toggle.onclick = () => {
+        const collapsed = list.classList.toggle("collapsed");
+        toggle.textContent = collapsed ? `顯示 ${rows.length} 篇` : "收起";
+        toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      };
       section.style.display = "";
     }
 

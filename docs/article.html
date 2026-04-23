@@ -174,11 +174,23 @@
       margin-top: 34px; padding-top: 20px;
       border-top: 1px solid var(--border);
     }
+    .related-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 12px;
+    }
     .related-title {
       font-size: .86rem; color: var(--accent); font-weight: 700;
-      margin-bottom: 12px; letter-spacing: .05em;
+      letter-spacing: .05em;
     }
+    .related-toggle {
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text);
+      padding: 7px 12px; cursor: pointer; font-size: .82rem;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .related-toggle:hover { border-color: var(--accent); color: var(--accent); }
     .related-list { display: grid; gap: 10px; }
+    .related-list.collapsed { display: none; }
     .related-card {
       display: block; text-decoration: none; color: inherit;
       border: 1px solid var(--border); border-radius: 8px;
@@ -191,8 +203,8 @@
       color: var(--muted); font-size: .72rem; margin-bottom: 5px;
     }
     .related-source { color: var(--accent); font-weight: 700; }
-    .related-card-title { color: var(--text); line-height: 1.45; font-size: .92rem; }
-    .related-reason { color: var(--muted); font-size: .74rem; margin-top: 6px; }
+    .related-card-title { color: var(--text); line-height: 1.45; }
+    .related-reason { color: var(--muted); font-size: .82em; margin-top: 6px; }
 
     /* ── article nav (prev / back / next) ── */
     .article-nav {
@@ -218,12 +230,15 @@
     body.fs-0 h1#art-title { font-size: 1.15rem; }
     body.fs-0 .content     { font-size: .85rem; }
     body.fs-0 .summary-box { font-size: .78rem; }
+    body.fs-0 .related-list { font-size: .85rem; }
     body.fs-1 h1#art-title { font-size: 1.35rem; }   /* default */
     body.fs-1 .content     { font-size: 1rem; }
     body.fs-1 .summary-box { font-size: .88rem; }
+    body.fs-1 .related-list { font-size: 1rem; }
     body.fs-2 h1#art-title { font-size: 1.55rem; }
     body.fs-2 .content     { font-size: 1.25rem; }
     body.fs-2 .summary-box { font-size: 1.05rem; }
+    body.fs-2 .related-list { font-size: 1.25rem; }
 
     @media (max-width: 640px) {
       .topbar { padding: 10px 14px; gap: 8px; }
@@ -238,6 +253,7 @@
       .article-nav { gap: 6px; margin-top: 28px; }
       .nav-link { padding: 9px 8px; font-size: .8rem; }
       .nav-back { min-width: 60px; }
+      .related-toggle { padding: 6px 10px; font-size: .76rem; }
     }
   </style>
 </head>
@@ -262,8 +278,11 @@
       <div id="art-summary"></div>
       <div class="content" id="art-content"></div>
       <section class="related-section" id="related-section" style="display:none">
-        <div class="related-title">相關新聞</div>
-        <div class="related-list" id="related-list"></div>
+        <div class="related-header">
+          <div class="related-title">相關新聞</div>
+          <button class="related-toggle" id="related-toggle" type="button" aria-expanded="false" aria-controls="related-list">顯示</button>
+        </div>
+        <div class="related-list collapsed" id="related-list"></div>
       </section>
       <nav class="article-nav" id="article-nav" aria-label="文章導航">
         <a class="nav-link nav-prev disabled" id="nav-prev" rel="prev" aria-label="上一篇"><span class="nav-label">← 上一篇</span></a>

@@ -571,8 +571,15 @@ def test_article_page_has_related_section():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
     assert 'id="related-section"' in html
+    assert 'id="related-toggle"' in html
+    assert 'class="related-list collapsed"' in html
+    assert "body.fs-0 .related-list" in html
+    assert "body.fs-1 .related-list" in html
+    assert "body.fs-2 .related-list" in html
     assert "相關新聞" in html
     assert "renderRelatedArticles(art, data.articles);" in source
+    assert "list.classList.add(\"collapsed\")" in source
+    assert "toggle.setAttribute(\"aria-expanded\", \"false\")" in source
 
 
 def test_article_nav_uses_session_context():
