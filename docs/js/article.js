@@ -208,15 +208,66 @@
         .slice(0, limit);
     }
 
+    function summaryPoints(summary) {
+      const text = String(summary || "").replace(/\r/g, "\n").trim();
+      if (!text) return [];
+      return text
+        .replace(/\s*・\s*/g, "\n")
+        .split(/\n+/)
+        .map(line => line.replace(/^・+/, "").trim())
+        .filter(Boolean);
+    }
+
+    function relatedDigestItems(articles, limit = 5) {
+      const seen = new Set();
+      const items = [];
+      for (const article of articles) {
+        for (const point of summaryPoints(article.summary)) {
+          const normalized = point.replace(/\s+/g, "").toLowerCase();
+          if (!normalized || seen.has(normalized)) continue;
+          seen.add(normalized);
+          items.push(point);
+          if (items.length >= limit) return items;
+        }
+      }
+      return items;
+    }
+
+    function relatedSummaryHtml(articles) {
+      const digest = relatedDigestItems(articles);
+      const digestHtml = digest.length
+        ? `<ul class="related-digest-list">${digest.map(point => `<li>${esc(point)}</li>`).join("")}</ul>`
+        : `<div class="related-empty-summary">暫時未有足夠摘要</div>`;
+      const sourceRows = articles.map(article => {
+        const points = summaryPoints(article.summary).slice(0, 2);
+        const pointsHtml = points.length
+          ? `<div class="related-source-points">${points.map(point => `<div>${esc(point)}</div>`).join("")}</div>`
+          : "";
+        return `<div class="related-source-row">
+          <div class="related-source-head">
+            <span class="related-source-name">${esc(article.source || "未知來源")}</span>
+            <span class="related-source-title">${esc(article.title || "")}</span>
+          </div>
+          ${pointsHtml}
+        </div>`;
+      }).join("");
+      return `<div class="related-ai-title">AI 綜合摘要</div>
+        ${digestHtml}
+        <div class="related-source-list">${sourceRows}</div>`;
+    }
+
     function renderRelatedArticles(current, articles) {
       const section = document.getElementById("related-section");
       const list = document.getElementById("related-list");
       const toggle = document.getElementById("related-toggle");
-      if (!section || !list || !toggle) return;
+      const summary = document.getElementById("related-ai-summary");
+      if (!section || !list || !toggle || !summary) return;
       const rows = relatedArticles(current, articles);
       if (!rows.length) {
         section.style.display = "none";
         list.innerHTML = "";
+        summary.innerHTML = "";
+        summary.classList.remove("show");
         return;
       }
       list.innerHTML = rows.map(({ article, reasons }) => {
@@ -233,13 +284,14 @@
           <div class="related-reason">${esc(reason)}</div>
         </a>`;
       }).join("");
-      list.classList.add("collapsed");
-      toggle.textContent = `顯示 ${rows.length} 篇`;
+      summary.innerHTML = relatedSummaryHtml([current, ...rows.map(row => row.article)]);
+      summary.classList.remove("show");
+      toggle.textContent = "AI 綜合摘要";
       toggle.setAttribute("aria-expanded", "false");
       toggle.onclick = () => {
-        const collapsed = list.classList.toggle("collapsed");
-        toggle.textContent = collapsed ? `顯示 ${rows.length} 篇` : "收起";
-        toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        const open = summary.classList.toggle("show");
+        toggle.textContent = open ? "收起摘要" : "AI 綜合摘要";
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
       };
       section.style.display = "";
     }

@@ -572,14 +572,46 @@ def test_article_page_has_related_section():
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
     assert 'id="related-section"' in html
     assert 'id="related-toggle"' in html
-    assert 'class="related-list collapsed"' in html
+    assert 'id="related-ai-summary"' in html
+    assert 'class="related-list" id="related-list"' in html
     assert "body.fs-0 .related-list" in html
     assert "body.fs-1 .related-list" in html
     assert "body.fs-2 .related-list" in html
+    assert "body.fs-0 .related-ai-summary" in html
+    assert "body.fs-1 .related-ai-summary" in html
+    assert "body.fs-2 .related-ai-summary" in html
     assert "相關新聞" in html
+    assert "AI 綜合摘要" in html
     assert "renderRelatedArticles(art, data.articles);" in source
-    assert "list.classList.add(\"collapsed\")" in source
+    assert "relatedSummaryHtml([current, ...rows.map(row => row.article)])" in source
+    assert "summary.classList.toggle(\"show\")" in source
     assert "toggle.setAttribute(\"aria-expanded\", \"false\")" in source
+
+
+def test_article_related_digest_dedupes_summary_points():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        _extract_js_function(source, "summaryPoints"),
+        _extract_js_function(source, "relatedDigestItems"),
+        """
+        const rows = relatedDigestItems([
+          { source: "A", summary: "・共同重點\\n・A角度" },
+          { source: "B", summary: "共同重點\\nB角度" },
+        ]);
+        const expected = ["共同重點", "A角度", "B角度"];
+        if (JSON.stringify(rows) !== JSON.stringify(expected)) {
+          throw new Error("bad digest rows: " + JSON.stringify(rows));
+        }
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_article_nav_uses_session_context():
