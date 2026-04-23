@@ -355,12 +355,12 @@
       display: flex; flex-direction: column; gap: 9px;
     }
     .cluster-ai-title {
-      font-size: .76rem; font-weight: 800; color: #67e8f9;
+      font-size: .86em; font-weight: 800; color: #67e8f9;
       letter-spacing: .02em;
     }
     .cluster-digest-list {
       margin: 0; padding-left: 18px; color: #d6e4ee;
-      line-height: 1.55; font-size: .82rem;
+      line-height: 1.55;
     }
     .cluster-source-list { display: flex; flex-direction: column; gap: 7px; }
     .cluster-source-row {
@@ -368,16 +368,16 @@
     }
     .cluster-source-head {
       display: flex; gap: 7px; align-items: baseline;
-      font-size: .76rem; line-height: 1.45;
+      font-size: .86em; line-height: 1.45;
     }
     .cluster-source-name {
       flex: 0 0 auto; color: var(--accent); font-weight: 800;
     }
     .cluster-source-title { color: var(--text); }
     .cluster-source-points {
-      margin-top: 4px; color: var(--muted); font-size: .74rem; line-height: 1.45;
+      margin-top: 4px; color: var(--muted); font-size: .84em; line-height: 1.45;
     }
-    .cluster-empty-summary { color: var(--muted); font-size: .8rem; }
+    .cluster-empty-summary { color: var(--muted); font-size: .9em; }
     body.theme-light .card-summary { color: #555; }
     body.theme-light .tag-chip { background: #f5edff; color: #7d4ab0; border-color: #dfccf5; }
     body.theme-light .cluster-ai-btn { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
@@ -390,10 +390,13 @@
     /* ── font size levels ── */
     body.fs-0 .card-title   { font-size: .82rem; }
     body.fs-0 .card-summary { font-size: .75rem; }
+    body.fs-0 .cluster-ai-summary { font-size: .75rem; }
     body.fs-1 .card-title   { font-size: 1rem; }     /* default */
     body.fs-1 .card-summary { font-size: .88rem; }
+    body.fs-1 .cluster-ai-summary { font-size: .88rem; }
     body.fs-2 .card-title   { font-size: 1.25rem; }
     body.fs-2 .card-summary { font-size: 1.08rem; }
+    body.fs-2 .cluster-ai-summary { font-size: 1.08rem; }
 
     /* ── new card highlight ── */
     @keyframes newPulse {
@@ -470,6 +473,7 @@
       .card-title         { line-height: 1.4; }
       body.fs-1 .card-title   { font-size: .92rem; }
       body.fs-1 .card-summary { font-size: .8rem; }
+      body.fs-1 .cluster-ai-summary { font-size: .8rem; }
       .date               { font-size: .68rem; }
       .updated            { font-size: .72rem; }
     }

@@ -276,6 +276,9 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     assert ".card.cluster-expanded" in html
     assert ".cluster-ai-btn" in html
     assert ".cluster-ai-summary" in html
+    assert "body.fs-0 .cluster-ai-summary" in html
+    assert "body.fs-1 .cluster-ai-summary" in html
+    assert "body.fs-2 .cluster-ai-summary" in html
     assert 'isClusterStack ? `#cluster-${cid}`' in source
     assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
     assert 'isClusterStack ? " · 點擊展開" : ""' in source
