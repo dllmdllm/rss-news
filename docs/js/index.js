@@ -876,9 +876,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           ? `<div class="cluster-strip"><span>多來源報道</span><span>${Number(a.cluster_size)} 個來源</span></div>`
           : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
+          <div class="card-pre">
+            ${clusterStrip}
+            ${summaryHtml}
+          </div>
           ${thumb}
           <div class="card-body">
-            ${clusterStrip}
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
@@ -889,7 +892,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             ${tags}
             ${clusterSummary}
             ${factsHtml}
-            ${summaryHtml}
           </div>
         </a>`;
       }).join("");
