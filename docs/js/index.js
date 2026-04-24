@@ -907,11 +907,14 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           ? `<div class="cluster-strip"><span>多來源報道</span><span>${Number(a.cluster_size)} 個來源</span></div>`
           : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
-          <div class="card-pre">
-            ${clusterStrip}
-            ${summaryHtml}
+          <div class="card-media">
+            ${thumb}
+            ${isCluster ? `<div class="card-overlay">
+              ${clusterStrip}
+              ${isClusterStack ? clusterSummaryButton : ""}
+              ${isClusterStack && expandedClusterSummaryId === cid ? clusterSummaryHtml(cid) : ""}
+            </div>` : ""}
           </div>
-          ${thumb}
           <div class="card-body">
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
@@ -923,6 +926,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             ${tags}
             ${clusterSummary}
             ${factsHtml}
+            ${summaryHtml}
           </div>
         </a>`;
       }).join("");
