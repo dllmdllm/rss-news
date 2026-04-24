@@ -236,11 +236,11 @@ def _ignored_index_mobile_cluster_summary_renders_once():
           const html = els.get("grid").innerHTML;
           const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
           const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
-          if (overlayCount !== 1) {
-            throw new Error("expected one mobile overlay summary, got " + overlayCount);
+          if (overlayCount !== 0) {
+            throw new Error("expected no overlay summary, got " + overlayCount);
           }
-          if (bodyCount !== 0) {
-            throw new Error("expected no desktop body summary on mobile, got " + bodyCount);
+          if (bodyCount !== 1) {
+            throw new Error("expected one body summary, got " + bodyCount);
           }
         }, 0);
         """
@@ -359,11 +359,11 @@ def test_index_mobile_cluster_summary_renders_once():
           const html = els.get("grid").innerHTML;
           const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
           const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
-          if (overlayCount !== 1) {
-            throw new Error("expected one mobile overlay summary, got " + overlayCount);
+          if (overlayCount !== 0) {
+            throw new Error("expected no overlay summary, got " + overlayCount);
           }
-          if (bodyCount !== 0) {
-            throw new Error("expected no desktop body summary on mobile, got " + bodyCount);
+          if (bodyCount !== 1) {
+            throw new Error("expected one body summary, got " + bodyCount);
           }
         }, 0);
         """
@@ -512,10 +512,11 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     assert "body.fs-2 .cluster-ai-summary" in html
     assert 'isClusterStack ? `#cluster-${cid}`' in source
     assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
-    assert 'isClusterStack ? " · 點擊展開" : ""' in source
+    assert "點擊展開" in source
+    assert "點擊收起" in source
+    assert "function collapseCluster" in source
     assert "AI 綜合摘要" in source
     assert "function clusterSummaryHtml(cid" in source
-    assert 'clusterSummaryHtml(cid, "overlay")' in source
     assert 'clusterSummaryHtml(cid, "body")' in source
 
 

@@ -297,16 +297,6 @@
       backdrop-filter: blur(6px);
       pointer-events: auto;
     }
-    .card-overlay .cluster-ai-summary {
-      margin: 0;
-      background: #0f172acc;
-      backdrop-filter: blur(6px);
-      border-color: #284868;
-      color: #d7e7ff;
-      pointer-events: auto;
-      max-height: 44vh;
-      overflow: auto;
-    }
 
     /* card body */
     .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
@@ -561,8 +551,7 @@
       .card-thumb-placeholder { width: 100%; height: auto; min-height: 180px; aspect-ratio: 16 / 9; }
       .card-overlay       { display: flex; flex-direction: column; gap: 6px; }
       .card-body          { grid-column: 1; grid-row: 2; padding: 9px 10px 10px; gap: 5px; }
-      .card-body .cluster-ai-btn,
-      .card-body > .cluster-ai-summary { display: none; }
+      .card-body .cluster-ai-btn { display: none; }
       .card-title         { line-height: 1.4; }
       body.fs-1 .card-title   { font-size: .92rem; }
       body.fs-1 .card-summary { font-size: .8rem; }
@@ -617,13 +606,13 @@
     <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
   </div>
 
-  <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
   <div class="filters"        id="filters"></div>
   <div class="chip-filters" id="chip-filters">
     <div class="source-filters" id="source-filters"></div>
     <span class="chip-divider" id="chip-divider" aria-hidden="true"></span>
     <div class="tag-filters" id="tag-filters"></div>
   </div>
+  <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
   <div class="grid" id="grid">
     <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
     <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>

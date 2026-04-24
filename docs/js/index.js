@@ -644,6 +644,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
 
+    function collapseCluster() {
+      expandedClusterId = "";
+      renderFiltered();
+    }
+    window.collapseCluster = collapseCluster;
+
     function prefetchForOffline(id) {
       try {
         const url = "data/content/" + encodeURIComponent(id) + ".json";
@@ -764,7 +770,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const isExpandedCluster = isCluster && expandedClusterId === cid;
         const isClusterStack = isCluster && !isExpandedCluster;
         const clusterBadge = isCluster
-          ? `<span class="cluster-badge" onclick="event.preventDefault();filterCluster('${cid}')">${Number(a.cluster_size)} 來源${isClusterStack ? " · 點擊展開" : ""}</span>` : "";
+          ? `<span class="cluster-badge" onclick="event.preventDefault();event.stopPropagation();${isExpandedCluster ? "collapseCluster()" : `filterCluster('${cid}')`}">${Number(a.cluster_size)} 來源 · ${isExpandedCluster ? "點擊收起" : "點擊展開"}</span>` : "";
         const clusterSummaryButton = isClusterStack
           ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要"}</span>`
           : "";
@@ -793,18 +799,14 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           && expandedClusterSummaryId === cid
           && !renderedClusterSummaries.has(cid);
         if (shouldRenderClusterSummary) renderedClusterSummaries.add(cid);
-        const clusterOverlaySummary = isMobileCard && shouldRenderClusterSummary
-          ? clusterSummaryHtml(cid, "overlay")
-          : "";
-        const clusterBodySummary = !isMobileCard && shouldRenderClusterSummary
+        const clusterBodySummary = shouldRenderClusterSummary
           ? clusterSummaryHtml(cid, "body")
           : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           <div class="card-media">
             ${thumb}
-            ${isMobileCard && isCluster ? `<div class="card-overlay">
-              ${isClusterStack ? clusterSummaryButton : ""}
-              ${clusterOverlaySummary}
+            ${isMobileCard && isClusterStack ? `<div class="card-overlay">
+              ${clusterSummaryButton}
             </div>` : ""}
           </div>
           <div class="card-body">
