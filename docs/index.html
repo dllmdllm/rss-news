@@ -444,9 +444,9 @@
     body.fs-2 .card-title   { font-size: 1.25rem; }
     body.fs-2 .card-summary { font-size: 1.08rem; }
     body.fs-2 .cluster-ai-summary { font-size: 1.08rem; }
-    body.view-compact .card { display: grid; grid-template-columns: 92px 1fr; }
+    body.view-compact .card { display: grid; grid-template-columns: minmax(116px, 30%) 1fr; }
     body.view-compact .card-thumb,
-    body.view-compact .card-thumb-placeholder { width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto; }
+    body.view-compact .card-thumb-placeholder { width: 100%; height: 100%; min-height: 96px; aspect-ratio: auto; }
     body.view-compact .card-summary,
     body.view-compact .key-facts,
     body.view-compact .card-tags { display: none; }
@@ -532,9 +532,9 @@
                             grid-template-columns: 1fr; }
       .top-picks          { padding-left: 14px; padding-right: 14px; margin-top: 10px; }
       .top-picks-list     { grid-template-columns: 1fr; }
-      .card               { display: grid; grid-template-columns: 92px 1fr; }
+      .card               { display: grid; grid-template-columns: minmax(132px, 38vw) 1fr; }
       .card-thumb,
-      .card-thumb-placeholder { width: 92px; height: 100%; min-height: 104px; aspect-ratio: auto; }
+      .card-thumb-placeholder { width: 100%; height: 100%; min-height: 118px; max-height: 168px; aspect-ratio: auto; }
       .card-body          { padding: 9px 10px; gap: 5px; }
       .card-title         { line-height: 1.4; }
       body.fs-1 .card-title   { font-size: .92rem; }
