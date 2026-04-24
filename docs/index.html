@@ -168,31 +168,6 @@
     .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
     .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
 
-    /* trending topics */
-    .trending-topics {
-      padding: 7px 24px; display: flex; flex-wrap: wrap; gap: 6px;
-      background: var(--bg); border-bottom: 1px solid var(--border);
-    }
-    .trending-topics:empty { display: none; }
-    .trending-topic-btn {
-      background: #171723; border: 1px solid #34344a; color: var(--text);
-      padding: 4px 10px; border-radius: 8px; cursor: pointer; font-size: .78rem;
-      display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
-      transition: background .15s, border-color .15s, color .15s;
-    }
-    body.theme-light .trending-topic-btn {
-      background: #fff; border-color: var(--border);
-    }
-    .trending-topic-btn:hover {
-      border-color: #fbbf24; color: #fbbf24;
-    }
-    .trending-topic-btn.active {
-      background: #3a2b10; border-color: #fbbf24; color: #fbbf24;
-    }
-    .trending-topic-meta {
-      color: var(--muted); font-size: .72rem; white-space: nowrap;
-    }
-
     .top-picks {
       max-width: 1600px; margin: 14px auto 0; padding: 0 24px;
       display: none;
@@ -606,8 +581,7 @@
       .search-row,
       .filters,
       .source-filters,
-      .tag-filters,
-      .trending-topics    { padding-left: 14px; padding-right: 14px; }
+      .tag-filters        { padding-left: 14px; padding-right: 14px; }
       .grid               { padding: 14px; gap: 10px;
                             grid-template-columns: 1fr; }
       .top-picks          { padding-left: 14px; padding-right: 14px; margin-top: 10px; }
@@ -674,7 +648,6 @@
     <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
   </div>
 
-  <div class="trending-topics" id="trending-topics"></div>
   <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
   <div class="filters"        id="filters"></div>
   <div class="source-filters" id="source-filters"></div>

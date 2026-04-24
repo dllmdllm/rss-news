@@ -1,6 +1,6 @@
 const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
-    let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "ai";
+    let all = [], activeCat = "全部", activeSource = "", activeTag = "", sortMode = "ai";
     let onlyUnread = false, onlySaved = false, onlyImportant = false;
     const IMPORTANT_SCORE_MIN = 7;
     const SENT_ICON = { positive: "▲", negative: "▼", neutral: "–" };
@@ -8,7 +8,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     let expandedClusterSummaryId = "";
     let currentRenderArticles = [];
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
-    let trendingTopics = [];
     let sourceStats = {};
     let fuse = null;
     // Map category to CSS class; returns "" for unknown values so class
@@ -160,7 +159,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const snap = new Set(pendingNew);
       pendingNew.clear();
       all = pendingData.articles;
-      trendingTopics = pendingData.trending_topics || [];
       loadedIds = new Set(all.map(a => a.id));
       // Rebuild Fuse so search sees newly-merged articles and no longer
       // returns items that aged out of `all`.
@@ -170,7 +168,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       });
         buildSourceFilters();
         buildTagFilters();
-        buildTrendingTopics();
         buildTopPicks();
         renderFiltered();
       setTimeout(() => {
@@ -188,7 +185,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const data = await res.json();
         updateHeader(data);
         all = data.articles;
-        trendingTopics = data.trending_topics || [];
         sourceStats = data.sources || {};
         updateSourceHealthHistory(sourceStats);
         loadedIds = new Set(all.map(a => a.id));
@@ -199,7 +195,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         buildFilters();
         buildSourceFilters();
         buildTagFilters();
-        buildTrendingTopics();
         buildTopPicks();
         renderFiltered();
       } catch {
@@ -408,10 +403,8 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         activeCat = btn.dataset.cat;
         activeSource = "";
         activeTag = "";
-        activeTopic = "";
       buildSourceFilters();
       buildTagFilters();
-      buildTrendingTopics();
       buildTopPicks();
       renderFiltered();
       });
@@ -456,11 +449,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           container.querySelectorAll(".source-filter-btn").forEach(b => b.classList.remove("active"));
         } else {
           activeSource = src;
-          activeTopic = "";
           container.querySelectorAll(".source-filter-btn").forEach(b => b.classList.remove("active"));
           btn.classList.add("active");
         }
-        buildTrendingTopics();
         buildTopPicks();
         renderFiltered();
       };
@@ -499,55 +490,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           container.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
         } else {
           activeTag = tag;
-          activeTopic = "";
           container.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
           btn.classList.add("active");
         }
-        buildTrendingTopics();
-        buildTopPicks();
-        renderFiltered();
-      };
-    }
-
-    function trendingTopicsForCategory(topics, articles, category) {
-      if (category === "全部") return topics.slice(0, 10);
-      const byId = new Map(articles.map(a => [a.id, a]));
-      return topics
-        .filter(t => (t.article_ids || []).some(id => byId.get(id)?.category === category))
-        .slice(0, 10);
-    }
-
-    function buildTrendingTopics() {
-      const container = document.getElementById("trending-topics");
-      if (!container) return;
-
-      const topics = trendingTopicsForCategory(trendingTopics || [], all, activeCat);
-      if (!topics.length) {
-        container.innerHTML = "";
-        activeTopic = "";
-        return;
-      }
-      if (activeTopic && !topics.some(t => t.topic === activeTopic)) activeTopic = "";
-
-      container.innerHTML = topics.map(t => {
-        const active = activeTopic === t.topic ? " active" : "";
-        const count = Number(t.count) || 0;
-        const sourceCount = Number(t.source_count) || 0;
-        return `<button class="trending-topic-btn${active}" data-topic="${esc(t.topic)}">
-          <span>${esc(t.topic)}</span>
-          <span class="trending-topic-meta">${count}篇 · ${sourceCount}源</span>
-        </button>`;
-      }).join("");
-
-      container.onclick = e => {
-        const btn = e.target.closest(".trending-topic-btn");
-        if (!btn) return;
-        const topic = btn.dataset.topic;
-        activeTopic = activeTopic === topic ? "" : topic;
-        activeSource = "";
-        activeTag = "";
-        document.querySelectorAll(".source-filter-btn,.tag-filter-btn").forEach(b => b.classList.remove("active"));
-        buildTrendingTopics();
         buildTopPicks();
         renderFiltered();
       };
@@ -573,7 +518,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     function buildTopPicks() {
       const container = document.getElementById("top-picks");
       if (!container) return;
-      if (searchQuery || activeCat !== "全部" || activeSource || activeTag || activeTopic || onlyUnread || onlySaved || onlyImportant) {
+      if (searchQuery || activeCat !== "全部" || activeSource || activeTag || onlyUnread || onlySaved || onlyImportant) {
         container.classList.remove("show");
         container.innerHTML = "";
         return;
@@ -679,7 +624,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       expandedClusterId = cid;
       expandedClusterSummaryId = "";
       activeTag = "";
-      activeTopic = "";
       document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
       render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
@@ -789,11 +733,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         }
       } else {
         if (activeCat !== "全部") list = list.filter(a => a.category === activeCat);
-        if (activeTopic) {
-          const topic = trendingTopics.find(t => t.topic === activeTopic);
-          const ids = new Set((topic?.article_ids || []).map(String));
-          list = list.filter(a => ids.has(String(a.id)));
-        }
         if (activeSource) list = list.filter(a => a.source === activeSource);
         if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
       }
