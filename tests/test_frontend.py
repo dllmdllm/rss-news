@@ -543,7 +543,9 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
     assert 'isClusterStack ? " · 點擊展開" : ""' in source
     assert "AI 綜合摘要" in source
-    assert "clusterSummaryHtml(cid)" in source
+    assert "function clusterSummaryHtml(cid" in source
+    assert 'clusterSummaryHtml(cid, "overlay")' in source
+    assert 'clusterSummaryHtml(cid, "body")' in source
 
 
 def test_index_cluster_digest_dedupes_summary_points():
