@@ -64,3 +64,19 @@ def test_parse_oncc_index_extracts_recent_section_articles():
     assert articles[0]["category"] == "新聞"
     assert articles[0]["thumbnail"] == "https://hk.on.cc/img/a.jpg"
     assert articles[0]["url"].endswith("_00822_001.html")
+
+
+def test_parse_date_accepts_iso8601_zulu_string():
+    entry = SimpleNamespace(updated="2026-04-22T09:30:00Z")
+
+    parsed = _parse_date(entry)
+
+    assert parsed == datetime(2026, 4, 22, 9, 30, tzinfo=timezone.utc)
+
+
+def test_parse_date_accepts_iso8601_offset_string():
+    entry = SimpleNamespace(updated="2026-04-22T09:30:00+08:00")
+
+    parsed = _parse_date(entry)
+
+    assert parsed == datetime(2026, 4, 22, 1, 30, tzinfo=timezone.utc)
