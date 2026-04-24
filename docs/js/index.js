@@ -410,14 +410,23 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       });
     }
 
+    function syncChipFiltersVisibility() {
+      const wrap     = document.getElementById("chip-filters");
+      const source   = document.getElementById("source-filters");
+      const tag      = document.getElementById("tag-filters");
+      const divider  = document.getElementById("chip-divider");
+      const hasSrc   = !!(source && source.childElementCount);
+      const hasTag   = !!(tag && tag.childElementCount);
+      wrap.classList.toggle("has-any", hasSrc || hasTag);
+      divider.classList.toggle("show", hasSrc && hasTag);
+    }
+
     function buildSourceFilters() {
       const container = document.getElementById("source-filters");
-      const tagFilters = document.getElementById("tag-filters");
 
       if (activeCat === "全部") {
-        container.classList.remove("has-sources");
         container.innerHTML = "";
-        tagFilters.style.top = "135px";
+        syncChipFiltersVisibility();
         return;
       }
 
@@ -426,19 +435,15 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       )].sort();
 
       if (!sources.length) {
-        container.classList.remove("has-sources");
         container.innerHTML = "";
-        tagFilters.style.top = "135px";
+        syncChipFiltersVisibility();
         return;
       }
 
       container.innerHTML = sources.map(s =>
         `<button class="source-filter-btn${activeSource === s ? " active" : ""}" data-source="${esc(s)}">${esc(s)}</button>`
       ).join("");
-      container.classList.add("has-sources");
-
-      // Push tag-filters down to sit below source-filters
-      tagFilters.style.top = (135 + container.offsetHeight) + "px";
+      syncChipFiltersVisibility();
 
       container.onclick = e => {
         const btn = e.target.closest(".source-filter-btn");
@@ -471,16 +476,16 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const tags = topTagsForCategory(all, activeCat);
       const container = document.getElementById("tag-filters");
       if (!tags.length) {
-        container.style.display = "none";
         container.innerHTML = "";
         activeTag = "";
+        syncChipFiltersVisibility();
         return;
       }
       if (activeTag && !tags.includes(activeTag)) activeTag = "";
-      container.style.display = "";
       container.innerHTML = tags.map(t =>
         `<button class="tag-filter-btn${activeTag === t ? " active" : ""}" data-tag="${esc(t)}"># ${esc(t)}</button>`
       ).join("");
+      syncChipFiltersVisibility();
       container.onclick = e => {
         const btn = e.target.closest(".tag-filter-btn");
         if (!btn) return;
@@ -498,21 +503,32 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       };
     }
 
-    function topPicks(articles, limit = 6) {
+    function topPicks(articles) {
       const muted = getMutedSources();
-      const seenCluster = new Set();
-      return getSorted(articles)
+      const cats = CATS.filter(c => c !== "全部");
+      const sorted = getSorted(articles)
         .filter(a => !muted.has(a.source))
-        .filter(a => !a.duplicate_of)
-        .filter(a => (Number(a.score) || 0) >= 7 || Number(a.cluster_size) > 1)
-        .filter(a => {
+        .filter(a => !a.duplicate_of);
+      const seenCluster = new Set();
+      const takeOne = pool => {
+        for (const a of pool) {
           const cid = String(a.cluster_id || "");
-          if (!cid) return true;
-          if (seenCluster.has(cid)) return false;
-          seenCluster.add(cid);
-          return true;
-        })
-        .slice(0, limit);
+          if (cid && seenCluster.has(cid)) continue;
+          if (cid) seenCluster.add(cid);
+          return a;
+        }
+        return null;
+      };
+      const picks = [];
+      for (const cat of cats) {
+        const scope = sorted.filter(a => a.category === cat);
+        const shortlisted = scope.filter(
+          a => (Number(a.score) || 0) >= 7 || Number(a.cluster_size) > 1
+        );
+        const pick = takeOne(shortlisted) || takeOne(scope);
+        if (pick) picks.push(pick);
+      }
+      return picks;
     }
 
     function buildTopPicks() {
@@ -532,7 +548,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       container.classList.add("show");
       container.innerHTML = `<div class="top-picks-head">
         <div class="top-picks-title">今日重點</div>
-        <div class="top-picks-sub">按重要度、多來源報道同時間排序</div>
+        <div class="top-picks-sub">每個分類各一條，按重要度挑選</div>
       </div>
       <div class="top-picks-list">${picks.map(a => {
         const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";

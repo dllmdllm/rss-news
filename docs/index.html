@@ -141,30 +141,24 @@
     body.theme-light .filter-btn.cat-科技.active { background: #fff6e8; }
     body.theme-light .filter-btn.cat-網媒.active { background: #f5edff; }
 
-    /* ── source filters ── */
-    .source-filters {
-      padding: 5px 24px 7px; display: none; flex-wrap: wrap; gap: 5px;
+    /* ── chip filters (source + tag on one row) ── */
+    .chip-filters {
+      padding: 5px 24px 7px; display: none; flex-wrap: wrap; align-items: center; gap: 5px;
       background: var(--bg); border-bottom: 1px solid var(--border);
     }
-    .source-filters.has-sources { display: flex; }
-    .source-filter-btn {
+    .chip-filters.has-any { display: flex; }
+    .source-filters, .tag-filters { display: contents; }
+    .chip-divider {
+      display: none; width: 1px; align-self: stretch; background: var(--border); margin: 0 4px;
+    }
+    .chip-divider.show { display: block; }
+    .source-filter-btn, .tag-filter-btn {
       background: transparent; border: 1px solid var(--border); color: var(--muted);
       padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
       transition: background .15s, color .15s, border-color .15s;
     }
     .source-filter-btn:hover  { border-color: var(--accent); color: var(--text); }
     .source-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-    /* ── tag filters ── */
-    .tag-filters {
-      padding: 5px 24px 7px; display: flex; flex-wrap: wrap; gap: 5px;
-      background: var(--bg); border-bottom: 1px solid var(--border);
-    }
-    .tag-filter-btn {
-      background: transparent; border: 1px solid var(--border); color: var(--muted);
-      padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: .75rem;
-      transition: background .15s, color .15s, border-color .15s;
-    }
     .tag-filter-btn:hover  { border-color: #a78bfa; color: #a78bfa; }
     .tag-filter-btn.active { background: #3b1f6e; border-color: #a78bfa; color: #a78bfa; }
 
@@ -580,8 +574,7 @@
       header h1           { font-size: 1rem; }
       .search-row,
       .filters,
-      .source-filters,
-      .tag-filters        { padding-left: 14px; padding-right: 14px; }
+      .chip-filters       { padding-left: 14px; padding-right: 14px; }
       .grid               { padding: 14px; gap: 10px;
                             grid-template-columns: 1fr; }
       .top-picks          { padding-left: 14px; padding-right: 14px; margin-top: 10px; }
@@ -650,8 +643,11 @@
 
   <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
   <div class="filters"        id="filters"></div>
-  <div class="source-filters" id="source-filters"></div>
-  <div class="tag-filters"    id="tag-filters"></div>
+  <div class="chip-filters" id="chip-filters">
+    <div class="source-filters" id="source-filters"></div>
+    <span class="chip-divider" id="chip-divider" aria-hidden="true"></span>
+    <div class="tag-filters" id="tag-filters"></div>
+  </div>
   <div class="grid" id="grid">
     <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
     <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>

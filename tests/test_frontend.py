@@ -82,7 +82,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
         for (const id of [
           "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
           "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "source-filters", "tag-filters",
+          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
           "sort-toggle", "grid", "font-dec", "font-inc",
         ]) {
           els.set(id, new El(id));
@@ -192,7 +192,7 @@ def _ignored_index_mobile_cluster_summary_renders_once():
         for (const id of [
           "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
           "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "source-filters", "tag-filters",
+          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
           "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
         ]) {
           els.set(id, new El(id));
@@ -315,7 +315,7 @@ def test_index_mobile_cluster_summary_renders_once():
         for (const id of [
           "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
           "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "source-filters", "tag-filters",
+          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
           "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
         ]) {
           els.set(id, new El(id));
