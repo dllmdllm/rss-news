@@ -55,15 +55,27 @@
     .updated.busy   { color: var(--accent); border-bottom-color: transparent; cursor: default; }
     .updated.ok     { color: #4ade80; border-bottom-color: transparent; }
 
-    /* sort toggle */
-    .sort-toggle { display: flex; gap: 4px; }
-    .sort-btn, .view-btn {
+    /* sort toggle — segmented control (radio-style, exactly one active) */
+    .sort-toggle {
+      display: flex; gap: 0;
+      border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface); padding: 2px;
+    }
+    .sort-btn {
+      background: transparent; border: none; color: var(--muted);
+      padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
+      transition: background .15s, color .15s;
+    }
+    .sort-btn.active { background: var(--accent); color: #fff; }
+
+    /* quick toggle — independent filter pills (checkbox-style, 0+ active) */
+    .quick-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
+    .view-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
       transition: background .15s, color .15s, border-color .15s;
     }
-    .sort-btn.active, .view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .quick-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
+    .view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* font size buttons */
     .font-btns { display: flex; gap: 4px; }
@@ -629,8 +641,8 @@
     <h1>新聞快訊</h1>
     <div class="header-right">
       <div class="sort-toggle" id="sort-toggle">
-        <button class="sort-btn active" data-sort="date">🕒 最新</button>
-        <button class="sort-btn" data-sort="ai">✨ 推薦</button>
+        <button class="sort-btn" data-sort="date">🕒 最新</button>
+        <button class="sort-btn active" data-sort="ai">✨ 推薦</button>
       </div>
       <div class="quick-toggle" id="quick-toggle">
         <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>

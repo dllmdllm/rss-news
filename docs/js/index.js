@@ -1,6 +1,6 @@
 const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
-    let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "date";
+    let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "ai";
     let onlyUnread = false, onlySaved = false, onlyImportant = false;
     const IMPORTANT_SCORE_MIN = 7;
     const SENT_ICON = { positive: "▲", negative: "▼", neutral: "–" };
