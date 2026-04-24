@@ -901,7 +901,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           ${thumb}
-          <div class="card-body">
+          <div class="card-main">
             ${clusterStrip}
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
