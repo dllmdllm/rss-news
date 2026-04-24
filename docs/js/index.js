@@ -555,9 +555,18 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
 
     function topPicks(articles, limit = 6) {
       const muted = getMutedSources();
+      const seenCluster = new Set();
       return getSorted(articles)
         .filter(a => !muted.has(a.source))
+        .filter(a => !a.duplicate_of)
         .filter(a => (Number(a.score) || 0) >= 7 || Number(a.cluster_size) > 1)
+        .filter(a => {
+          const cid = String(a.cluster_id || "");
+          if (!cid) return true;
+          if (seenCluster.has(cid)) return false;
+          seenCluster.add(cid);
+          return true;
+        })
         .slice(0, limit);
     }
 

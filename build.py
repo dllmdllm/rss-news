@@ -145,6 +145,9 @@ def cluster_articles(articles: list) -> list:
 
     topic_groups: dict[str, list[str]] = defaultdict(list)
     for a in articles:
+        # Skip near-duplicates so cluster_size reflects distinct reports.
+        if a.get("duplicate_of"):
+            continue
         topic = normalise_topic(a)
         if topic:
             topic_groups[topic].append(a["id"])
@@ -540,8 +543,9 @@ async def main():
     print(f"[time] analyse {time.monotonic()-t:.1f}s")
 
     articles = _apply_fallback_summaries(articles, old_articles)
-    articles = cluster_articles(articles)
+    # Dedup first so clusters count only distinct reports.
     articles = detect_duplicates(articles)
+    articles = cluster_articles(articles)
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles, source_stats)
     print(f"=== done in {time.monotonic()-t0:.1f}s ===")
