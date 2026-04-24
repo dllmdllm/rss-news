@@ -441,7 +441,8 @@ def test_index_has_ai_sort_button():
     assert 'data-sort="date"' in html
     assert ">最新</button>" in html
     assert 'data-sort="ai"' in html
-    assert ">AI</button>" in html
+    assert ">推薦</button>" in html
+    assert 'data-sort="score"' not in html
     assert 'id="trending-topics"' in html
 
 

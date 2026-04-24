@@ -623,12 +623,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     function getSorted(articles) {
-      if (sortMode === "score") {
-        return [...articles].sort((a, b) => {
-          const sa = a.score ?? 5, sb = b.score ?? 5;
-          return sb !== sa ? sb - sa : compareByDate(a, b);
-        });
-      }
       if (sortMode === "ai") {
         const now = Date.now();
         return [...articles].sort((a, b) => {
