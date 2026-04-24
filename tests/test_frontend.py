@@ -439,7 +439,7 @@ def test_index_trending_topics_are_scoped_per_category():
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     assert 'data-sort="date"' in html
-    assert ">最新</button>" in html
+    assert ">🕒 最新</button>" in html
     assert 'data-sort="ai"' in html
     assert ">✨ 推薦</button>" in html
     assert 'data-sort="score"' not in html
