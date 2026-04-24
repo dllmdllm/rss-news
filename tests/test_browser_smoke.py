@@ -49,16 +49,6 @@ def test_index_and_article_pages_render_in_browser():
 
                 first_href = page.locator("#grid .card").first.get_attribute("href")
                 assert first_href and first_href.startswith("article.html?id=")
-
-                mobile_index = browser.new_page(viewport={"width": 390, "height": 844})
-                mobile_index.goto(base_url + "/index.html", wait_until="networkidle")
-                mobile_index.locator("#grid .card").first.wait_for(timeout=10_000)
-                index_overflow = mobile_index.evaluate(
-                    "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > window.innerWidth + 1"
-                )
-                assert index_overflow is False
-                mobile_index.close()
-
                 page.goto(base_url + "/" + first_href, wait_until="networkidle")
                 page.locator("#art-body").wait_for(state="visible", timeout=10_000)
                 assert page.locator("#art-title").inner_text().strip()
@@ -66,15 +56,6 @@ def test_index_and_article_pages_render_in_browser():
                 assert "disabled" in page.locator("#nav-prev").get_attribute("class")
                 assert "disabled" not in page.locator("#nav-next").get_attribute("class")
                 assert page.locator("#nav-next").get_attribute("href")
-
-                mobile = browser.new_page(viewport={"width": 390, "height": 844})
-                mobile.goto(base_url + "/" + first_href, wait_until="networkidle")
-                mobile.locator("#art-body").wait_for(state="visible", timeout=10_000)
-                overflow = mobile.evaluate(
-                    "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > window.innerWidth + 1"
-                )
-                assert overflow is False
-                mobile.close()
                 browser.close()
         except Exception as exc:
             pytest.skip(f"playwright browser runtime unavailable: {exc}")

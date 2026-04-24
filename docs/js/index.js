@@ -696,35 +696,11 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     function summaryPoints(summary) {
       const text = String(summary || "").replace(/\r/g, "\n").trim();
       if (!text) return [];
-      const cleaned = text
-        .replace(/(?:^|\n)\s*(?:[・•‧*]|\d+[.)、-])\s*/g, "\n")
-        .replace(/\s*[・•‧*]\s*/g, "\n");
-      const points = [];
-      const pushPoint = raw => {
-        let line = String(raw || "").trim();
-        if (!line) return;
-        line = line.replace(/^\d+\s*[.)、-]\s*/, "").replace(/^[・•‧*]+\s*/, "").trim();
-        line = line.replace(/[。！？!?；;，,、]+$/g, "").trim();
-        if (!line) return;
-        if (line.length > 10) line = line.slice(0, 10);
-        if (!points.includes(line)) points.push(line);
-      };
-      for (const line of cleaned.split(/\n+/)) {
-        const textLine = line.trim();
-        if (!textLine) continue;
-        const sentenceParts = textLine.split(/[。！？!?；;]+/).map(x => x.trim()).filter(Boolean);
-        if (sentenceParts.length > 1) {
-          for (const part of sentenceParts) pushPoint(part);
-        } else if (/[，,、]/.test(textLine) && textLine.length > 10) {
-          for (const part of textLine.split(/[，,、]+/).map(x => x.trim()).filter(Boolean)) pushPoint(part);
-        } else if (textLine.length > 10) {
-          for (const chunk of textLine.match(/.{1,10}/g) || []) pushPoint(chunk);
-        } else {
-          pushPoint(textLine);
-        }
-        if (points.length >= 8) break;
-      }
-      return points;
+      return text
+        .replace(/\s*・\s*/g, "\n")
+        .split(/\n+/)
+        .map(line => line.replace(/^・+/, "").trim())
+        .filter(Boolean);
     }
 
     function clusterDigestItems(articles, limit = 5) {
@@ -901,7 +877,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           ${thumb}
-          <div class="card-main">
+          <div class="card-body">
             ${clusterStrip}
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
@@ -910,8 +886,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
-          </div>
-          <div class="card-detail">
             ${tags}
             ${clusterSummary}
             ${factsHtml}

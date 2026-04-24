@@ -39,11 +39,7 @@
       --tag-text: #7d4ab0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { overflow-x: hidden; }
-    body {
-      background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif;
-      transition: background .18s, color .18s; overscroll-behavior-x: none;
-    }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; transition: background .18s, color .18s; }
 
     /* top bar */
     .topbar {
@@ -114,10 +110,10 @@
       border: 1px solid var(--tag-border); padding: 2px 10px; border-radius: 4px;
     }
 
-    h1#art-title { font-weight: 700; line-height: 1.5; color: var(--text); margin-bottom: 24px; overflow-wrap: anywhere; word-break: break-word; }
+    h1#art-title { font-weight: 700; line-height: 1.5; color: var(--text); margin-bottom: 24px; }
 
     /* article body */
-    .content { line-height: 1.85; color: var(--content); overflow-wrap: anywhere; word-break: break-word; }
+    .content { line-height: 1.85; color: var(--content); }
     .content p      { margin-bottom: 1.2em; }
     .content h2,
     .content h3,
@@ -160,7 +156,6 @@
       background: var(--summary-bg); border-left: 3px solid var(--accent);
       padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
       color: var(--summary-text); line-height: 1.6; white-space: pre-line;
-      overflow-wrap: anywhere; word-break: break-word;
     }
     .summary-label {
       display: block; font-size: .72rem; color: var(--accent);
@@ -226,7 +221,7 @@
       font-size: .86em; line-height: 1.45;
     }
     .related-source-name { flex: 0 0 auto; color: var(--accent); font-weight: 800; }
-    .related-source-title { color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
+    .related-source-title { color: var(--text); }
     .related-source-points {
       margin-top: 4px; color: var(--muted); font-size: .84em; line-height: 1.45;
     }
@@ -243,7 +238,7 @@
       color: var(--muted); font-size: .72rem; margin-bottom: 5px;
     }
     .related-source { color: var(--accent); font-weight: 700; }
-    .related-card-title { color: var(--text); line-height: 1.45; overflow-wrap: anywhere; word-break: break-word; }
+    .related-card-title { color: var(--text); line-height: 1.45; }
     .related-reason { color: var(--muted); font-size: .82em; margin-top: 6px; }
 
     /* ── article nav (prev / back / next) ── */
@@ -287,7 +282,6 @@
       .topbar { padding: 10px 14px; gap: 8px; }
       .topbar-right { gap: 6px; }
       .topbar-source { display: none; }
-      body { touch-action: pan-y; }
       main { padding: 22px 16px 64px; }
       h1#art-title { line-height: 1.45; margin-bottom: 18px; }
       body.fs-0 h1#art-title { font-size: 1.05rem; }

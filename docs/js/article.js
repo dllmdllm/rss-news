@@ -244,35 +244,11 @@
     function summaryPoints(summary) {
       const text = String(summary || "").replace(/\r/g, "\n").trim();
       if (!text) return [];
-      const cleaned = text
-        .replace(/(?:^|\n)\s*(?:[・•‧*]|\d+[.)、-])\s*/g, "\n")
-        .replace(/\s*[・•‧*]\s*/g, "\n");
-      const points = [];
-      const pushPoint = raw => {
-        let line = String(raw || "").trim();
-        if (!line) return;
-        line = line.replace(/^\d+\s*[.)、-]\s*/, "").replace(/^[・•‧*]+\s*/, "").trim();
-        line = line.replace(/[。！？!?；;，,、]+$/g, "").trim();
-        if (!line) return;
-        if (line.length > 10) line = line.slice(0, 10);
-        if (!points.includes(line)) points.push(line);
-      };
-      for (const line of cleaned.split(/\n+/)) {
-        const textLine = line.trim();
-        if (!textLine) continue;
-        const sentenceParts = textLine.split(/[。！？!?；;]+/).map(x => x.trim()).filter(Boolean);
-        if (sentenceParts.length > 1) {
-          for (const part of sentenceParts) pushPoint(part);
-        } else if (/[，,、]/.test(textLine) && textLine.length > 10) {
-          for (const part of textLine.split(/[，,、]+/).map(x => x.trim()).filter(Boolean)) pushPoint(part);
-        } else if (textLine.length > 10) {
-          for (const chunk of textLine.match(/.{1,10}/g) || []) pushPoint(chunk);
-        } else {
-          pushPoint(textLine);
-        }
-        if (points.length >= 8) break;
-      }
-      return points;
+      return text
+        .replace(/\s*・\s*/g, "\n")
+        .split(/\n+/)
+        .map(line => line.replace(/^・+/, "").trim())
+        .filter(Boolean);
     }
 
     function relatedDigestItems(articles, limit = 5) {
@@ -459,9 +435,8 @@
         renderArticleFacts(art);
 
         const summaryEl = document.getElementById("art-summary");
-        const summaryPointsList = summaryPoints(art.summary);
-        if (summaryPointsList.length) {
-          const summaryText = summaryPointsList.map(p => `・${p}`).join("\n");
+        if (art.summary) {
+          const summaryText = String(art.summary).replace(/\s*・/g, '\n・').trimStart();
           summaryEl.innerHTML = `<div class="summary-box"><span class="summary-label">AI 摘要</span>${esc(summaryText)}</div>`;
         }
 
