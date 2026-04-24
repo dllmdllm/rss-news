@@ -56,6 +56,15 @@ def test_index_and_article_pages_render_in_browser():
                 assert "disabled" in page.locator("#nav-prev").get_attribute("class")
                 assert "disabled" not in page.locator("#nav-next").get_attribute("class")
                 assert page.locator("#nav-next").get_attribute("href")
+
+                mobile = browser.new_page(viewport={"width": 390, "height": 844})
+                mobile.goto(base_url + "/" + first_href, wait_until="networkidle")
+                mobile.locator("#art-body").wait_for(state="visible", timeout=10_000)
+                overflow = mobile.evaluate(
+                    "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > window.innerWidth + 1"
+                )
+                assert overflow is False
+                mobile.close()
                 browser.close()
         except Exception as exc:
             pytest.skip(f"playwright browser runtime unavailable: {exc}")

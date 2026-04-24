@@ -342,6 +342,11 @@ def test_index_summary_points_normalise_bullets():
         throw new Error("bad summary points: " + JSON.stringify(actual));
       }
     }
+    const longInput = "第一句好長啊，第二句都長。第三句再長。";
+    const longActual = summaryPoints(longInput);
+    if (!longActual.length || longActual.some(line => line.length > 10)) {
+      throw new Error("long summary not normalised: " + JSON.stringify(longActual));
+    }
     """
     result = subprocess.run(
         [node, "-e", js],
@@ -630,6 +635,25 @@ def test_article_related_digest_dedupes_summary_points():
         }
         """,
     ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_article_summary_points_normalise_long_text():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "summaryPoints")
+    js = fn + """
+    const actual = summaryPoints("第一句好長啊，第二句都長。第三句再長。");
+    if (!actual.length || actual.some(line => line.length > 10)) {
+      throw new Error("bad summary points: " + JSON.stringify(actual));
+    }
+    """
     result = subprocess.run(
         [node, "-e", js],
         cwd=ROOT,
