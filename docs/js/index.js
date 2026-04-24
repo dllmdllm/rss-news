@@ -1,6 +1,7 @@
 const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "date";
+    let onlyUnread = false, onlySaved = false;
     let expandedClusterId = "";
     let expandedClusterSummaryId = "";
     let currentRenderArticles = [];
@@ -54,13 +55,62 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
     setupThemeMode();
 
+    function setupQuickToggles() {
+      const unreadBtn = document.getElementById("unread-toggle");
+      const savedBtn = document.getElementById("saved-toggle");
+      const compactBtn = document.getElementById("compact-toggle");
+
+      function syncButtons() {
+        unreadBtn?.classList.toggle("active", onlyUnread);
+        savedBtn?.classList.toggle("active", onlySaved);
+        const compact = localStorage.getItem(COMPACT_KEY) === "1";
+        compactBtn?.classList.toggle("active", compact);
+        document.body.classList.toggle("view-compact", compact);
+      }
+
+      unreadBtn?.addEventListener("click", () => {
+        onlyUnread = !onlyUnread;
+        if (onlyUnread) onlySaved = false;
+        syncButtons();
+        renderFiltered();
+      });
+      savedBtn?.addEventListener("click", () => {
+        onlySaved = !onlySaved;
+        if (onlySaved) onlyUnread = false;
+        syncButtons();
+        renderFiltered();
+      });
+      compactBtn?.addEventListener("click", () => {
+        const next = localStorage.getItem(COMPACT_KEY) === "1" ? "0" : "1";
+        localStorage.setItem(COMPACT_KEY, next);
+        syncButtons();
+      });
+      syncButtons();
+    }
+
     // ── Read tracking ─────────────────────────────────────────────
     const READ_KEY = "rss_read_ids";
+    const BOOKMARK_KEY = "rss_bookmark_ids";
+    const MUTED_SOURCES_KEY = "rss_muted_sources";
+    const DOWNRANK_SOURCES_KEY = "rss_downrank_sources";
+    const COMPACT_KEY = "rss_compact_view";
+    const SOURCE_HEALTH_KEY = "rss_source_health";
     const NAV_CONTEXT_KEY = "rss_article_nav_context";
     function getRead() {
-      try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); }
-      catch { return new Set(); }
+      return readJsonSet(READ_KEY);
     }
+    function getBookmarks() { return readJsonSet(BOOKMARK_KEY); }
+    function getMutedSources() { return readJsonSet(MUTED_SOURCES_KEY); }
+    function getDownrankSources() { return readJsonSet(DOWNRANK_SOURCES_KEY); }
+
+    function toggleStoredSet(key, value) {
+      const set = readJsonSet(key);
+      if (set.has(value)) set.delete(value);
+      else set.add(value);
+      writeJsonSet(key, set);
+      return set.has(value);
+    }
+    setupQuickToggles();
 
     function saveArticleNavContext(articles) {
       try {
@@ -105,10 +155,11 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         keys: ["title", "source", "tags", "summary"],
         threshold: 0.4, minMatchCharLength: 2,
       });
-      buildSourceFilters();
-      buildTagFilters();
-      buildTrendingTopics();
-      renderFiltered();
+        buildSourceFilters();
+        buildTagFilters();
+        buildTrendingTopics();
+        buildTopPicks();
+        renderFiltered();
       setTimeout(() => {
         snap.forEach(id => {
           const card = document.querySelector(`a.card[href="article.html?id=${id}"]`);
@@ -126,6 +177,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         all = data.articles;
         trendingTopics = data.trending_topics || [];
         sourceStats = data.sources || {};
+        updateSourceHealthHistory(sourceStats);
         loadedIds = new Set(all.map(a => a.id));
         fuse = new Fuse(all, {
           keys: ["title", "source", "tags", "summary"],
@@ -135,6 +187,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         buildSourceFilters();
         buildTagFilters();
         buildTrendingTopics();
+        buildTopPicks();
         renderFiltered();
       } catch {
         document.getElementById("grid").innerHTML = '<div class="empty">載入失敗，請重試</div>';
@@ -151,6 +204,27 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     // ── Source health modal ──────────────────────────────────────
+    function updateSourceHealthHistory(stats) {
+      try {
+        const now = new Date().toISOString();
+        const prev = JSON.parse(localStorage.getItem(SOURCE_HEALTH_KEY) || "{}");
+        for (const [name, s] of Object.entries(stats || {})) {
+          const old = prev[name] || {};
+          if (s.error) {
+            prev[name] = { ...old, failStreak: (Number(old.failStreak) || 0) + 1, lastError: String(s.error).slice(0, 120) };
+          } else {
+            prev[name] = { ...old, failStreak: 0, lastSuccess: now, lastError: "" };
+          }
+        }
+        localStorage.setItem(SOURCE_HEALTH_KEY, JSON.stringify(prev));
+      } catch (_) {}
+    }
+
+    function sourceHealthHistory() {
+      try { return JSON.parse(localStorage.getItem(SOURCE_HEALTH_KEY) || "{}"); }
+      catch (_) { return {}; }
+    }
+
     const healthOverlay = document.getElementById("health-overlay");
     document.getElementById("health-close").addEventListener("click", () => healthOverlay.classList.remove("show"));
     healthOverlay.addEventListener("click", e => {
@@ -163,6 +237,9 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       if (!entries.length) {
         body.innerHTML = '<div class="health-err">未載入來源資料</div>';
       } else {
+        const history = sourceHealthHistory();
+        const muted = getMutedSources();
+        const downranked = getDownrankSources();
         const sourceRank = s => s.error ? 0 : (s.count === 0 && !s.not_modified) ? 1 : s.not_modified ? 2 : 3;
         entries.sort(([, a], [, b]) => sourceRank(a) - sourceRank(b));
         const legend = `<div class="health-legend">
@@ -172,6 +249,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           <span class="health-legend-item"><span class="health-dot health-bad"></span>抓取失敗</span>
         </div>`;
         body.innerHTML = legend + entries.map(([name, s]) => {
+          const h = history[name] || {};
           const effectiveCount = Number(s.effective_count ?? s.count) || 0;
           let cls, tip;
           if (s.error) {
@@ -195,22 +273,40 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           } else {
             meta = `<span class="health-meta">${effectiveCount} 篇${s.restored ? ` · 沿用 ${Number(s.restored) || 0}` : ""}</span>`;
           }
+          const lastSuccess = h.lastSuccess ? new Date(h.lastSuccess).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "未有紀錄";
+          const controls = `<span class="health-actions">
+            <button class="health-action${muted.has(name) ? " active" : ""}" data-source-action="mute" data-source="${esc(name)}">靜音</button>
+            <button class="health-action${downranked.has(name) ? " active" : ""}" data-source-action="downrank" data-source="${esc(name)}">降權</button>
+          </span>`;
+          const histMeta = `<span class="health-history">上次成功 ${esc(lastSuccess)}${Number(h.failStreak) ? ` · 連敗 ${Number(h.failStreak)}` : ""}</span>`;
           return `<div class="health-row">
             <span class="health-dot ${cls}" title="${esc(tip)}"></span>
             <span class="health-name">${esc(name)}</span>
             <span class="health-cat">${esc(s.category || "")}</span>
-            ${meta}
+            ${meta}${histMeta}${controls}
           </div>`;
         }).join("");
       }
       healthOverlay.classList.add("show");
     }
 
+    document.getElementById("health-body").addEventListener("click", e => {
+      const btn = e.target.closest("[data-source-action]");
+      if (!btn) return;
+      const source = btn.dataset.source || "";
+      if (!source) return;
+      if (btn.dataset.sourceAction === "mute") toggleStoredSet(MUTED_SOURCES_KEY, source);
+      if (btn.dataset.sourceAction === "downrank") toggleStoredSet(DOWNRANK_SOURCES_KEY, source);
+      openHealthModal();
+      renderFiltered();
+    });
+
     // ── Check for updates ─────────────────────────────────────────
     async function pollForNew() {
       const res  = await fetch("data/articles.json?" + Date.now());
       const data = await res.json();
       sourceStats = data.sources || sourceStats;
+      updateSourceHealthHistory(sourceStats);
       const newOnes = data.articles.filter(a => !loadedIds.has(a.id));
       if (newOnes.length > 0) {
         pendingData = data;
@@ -247,8 +343,43 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     let searchQuery = "";
     document.getElementById("search").addEventListener("input", e => {
       searchQuery = e.target.value.trim();
+      buildTopPicks();
       renderFiltered();
     });
+
+    function parseSearchQuery(query) {
+      const filters = {};
+      const terms = [];
+      for (const part of String(query || "").split(/\s+/).filter(Boolean)) {
+        const m = part.match(/^(source|tag|cat|topic):(.+)$/i);
+        const score = part.match(/^score([<>]=?)(\d+)$/i);
+        if (m) filters[m[1].toLowerCase()] = m[2];
+        else if (score) filters.score = { op: score[1], value: Number(score[2]) };
+        else terms.push(part);
+      }
+      return { filters, text: terms.join(" ") };
+    }
+
+    function passScoreFilter(article, filter) {
+      if (!filter) return true;
+      const score = Number(article.score) || 0;
+      if (filter.op === ">") return score > filter.value;
+      if (filter.op === ">=") return score >= filter.value;
+      if (filter.op === "<") return score < filter.value;
+      if (filter.op === "<=") return score <= filter.value;
+      return true;
+    }
+
+    function applySearchOperators(list, parsed) {
+      const f = parsed.filters || {};
+      return list.filter(a => {
+        if (f.source && !String(a.source || "").includes(f.source)) return false;
+        if (f.tag && !(a.tags || []).some(t => String(t).includes(f.tag))) return false;
+        if (f.cat && !String(a.category || "").includes(f.cat)) return false;
+        if (f.topic && !String(a.topic || "").includes(f.topic)) return false;
+        return passScoreFilter(a, f.score);
+      });
+    }
 
     // ── Filters ───────────────────────────────────────────────────
     function buildFilters() {
@@ -265,10 +396,11 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         activeSource = "";
         activeTag = "";
         activeTopic = "";
-        buildSourceFilters();
-        buildTagFilters();
-        buildTrendingTopics();
-        renderFiltered();
+      buildSourceFilters();
+      buildTagFilters();
+      buildTrendingTopics();
+      buildTopPicks();
+      renderFiltered();
       });
     }
 
@@ -316,6 +448,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           btn.classList.add("active");
         }
         buildTrendingTopics();
+        buildTopPicks();
         renderFiltered();
       };
     }
@@ -358,6 +491,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           btn.classList.add("active");
         }
         buildTrendingTopics();
+        buildTopPicks();
         renderFiltered();
       };
     }
@@ -401,8 +535,46 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         activeTag = "";
         document.querySelectorAll(".source-filter-btn,.tag-filter-btn").forEach(b => b.classList.remove("active"));
         buildTrendingTopics();
+        buildTopPicks();
         renderFiltered();
       };
+    }
+
+    function topPicks(articles, limit = 6) {
+      const muted = getMutedSources();
+      return getSorted(articles)
+        .filter(a => !muted.has(a.source))
+        .filter(a => (Number(a.score) || 0) >= 7 || Number(a.cluster_size) > 1)
+        .slice(0, limit);
+    }
+
+    function buildTopPicks() {
+      const container = document.getElementById("top-picks");
+      if (!container) return;
+      if (searchQuery || activeCat !== "å…¨éƒ¨" || activeSource || activeTag || activeTopic || onlyUnread || onlySaved) {
+        container.classList.remove("show");
+        container.innerHTML = "";
+        return;
+      }
+      const picks = topPicks(all);
+      if (!picks.length) {
+        container.classList.remove("show");
+        container.innerHTML = "";
+        return;
+      }
+      container.classList.add("show");
+      container.innerHTML = `<div class="top-picks-head">
+        <div class="top-picks-title">今日重點</div>
+        <div class="top-picks-sub">按重要度、多來源報道同時間排序</div>
+      </div>
+      <div class="top-picks-list">${picks.map(a => {
+        const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
+        const score = typeof a.score === "number" ? a.score : 5;
+        return `<a class="top-pick" href="article.html?id=${encodeURIComponent(aid)}">
+          <div class="top-pick-meta"><span>${esc(a.source || "")}</span><span>重要度 ${score}</span></div>
+          <div class="top-pick-title">${esc(a.title || "")}</div>
+        </a>`;
+      }).join("")}</div>`;
     }
 
     // ── Sort toggle ───────────────────────────────────────────────
@@ -412,6 +584,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       sortMode = btn.dataset.sort;
+      buildTopPicks();
       renderFiltered();
     });
 
@@ -428,11 +601,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const score = typeof article.score === "number" ? article.score : 5;
       const clusterSize = Math.max(1, Number(article.cluster_size) || 1);
       const clusterBonus = Math.min(clusterSize - 1, 4) * 3;
+      const sourcePenalty = (typeof getDownrankSources === "function" && getDownrankSources().has(article.source)) ? 22 : 0;
       const ageHours = (now - articleTime(article)) / 36e5;
       const recencyBonus = Number.isFinite(ageHours)
         ? Math.max(0, 6 - Math.min(Math.max(ageHours, 0), 48) / 8)
         : 0;
-      return score * 10 + clusterBonus + recencyBonus;
+      return score * 10 + clusterBonus + recencyBonus - sourcePenalty;
     }
 
     function getSorted(articles) {
@@ -486,6 +660,26 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       document.querySelectorAll(".tag-filter-btn").forEach(b => b.classList.remove("active"));
       render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
+
+    function toggleBookmark(id) {
+      toggleStoredSet(BOOKMARK_KEY, id);
+      render(currentRenderArticles);
+    }
+
+    function toggleSourceMute(source) {
+      toggleStoredSet(MUTED_SOURCES_KEY, source);
+      buildTopPicks();
+      renderFiltered();
+    }
+
+    function toggleSourceDownrank(source) {
+      toggleStoredSet(DOWNRANK_SOURCES_KEY, source);
+      buildTopPicks();
+      renderFiltered();
+    }
+    window.toggleBookmark = toggleBookmark;
+    window.toggleSourceMute = toggleSourceMute;
+    window.toggleSourceDownrank = toggleSourceDownrank;
 
     function toggleClusterSummary(cid) {
       expandedClusterSummaryId = expandedClusterSummaryId === cid ? "" : cid;
@@ -586,9 +780,20 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       expandedClusterId = "";
       expandedClusterSummaryId = "";
       let list = all;
+      const reads = getRead();
+      const bookmarks = getBookmarks();
+      const muted = getMutedSources();
+      const parsedSearch = parseSearchQuery(searchQuery);
+      list = list.filter(a => !muted.has(a.source));
+      if (onlyUnread) list = list.filter(a => !reads.has(a.id));
+      if (onlySaved) list = list.filter(a => bookmarks.has(a.id));
+      list = applySearchOperators(list, parsedSearch);
       // search takes priority — override category/tag if query present
       if (searchQuery && fuse) {
-        list = fuse.search(searchQuery).map(r => r.item);
+        if (parsedSearch.text) {
+          const allowed = new Set(list.map(a => a.id));
+          list = fuse.search(parsedSearch.text).map(r => r.item).filter(a => allowed.has(a.id));
+        }
       } else {
         if (activeCat !== "全部") list = list.filter(a => a.category === activeCat);
         if (activeTopic) {
@@ -612,6 +817,8 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       currentRenderArticles = articles;
       const grid  = document.getElementById("grid");
       const reads = getRead();
+      const bookmarks = getBookmarks();
+      const downranked = getDownrankSources();
       saveArticleNavContext(articles);
       if (!articles.length) {
         grid.innerHTML = '<div class="empty">沒有文章</div>';
@@ -645,6 +852,8 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const tags = (tagChips || clusterSummaryButton)
           ? `<div class="card-tags">${tagChips}${clusterSummaryButton}</div>` : "";
         const isRead = reads.has(a.id);
+        const isBookmarked = bookmarks.has(a.id);
+        const isDownranked = downranked.has(a.source);
         const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
         const points = summaryPoints(a.summary);
         const summaryHtml = points.length
@@ -654,16 +863,26 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const clusterSummary = isClusterStack && expandedClusterSummaryId === cid ? clusterSummaryHtml(cid) : "";
 
         const catCls = catClass(a.category);
-        const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
+        const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
         const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
         const cardClick = isClusterStack ? ` onclick="event.preventDefault();filterCluster('${cid}')"` : "";
+        const sourceName = esc(a.source || "");
+        const actionBar = `<span class="card-actions">
+          <span class="mini-action${isBookmarked ? " active" : ""}" role="button" title="收藏" onclick="event.preventDefault();event.stopPropagation();toggleBookmark('${aid}')">★</span>
+          <span class="mini-action" role="button" title="靜音來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceMute('${sourceName}')">×</span>
+          <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceDownrank('${sourceName}')">↓</span>
+        </span>`;
+        const clusterStrip = isCluster
+          ? `<div class="cluster-strip"><span>多來源報道</span><span>${Number(a.cluster_size)} 個來源</span></div>`
+          : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           ${thumb}
           <div class="card-body">
+            ${clusterStrip}
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
-              ${scoreBadge}${sentDot}${clusterBadge}
+              ${scoreBadge}${sentDot}${clusterBadge}${actionBar}
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>

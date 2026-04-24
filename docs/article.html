@@ -65,13 +65,15 @@
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
 
     /* share button */
-    .share-btn {
+    .share-btn, .save-btn, .next-unread-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: .8rem;
       transition: background .15s, color .15s, border-color .15s;
     }
-    .share-btn:hover { border-color: var(--accent); color: var(--text); }
+    .share-btn:hover, .save-btn:hover, .next-unread-btn:hover { border-color: var(--accent); color: var(--text); }
     .share-btn.copied { border-color: #4ade80; color: #4ade80; }
+    .save-btn.active { border-color: #fbbf24; color: #fbbf24; }
+    .next-unread-btn.disabled { opacity: .35; pointer-events: none; }
 
     /* article layout */
     main { max-width: 780px; margin: 0 auto; padding: 28px 24px 80px; }
@@ -117,6 +119,11 @@
     .content h3,
     .content h4     { font-size: 1em; font-weight: 700; color: var(--text); margin: 1.4em 0 .5em; }
     .content img    { max-width: 100%; height: auto; border-radius: 6px; margin: 1em 0; display: block; }
+    .image-fallback {
+      display: block; border: 1px dashed var(--border); color: var(--muted);
+      padding: 18px; border-radius: 6px; margin: 1em 0; text-align: center;
+      background: var(--surface); font-size: .86rem;
+    }
     .content ul,
     .content ol     { padding-left: 1.4em; margin-bottom: 1em; }
     .content li     { margin-bottom: .4em; }
@@ -295,6 +302,8 @@
     <div class="topbar-right">
       <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
       <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
+      <button class="save-btn" id="save-btn" type="button">收藏</button>
+      <button class="next-unread-btn disabled" id="next-unread-btn" type="button">下一篇未讀</button>
       <button class="share-btn" id="share-btn">分享</button>
     </div>
   </div>

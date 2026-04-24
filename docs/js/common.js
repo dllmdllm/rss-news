@@ -9,6 +9,21 @@ function safeUrl(u) {
   return /^https?:\/\//i.test(s) ? s : "#";
 }
 
+function readJsonSet(key) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function writeJsonSet(key, set, limit = 1000) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...set].slice(-limit)));
+  } catch (_) {}
+}
+
 function setupFontSize() {
   let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
   if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;

@@ -53,12 +53,13 @@
 
     /* sort toggle */
     .sort-toggle { display: flex; gap: 4px; }
-    .sort-btn {
+    .sort-btn, .view-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
       transition: background .15s, color .15s, border-color .15s;
     }
-    .sort-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .sort-btn.active, .view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .quick-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
 
     /* font size buttons */
     .font-btns { display: flex; gap: 4px; }
@@ -176,6 +177,30 @@
       color: var(--muted); font-size: .72rem; white-space: nowrap;
     }
 
+    .top-picks {
+      max-width: 1600px; margin: 14px auto 0; padding: 0 24px;
+      display: none;
+    }
+    .top-picks.show { display: block; }
+    .top-picks-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 12px; margin-bottom: 8px;
+    }
+    .top-picks-title { color: #fbbf24; font-weight: 800; letter-spacing: .04em; }
+    .top-picks-sub { color: var(--muted); font-size: .76rem; }
+    .top-picks-list {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .top-pick {
+      display: block; text-decoration: none; color: inherit;
+      border: 1px solid #4a3a00; background: linear-gradient(135deg, #211805, var(--surface));
+      border-radius: 10px; padding: 11px 12px;
+    }
+    body.theme-light .top-pick { background: linear-gradient(135deg, #fff8e6, #fff); border-color: #f3d58a; }
+    .top-pick-meta { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: .7rem; margin-bottom: 5px; }
+    .top-pick-title { color: var(--text); line-height: 1.45; font-weight: 650; }
+
     /* ── new-articles toast ── */
     .news-toast {
       position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
@@ -224,6 +249,9 @@
     .card.important:hover { border-color: #f59e0b; border-width: 2px; }
     .card.read { filter: grayscale(1) opacity(.5); }
     .card.read:hover { filter: grayscale(.4) opacity(.85); }
+    .card.bookmarked { border-color: #fbbf24aa; }
+    .card.muted-source { opacity: .45; }
+    .card.downranked-source { opacity: .72; }
     .card.cluster-stack {
       position: relative;
       overflow: visible;
@@ -310,6 +338,20 @@
     .cluster-badge:hover { background: #2a4060; }
     body.theme-light .cluster-badge { background: #edf6ff; color: #2f73a8; border-color: #cfe5f7; }
     body.theme-light .cluster-badge:hover { background: #dceffc; }
+    .cluster-strip {
+      margin: -2px -2px 7px; padding: 5px 9px;
+      color: #7cb4e8; background: #102033; border: 1px solid #284868;
+      border-radius: 7px; font-size: .72rem; font-weight: 800;
+      display: flex; justify-content: space-between; gap: 8px;
+    }
+    body.theme-light .cluster-strip { background: #edf6ff; border-color: #cfe5f7; color: #2f73a8; }
+    .card-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+    .mini-action {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 999px; width: 24px; height: 24px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; font-size: .76rem;
+    }
+    .mini-action:hover, .mini-action.active { border-color: #fbbf24; color: #fbbf24; }
 
     /* card title — colour by category, size by font level */
     .card-title          { font-weight: 500; line-height: 1.5; }
@@ -321,6 +363,11 @@
     .card-title.cat-網媒 { color: #b87ce8; }
 
     .card-summary { color: #aaa; line-height: 1.55; margin-top: 2px; display: flex; flex-direction: column; gap: 2px; }
+    .card-summary {
+      border-left: 2px solid #67e8f955; padding-left: 9px;
+      background: linear-gradient(90deg, #082f3a33, transparent);
+      border-radius: 4px;
+    }
     .card-summary-line { position: relative; padding-left: 1em; }
     .card-summary-line::before { content: "・"; position: absolute; left: 0; top: 0; }
     .key-facts { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -397,6 +444,13 @@
     body.fs-2 .card-title   { font-size: 1.25rem; }
     body.fs-2 .card-summary { font-size: 1.08rem; }
     body.fs-2 .cluster-ai-summary { font-size: 1.08rem; }
+    body.view-compact .card { display: grid; grid-template-columns: 92px 1fr; }
+    body.view-compact .card-thumb,
+    body.view-compact .card-thumb-placeholder { width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto; }
+    body.view-compact .card-summary,
+    body.view-compact .key-facts,
+    body.view-compact .card-tags { display: none; }
+    body.view-compact .card-body { padding: 9px 11px; }
 
     /* ── new card highlight ── */
     @keyframes newPulse {
@@ -450,6 +504,13 @@
     .health-cat  { font-size: .7rem; color: var(--muted); }
     .health-meta { margin-left: auto; color: var(--muted); font-size: .75rem; }
     .health-err  { color: #f87171; font-size: .72rem; }
+    .health-history { color: var(--muted); font-size: .7rem; margin-left: auto; white-space: nowrap; }
+    .health-actions { display: inline-flex; gap: 4px; }
+    .health-action {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 999px; padding: 2px 8px; cursor: pointer; font-size: .68rem;
+    }
+    .health-action:hover, .health-action.active { border-color: var(--accent); color: var(--accent); }
     .health-legend {
       display: flex; flex-wrap: wrap; gap: 10px 14px;
       font-size: .7rem; color: var(--muted);
@@ -468,7 +529,12 @@
       .tag-filters,
       .trending-topics    { padding-left: 14px; padding-right: 14px; }
       .grid               { padding: 14px; gap: 10px;
-                            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+                            grid-template-columns: 1fr; }
+      .top-picks          { padding-left: 14px; padding-right: 14px; margin-top: 10px; }
+      .top-picks-list     { grid-template-columns: 1fr; }
+      .card               { display: grid; grid-template-columns: 92px 1fr; }
+      .card-thumb,
+      .card-thumb-placeholder { width: 92px; height: 100%; min-height: 104px; aspect-ratio: auto; }
       .card-body          { padding: 9px 10px; gap: 5px; }
       .card-title         { line-height: 1.4; }
       body.fs-1 .card-title   { font-size: .92rem; }
@@ -495,6 +561,11 @@
         <button class="sort-btn" data-sort="score">最重要</button>
         <button class="sort-btn" data-sort="ai">AI</button>
       </div>
+      <div class="quick-toggle" id="quick-toggle">
+        <button class="view-btn" id="unread-toggle" type="button">未讀</button>
+        <button class="view-btn" id="saved-toggle" type="button">收藏</button>
+        <button class="view-btn" id="compact-toggle" type="button">精簡</button>
+      </div>
       <div class="font-btns">
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
         <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
@@ -509,6 +580,7 @@
   </div>
 
   <div class="trending-topics" id="trending-topics"></div>
+  <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
   <div class="filters"        id="filters"></div>
   <div class="source-filters" id="source-filters"></div>
   <div class="tag-filters"    id="tag-filters"></div>

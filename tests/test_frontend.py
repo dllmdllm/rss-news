@@ -199,6 +199,20 @@ def test_index_has_ai_sort_button():
     assert 'id="trending-topics"' in html
 
 
+def test_index_has_reading_controls_and_top_picks():
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert 'id="unread-toggle"' in html
+    assert 'id="saved-toggle"' in html
+    assert 'id="compact-toggle"' in html
+    assert 'id="top-picks"' in html
+    assert "BOOKMARK_KEY" in source
+    assert "MUTED_SOURCES_KEY" in source
+    assert "DOWNRANK_SOURCES_KEY" in source
+    assert "parseSearchQuery" in source
+    assert "score([<>]=?)" in source
+
+
 def test_index_latest_sort_orders_by_date():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
@@ -586,6 +600,17 @@ def test_article_page_has_related_section():
     assert "relatedSummaryHtml([current, ...rows.map(row => row.article)])" in source
     assert "summary.classList.toggle(\"show\")" in source
     assert "toggle.setAttribute(\"aria-expanded\", \"false\")" in source
+
+
+def test_article_page_has_save_and_next_unread_controls():
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert 'id="save-btn"' in html
+    assert 'id="next-unread-btn"' in html
+    assert ".image-fallback" in html
+    assert "setupSaveButton(id);" in source
+    assert "setupNextUnread(id, data.articles);" in source
+    assert "readJsonSet(BOOKMARK_KEY)" in source
 
 
 def test_article_related_digest_dedupes_summary_points():

@@ -40,6 +40,14 @@ SYSTEM_PROMPT = (
 # SYSTEM_PROMPT changes — no manual bump needed.
 ANALYSIS_VERSION = "p-" + hashlib.md5(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:8]
 
+_BAD_SUMMARY_PHRASES = (
+    "單一字串",
+    "非array",
+    "每點用",
+    "每點之間用換行符",
+    "唔超過10個字",
+)
+
 
 def load_cache() -> dict:
     if CACHE_PATH.exists():
@@ -79,6 +87,12 @@ def _normalise_summary(raw) -> str:
         parts = [p.strip() for p in text.split("・") if p.strip()]
         return "\n".join("・" + p for p in parts)
     return text
+
+
+def _looks_like_prompt_schema_summary(summary: str) -> bool:
+    text = str(summary or "")
+    hits = sum(1 for phrase in _BAD_SUMMARY_PHRASES if phrase in text)
+    return hits >= 2
 
 
 def _normalise_string_list(raw, *, limit: int = 4, max_len: int = 24) -> list[str]:
@@ -136,8 +150,11 @@ def _normalise_parsed(data: dict) -> dict | None:
             tags_raw = [t for t in re.split(r"[,，、\s]+", tags_raw) if t]
         elif not isinstance(tags_raw, list):
             tags_raw = []
+        summary = _normalise_summary(data.get("summary"))
+        if _looks_like_prompt_schema_summary(summary):
+            return None
         return {
-            "summary":   _normalise_summary(data.get("summary")),
+            "summary":   summary,
             "score":     score,
             "tags":      [str(t).strip().lstrip("#") for t in tags_raw[:3] if str(t).strip()],
             "sentiment": sentiment,
@@ -203,6 +220,8 @@ def _needs_full_analysis(cached: dict) -> bool:
     # Summary was stored as Python list repr (AI returned array, str()-ified)
     summary = cached.get("summary", "") or ""
     if summary.startswith("[") and summary.endswith("]") and "', '" in summary:
+        return True
+    if _looks_like_prompt_schema_summary(summary):
         return True
     return False
 

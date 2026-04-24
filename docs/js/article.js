@@ -44,8 +44,10 @@
     applySavedTheme();
     setupFontSize();
     const READ_KEY = "rss_read_ids";
+    const BOOKMARK_KEY = "rss_bookmark_ids";
     const NAV_CONTEXT_KEY = "rss_article_nav_context";
     let currentSourceUrl = "";
+    let currentArticleId = "";
 
     function articleUrl(id) {
       return "article.html?id=" + encodeURIComponent(id);
@@ -83,6 +85,37 @@
       const nextId = idx >= 0 && idx < ids.length - 1 ? ids[idx + 1] : "";
       setNavLink(document.getElementById("nav-prev"), prevId);
       setNavLink(document.getElementById("nav-next"), nextId);
+    }
+
+    function setupSaveButton(id) {
+      const btn = document.getElementById("save-btn");
+      if (!btn) return;
+      function sync() {
+        const saved = readJsonSet(BOOKMARK_KEY).has(id);
+        btn.classList.toggle("active", saved);
+        btn.textContent = saved ? "已收藏" : "收藏";
+      }
+      btn.onclick = () => {
+        const set = readJsonSet(BOOKMARK_KEY);
+        if (set.has(id)) set.delete(id);
+        else set.add(id);
+        writeJsonSet(BOOKMARK_KEY, set);
+        sync();
+      };
+      sync();
+    }
+
+    function setupNextUnread(currentId, articles) {
+      const btn = document.getElementById("next-unread-btn");
+      if (!btn) return;
+      const read = readJsonSet(READ_KEY);
+      const ids = readNavContext(currentId, articles);
+      const start = Math.max(0, ids.indexOf(currentId));
+      const nextId = ids.slice(start + 1).find(id => !read.has(id))
+        || ids.slice(0, start).find(id => !read.has(id))
+        || "";
+      btn.classList.toggle("disabled", !nextId);
+      btn.onclick = nextId ? () => { location.href = articleUrl(nextId); } : null;
     }
 
     function clickNav(id) {
@@ -330,11 +363,9 @@
     // ── Mark as read ──────────────────────────────────────────────
     function markRead(id) {
       try {
-        const read = new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]"));
+        const read = readJsonSet(READ_KEY);
         read.add(id);
-        // Keep max 500 entries to avoid bloat
-        const arr = [...read].slice(-500);
-        localStorage.setItem(READ_KEY, JSON.stringify(arr));
+        writeJsonSet(READ_KEY, read, 500);
       } catch (_) {}
     }
 
@@ -342,6 +373,7 @@
     async function load() {
       const id = new URLSearchParams(location.search).get("id");
       if (!id) { location.href = "index.html"; return; }
+      currentArticleId = id;
 
       try {
         // Fetch metadata + content in parallel. Content lives in a
@@ -355,6 +387,7 @@
         const art  = data.articles.find(a => a.id === id);
         if (!art) { location.href = "index.html"; return; }
         setupArticleNav(id, data.articles);
+        setupSaveButton(id);
         if (contentRes.ok) {
           try {
             const c = await contentRes.json();
@@ -364,6 +397,7 @@
 
         // Mark as read immediately
         markRead(id);
+        setupNextUnread(id, data.articles);
 
         document.title = art.title;
         document.getElementById("topbar-source").textContent = art.source;
@@ -414,7 +448,12 @@
             img.referrerPolicy = "no-referrer";
             img.style.maxWidth = "100%";
             img.style.height = "auto";
-            img.onerror = () => { img.style.display = "none"; };
+            img.onerror = () => {
+              const fallback = document.createElement("span");
+              fallback.className = "image-fallback";
+              fallback.textContent = "圖片未能載入";
+              img.replaceWith(fallback);
+            };
           });
           if (art.thumbnail && body.querySelectorAll("img").length === 0) {
             const thumb = safeUrl(art.thumbnail);
@@ -424,7 +463,12 @@
               fi.referrerPolicy = "no-referrer";
               fi.loading = "lazy";
               fi.style.cssText = "max-width:100%;height:auto;border-radius:6px;margin-bottom:1em;display:block";
-              fi.onerror = () => { fi.style.display = "none"; };
+              fi.onerror = () => {
+                const fallback = document.createElement("span");
+                fallback.className = "image-fallback";
+                fallback.textContent = "圖片未能載入";
+                fi.replaceWith(fallback);
+              };
               body.insertBefore(fi, body.firstChild);
             }
           }

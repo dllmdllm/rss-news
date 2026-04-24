@@ -36,6 +36,13 @@ TRENDING_LIMIT = 10
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
 _CONTENT_FIELDS = ("content", "rss_content")
+_BAD_SUMMARY_PHRASES = (
+    "單一字串",
+    "非array",
+    "每點用",
+    "每點之間用換行符",
+    "唔超過10個字",
+)
 
 TOPIC_ALIASES = [
     (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
@@ -360,7 +367,11 @@ def _load_old_content_record(article_id: str) -> dict | None:
 
 def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     """For articles that failed AI analysis this run, restore from previous build."""
-    old = {a["id"]: a for a in old_articles if a.get("summary")}
+    old = {
+        a["id"]: a
+        for a in old_articles
+        if a.get("summary") and not _looks_like_prompt_schema_summary(a.get("summary", ""))
+    }
     restored = 0
     for a in articles:
         if not a.get("summary") and a["id"] in old:
@@ -372,6 +383,12 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     if restored:
         print(f"[build] Restored {restored} summaries from previous articles.json")
     return articles
+
+
+def _looks_like_prompt_schema_summary(summary: str) -> bool:
+    text = str(summary or "")
+    hits = sum(1 for phrase in _BAD_SUMMARY_PHRASES if phrase in text)
+    return hits >= 2
 
 
 def _merge_missing_sources(articles: list, old_articles: list, source_stats: dict) -> list:

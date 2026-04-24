@@ -14,6 +14,7 @@ from src.analyse import (
     _needs_full_analysis,
     _normalise_entities,
     _normalise_summary,
+    _looks_like_prompt_schema_summary,
     _parse_analysis,
     _parse_batch,
 )
@@ -63,6 +64,13 @@ def test_normalise_single_bullet_passthrough():
 
 
 # ── _parse_analysis ──────────────────────────────────────────────
+
+def test_prompt_schema_summary_is_rejected():
+    bad = "單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔"
+    raw = '{"summary":"' + bad + '","score":5,"tags":[],"sentiment":"neutral","topic":""}'
+    assert _looks_like_prompt_schema_summary(bad) is True
+    assert _parse_analysis(raw) is None
+
 
 def test_parse_plain_json():
     raw = '{"summary":"・a\\n・b","score":7,"tags":["x","y"],"sentiment":"negative","topic":"test","event_type":"事故","entities":{"people":["張三"],"companies":["港鐵"],"places":["大埔"],"dates":["4月22日"],"numbers":["8人"]}}'
@@ -187,6 +195,14 @@ def test_needs_when_summary_is_list_repr():
 
 
 # ── _parse_batch ─────────────────────────────────────────────────
+
+def test_needs_when_summary_is_prompt_schema_echo():
+    assert _needs_full_analysis({
+        "summary": "單一字串（非array），每點用「・」開頭，每點之間用換行符",
+        "score": 5,
+        "version": ANALYSIS_VERSION,
+    }) is True
+
 
 def test_parse_batch_array_matches_expected():
     raw = (
