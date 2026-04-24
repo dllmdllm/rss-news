@@ -789,9 +789,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           <span class="mini-action" role="button" title="靜音來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceMute('${sourceName}')">×</span>
           <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceDownrank('${sourceName}')">↓</span>
         </span>`;
-        const clusterStrip = isCluster
-          ? `<div class="cluster-strip"><span>多來源報道</span><span>${Number(a.cluster_size)} 個來源</span></div>`
-          : "";
         const shouldRenderClusterSummary = isClusterStack
           && expandedClusterSummaryId === cid
           && !renderedClusterSummaries.has(cid);
@@ -806,7 +803,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           <div class="card-media">
             ${thumb}
             ${isMobileCard && isCluster ? `<div class="card-overlay">
-              ${clusterStrip}
               ${isClusterStack ? clusterSummaryButton : ""}
               ${clusterOverlaySummary}
             </div>` : ""}
