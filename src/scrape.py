@@ -314,7 +314,10 @@ def _build_oncc_content(html: str, url: str) -> str | None:
     walk(root)
     if not parts:
         return None
-    text_chars = len(BeautifulSoup("".join(parts), "html.parser").get_text(strip=True))
+    # Strip tags with regex instead of reparsing via BeautifulSoup — we only
+    # need the approximate character count to decide whether the extraction
+    # was worthwhile.
+    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)).strip())
     if text_chars < 80 and not seen_images:
         return None
     return "<html><body>" + "".join(parts) + "</body></html>"
@@ -614,6 +617,42 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
             return await _read(resp)
 
 
+def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | None, str | None]:
+    """Run every CPU-bound HTML transform in a single call so the caller can
+    dispatch the whole thing to an executor and keep the event loop free for
+    overlapping HTTP fetches. Returns (extracted_content, og_image_or_None)."""
+    html = _expand_stheadline_galleries(html)
+    html = _extract_noscript_imgs(html)
+    html = _fix_picture_elements(html)
+    html = _fix_lazy_images(html)
+
+    # HK01 ships an empty article body and hydrates from __NEXT_DATA__, so
+    # trafilatura never sees the inline images. Build content from the JSON
+    # blocks instead to preserve the original image/text order; fall back to
+    # trafilatura if the page shape is unexpected.
+    content: str | None = None
+    if _is_hk01_url(url):
+        content = _build_hk01_content(html)
+    elif _is_oncc_url(url):
+        content = _build_oncc_content(html, url)
+    if content is None:
+        content = trafilatura.extract(
+            html,
+            output_format="html",
+            include_images=True,
+            include_links=False,
+            favor_precision=True,
+            no_fallback=False,
+        )
+
+    og_image: str | None = None
+    if need_og_image:
+        meta = trafilatura.extract_metadata(html)
+        if meta and meta.image:
+            og_image = meta.image
+    return content, og_image
+
+
 async def _scrape_one(
     session: aiohttp.ClientSession,
     article: dict,
@@ -654,37 +693,18 @@ async def _scrape_one(
                             _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
                             return article
 
-                html = _expand_stheadline_galleries(html)
-                html = _extract_noscript_imgs(html)
-                html = _fix_picture_elements(html)
-                html = _fix_lazy_images(html)
-
                 loop = asyncio.get_running_loop()
-                # HK01 ships an empty article body and hydrates from
-                # __NEXT_DATA__, so trafilatura never sees the inline
-                # images. Build content from the JSON blocks instead to
-                # preserve the original image/text order; fall back to
-                # trafilatura if the page shape is unexpected.
-                content = None
-                if _is_hk01_url(article["url"]):
-                    content = _build_hk01_content(html)
-                elif _is_oncc_url(article["url"]):
-                    content = _build_oncc_content(html, article["url"])
-
-                if content is None:
-                    # trafilatura.extract is CPU-bound; run in executor so the
-                    # event loop can continue overlapping other HTTP fetches.
-                    content = await loop.run_in_executor(
-                        None,
-                        lambda: trafilatura.extract(
-                            html,
-                            output_format="html",
-                            include_images=True,
-                            include_links=False,
-                            favor_precision=True,
-                            no_fallback=False,
-                        ),
-                    )
+                # All synchronous HTML work — regex rewrites, BeautifulSoup
+                # parses, custom DOM walks and trafilatura.extract — runs in
+                # one executor call so only a single thread hop per article.
+                need_og = not article.get("thumbnail")
+                content, og_image = await loop.run_in_executor(
+                    None,
+                    _process_html_sync,
+                    html,
+                    article["url"],
+                    need_og,
+                )
 
                 if content:
                     content = _fix_graphic_tags(content)
@@ -702,11 +722,8 @@ async def _scrape_one(
                     if _rss_fallback_content(article, fallback="rss-empty", allow_minimal=True):
                         print(f"[FALLBACK] {article['source']} — trafilatura returned no content; used RSS")
 
-                # Extract og:image thumbnail if not already set from RSS
-                if not article.get("thumbnail"):
-                    meta = await loop.run_in_executor(None, trafilatura.extract_metadata, html)
-                    if meta and meta.image:
-                        article["thumbnail"] = meta.image
+                if og_image and not article.get("thumbnail"):
+                    article["thumbnail"] = og_image
 
                 break  # success, no retry needed
 

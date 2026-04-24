@@ -87,13 +87,14 @@ def normalise_topic(article: dict) -> str:
 
 
 def _parse_article_datetime(value: str):
+    """Parse an ISO-8601 date string into an aware UTC datetime, or None."""
     try:
         dt = datetime.fromisoformat(value)
     except Exception:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 def build_trending_topics(

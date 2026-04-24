@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import hashlib
 import json
 import os
@@ -129,7 +130,6 @@ def _parse_date(entry) -> datetime:
     # parsedate_to_datetime only understands RFC 2822, so feeds like HKEPC
     # that ship ISO dates used to fall through to datetime.min and get
     # filtered out by the cutoff.
-    import calendar
     for attr in ("published_parsed", "updated_parsed"):
         val = getattr(entry, attr, None)
         if val:
@@ -535,12 +535,13 @@ async def retranslate_english_titles(articles: list) -> None:
     titles = [a["title"] for a in pending]
     async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
         # Translate in chunks of 10 to keep each response well under the token
-        # budget and avoid one straggler blocking the whole batch.
-        translated: list[str] = []
-        for i in range(0, len(titles), 10):
-            chunk = titles[i:i + 10]
-            out = await _translate_titles_minimax(session, chunk)
-            translated.extend(out)
+        # budget. Chunks run concurrently so one slow straggler does not
+        # serialize the whole retrofix pass.
+        chunks = [titles[i:i + 10] for i in range(0, len(titles), 10)]
+        results = await asyncio.gather(
+            *[_translate_titles_minimax(session, chunk) for chunk in chunks]
+        )
+        translated: list[str] = [t for out in results for t in out]
     changed = 0
     for article, new_title in zip(pending, translated):
         if new_title and new_title != article["title"]:

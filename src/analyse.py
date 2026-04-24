@@ -453,7 +453,11 @@ async def analyse_all(articles: list) -> list:
     sem       = asyncio.Semaphore(ANALYSE_CONCURRENCY)
     save_lock = asyncio.Lock()
     counter   = [0]
-    async with aiohttp.ClientSession() as session:
+    # Session-wide timeout protects against a single stuck connection holding
+    # the whole analyse phase open. Per-request timeouts inside _post_messages
+    # still cover individual calls.
+    session_timeout = aiohttp.ClientTimeout(total=180, connect=20)
+    async with aiohttp.ClientSession(timeout=session_timeout) as session:
         tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
         await asyncio.gather(*tasks)
 
