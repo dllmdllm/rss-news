@@ -2,11 +2,13 @@
 
 Run:  python -m pytest tests/ -v
 """
+import asyncio
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import src.analyse as analyse
 from src.analyse import (
     ANALYSIS_VERSION,
     _needs_full_analysis,
@@ -212,6 +214,39 @@ def test_parse_batch_partial_returns_list_with_none():
     out = _parse_batch(raw, 2)
     assert out is not None and len(out) == 2
     assert out[0] is not None and out[1] is None
+
+
+def test_parse_batch_single_malformed_item_returns_none_slot():
+    out = _parse_batch('["garbage"]', 1)
+    assert out == [None]
+
+
+def test_analyse_one_treats_none_slot_as_parse_failure(monkeypatch):
+    async def fake_post_messages(*args, **kwargs):
+        return '["garbage"]', {}, 200
+
+    async def fake_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(analyse, "_post_messages", fake_post_messages)
+    monkeypatch.setattr(analyse.asyncio, "sleep", fake_sleep)
+
+    article = {
+        "id": "bad",
+        "title": "Bad parse",
+        "url": "https://example.com/bad",
+        "content": "<p>text</p>",
+    }
+    asyncio.run(analyse._analyse_one(
+        session=None,
+        article=article,
+        sem=asyncio.Semaphore(1),
+        cache={},
+        save_lock=asyncio.Lock(),
+        counter=[0],
+    ))
+
+    assert "summary" not in article
 
 
 def test_parse_batch_single_accepts_bare_object():

@@ -312,7 +312,7 @@ async def _analyse_one(
                     continue
                 if raw:
                     parsed = _parse_batch(raw, 1)
-                    if parsed:
+                    if parsed and parsed[0]:
                         await _apply_results([article], parsed, cache, save_lock, counter)
                         return
                     if attempt < MAX_ATTEMPTS - 1:
