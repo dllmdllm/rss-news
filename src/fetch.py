@@ -140,10 +140,20 @@ def _parse_date(entry) -> datetime:
     for attr in ("published", "updated"):
         val = getattr(entry, attr, None)
         if val:
+            dt: datetime | None = None
             try:
-                return _as_utc(parsedate_to_datetime(val))
+                dt = parsedate_to_datetime(val)
             except Exception:
-                pass
+                # Some feeds ship ISO-8601 strings in `published`/`updated`.
+                # Keep this fallback so we do not drop those entries when
+                # feedparser fails to populate *_parsed.
+                try:
+                    dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+                except Exception:
+                    dt = None
+            if dt is None:
+                continue
+            return _as_utc(dt)
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
