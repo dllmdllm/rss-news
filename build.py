@@ -6,6 +6,7 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from html import escape as html_escape
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
@@ -49,6 +50,12 @@ TOPIC_ALIASES = [
 
 def cluster_articles(articles: list) -> list:
     """Group articles sharing the same AI-assigned topic into clusters."""
+    for a in articles:
+        # Restored articles can carry cluster fields from a previous build.
+        # Clear them before recalculating so stale clusters cannot leak through.
+        a.pop("cluster_id", None)
+        a.pop("cluster_size", None)
+
     topic_groups: dict[str, list[str]] = defaultdict(list)
     for a in articles:
         topic = normalise_topic(a)
@@ -160,7 +167,11 @@ def save_json(articles: list, source_stats: dict):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. metadata — strip content / rss_content
+    # Write sidecars before publishing metadata, so clients never see a fresh
+    # articles.json that points at missing data/content/{id}.json files.
+    content_stats = _write_content_sidecars(articles)
+    _write_rss(articles)
+
     meta = [
         {k: v for k, v in a.items() if k not in _CONTENT_FIELDS}
         for a in articles
@@ -181,21 +192,49 @@ def save_json(articles: list, source_stats: dict):
     meta_kb = meta_path.stat().st_size // 1024
     print(f"[build] articles.json {meta_kb} KB, {len(articles)} articles")
 
-    # 2. per-article content files
-    active_ids = {a["id"] for a in articles}
+    dropped = _prune_stale_content(active_ids={a["id"] for a in articles})
+    print(
+        f"[build] content/ {content_stats['written']} written, "
+        f"{content_stats['unchanged']} unchanged, {content_stats['reused']} reused, "
+        f"{content_stats['minimal']} minimal, {dropped} pruned"
+    )
+
+
+def _minimal_content(article: dict) -> str:
+    """Last-resort readable content so every active article has a sidecar."""
+    title = html_escape(article.get("title") or "未能擷取全文")
+    url = html_escape(article.get("url") or "#", quote=True)
+    source = html_escape(article.get("source") or "")
+    summary = html_escape(article.get("summary") or "").replace("\n", "<br>")
+    summary_html = f"<p>{summary}</p>" if summary else ""
+    return (
+        f"<p><strong>{title}</strong></p>"
+        f"{summary_html}"
+        f"<p>暫時未能從{source or '來源'}擷取全文。</p>"
+        f'<p><a href="{url}" target="_blank" rel="noopener">閱讀原文</a></p>'
+    )
+
+
+def _write_content_sidecars(articles: list) -> dict[str, int]:
     written = 0
     unchanged = 0
     reused = 0
+    minimal = 0
     for a in articles:
         content = a.get("content")
         old_record = None
+        fallback = "unknown"
         if not content:
             old_record = _load_old_content_record(a["id"])
             content = old_record.get("content") if old_record else None
             if not content:
-                continue
+                content = _minimal_content(a)
+                minimal += 1
+                fallback = "minimal"
+            else:
+                reused += 1
+                fallback = "reused"
             a["content"] = content
-            reused += 1
         cpath = CONTENT_DIR / f"{a['id']}.json"
         quality = a.get("content_quality") or {}
         if not quality and old_record:
@@ -204,7 +243,7 @@ def save_json(articles: list, source_stats: dict):
             quality = content_quality(
                 content,
                 source=a.get("source", ""),
-                fallback="reused" if old_record else "unknown",
+                fallback=fallback,
             )
         a["content_quality"] = quality
         # Skip rewriting identical files to keep git diffs minimal and
@@ -237,19 +276,21 @@ def save_json(articles: list, source_stats: dict):
         os.replace(tmp, cpath)
         written += 1
 
-    # Prune content files for articles no longer active
+    return {
+        "written": written,
+        "unchanged": unchanged,
+        "reused": reused,
+        "minimal": minimal,
+    }
+
+
+def _prune_stale_content(*, active_ids: set[str]) -> int:
     dropped = 0
     for old_file in CONTENT_DIR.glob("*.json"):
         if old_file.stem not in active_ids:
             old_file.unlink()
             dropped += 1
-    print(
-        f"[build] content/ {written} written, {unchanged} unchanged, "
-        f"{reused} reused, {dropped} pruned"
-    )
-
-    # 3. RSS feed
-    _write_rss(articles)
+    return dropped
 
 
 def _write_rss(articles: list):

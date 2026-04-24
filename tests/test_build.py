@@ -60,6 +60,20 @@ def test_topic_normalisation_groups_related_wording():
     assert topics[0]["count"] == 2
 
 
+def test_cluster_articles_clears_stale_cluster_fields():
+    article = _article("solo", content="<p>full text</p>")
+    article.update({
+        "topic": "single",
+        "cluster_id": "deadbeef",
+        "cluster_size": 9,
+    })
+
+    clustered = build.cluster_articles([article])
+
+    assert "cluster_id" not in clustered[0]
+    assert "cluster_size" not in clustered[0]
+
+
 def test_save_json_writes_trending_topics(tmp_path, monkeypatch):
     now = datetime.now(timezone.utc)
     data_dir = tmp_path / "data"
@@ -75,6 +89,24 @@ def test_save_json_writes_trending_topics(tmp_path, monkeypatch):
 
     payload = json.loads((data_dir / "articles.json").read_text(encoding="utf-8"))
     assert payload["trending_topics"][0]["topic"] == "公共交通事故"
+
+
+def test_save_json_writes_minimal_sidecar_when_content_missing(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    articles = [_article("minimal", content=None)]
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "minimal.json").read_text(encoding="utf-8"))
+    payload = json.loads((data_dir / "articles.json").read_text(encoding="utf-8"))
+    assert saved["version"] == build.CONTENT_SCHEMA_VERSION
+    assert saved["content"]
+    assert saved["quality"]["fallback"] == "minimal"
+    assert payload["articles"][0]["content_quality"]["fallback"] == "minimal"
 
 
 def test_save_json_reuses_existing_content_when_current_scrape_has_none(tmp_path, monkeypatch):
