@@ -626,6 +626,17 @@
       body.fs-1 .cluster-ai-summary { font-size: .8rem; }
       .date               { font-size: .68rem; }
       .updated            { font-size: .72rem; }
+
+      /* compact mode on mobile — restore side-by-side layout
+         (mobile's 3-row single-column rules otherwise override compact) */
+      body.view-compact .card         { grid-template-columns: 92px 1fr; grid-template-rows: auto; }
+      body.view-compact .card-media   { grid-column: 1; grid-row: 1; }
+      body.view-compact .card-body    { grid-column: 2; grid-row: 1; padding: 9px 11px; }
+      body.view-compact .card-thumb,
+      body.view-compact .card-thumb-placeholder {
+        width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto;
+      }
+      body.view-compact .card-overlay { display: none; }
     }
   </style>
 </head>
