@@ -910,12 +910,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
-            <div class="card-detail">
-              ${tags}
-              ${clusterSummary}
-              ${factsHtml}
-              ${summaryHtml}
-            </div>
+          </div>
+          <div class="card-detail">
+            ${tags}
+            ${clusterSummary}
+            ${factsHtml}
+            ${summaryHtml}
           </div>
         </a>`;
       }).join("");
