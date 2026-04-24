@@ -302,12 +302,12 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
 
 def test_index_cluster_digest_dedupes_summary_points():
     node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     js = "\n".join([
-        _extract_js_function(source, "summaryPoints"),
-        _extract_js_function(source, "clusterDigestItems"),
+        _extract_js_function(common, "summaryPoints"),
+        _extract_js_function(common, "digestAcross"),
         """
-        const rows = clusterDigestItems([
+        const rows = digestAcross([
           { source: "A", summary: "・共同重點\\n・A角度" },
           { source: "B", summary: "共同重點\\nB角度" },
         ]);
@@ -328,7 +328,7 @@ def test_index_cluster_digest_dedupes_summary_points():
 
 def test_index_summary_points_normalise_bullets():
     node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     fn = _extract_js_function(source, "summaryPoints")
     js = fn + """
     const cases = [
@@ -615,12 +615,12 @@ def test_article_page_has_save_and_next_unread_controls():
 
 def test_article_related_digest_dedupes_summary_points():
     node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     js = "\n".join([
-        _extract_js_function(source, "summaryPoints"),
-        _extract_js_function(source, "relatedDigestItems"),
+        _extract_js_function(common, "summaryPoints"),
+        _extract_js_function(common, "digestAcross"),
         """
-        const rows = relatedDigestItems([
+        const rows = digestAcross([
           { source: "A", summary: "・共同重點\\n・A角度" },
           { source: "B", summary: "共同重點\\nB角度" },
         ]);

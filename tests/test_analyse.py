@@ -14,9 +14,9 @@ from src.analyse import (
     _needs_full_analysis,
     _normalise_entities,
     _normalise_summary,
-    _looks_like_prompt_schema_summary,
     _parse_analysis,
     _parse_batch,
+    looks_like_prompt_schema_summary,
 )
 from src.fetch import _clean_url
 
@@ -68,7 +68,7 @@ def test_normalise_single_bullet_passthrough():
 def test_prompt_schema_summary_is_rejected():
     bad = "單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔"
     raw = '{"summary":"' + bad + '","score":5,"tags":[],"sentiment":"neutral","topic":""}'
-    assert _looks_like_prompt_schema_summary(bad) is True
+    assert looks_like_prompt_schema_summary(bad) is True
     assert _parse_analysis(raw) is None
 
 
@@ -148,7 +148,7 @@ def test_normalise_entities_accepts_strings_and_caps_lists():
         "numbers": ["123456789012345678901234567890"],
     })
     assert out["people"] == ["張三", "李四"]
-    assert out["companies"] == ["港鐵", "政府", "公司A", "公司B"]
+    assert out["companies"] == ["港鐵", "政府"]
     assert out["places"] == []
     assert out["dates"] == []
     assert out["numbers"] == ["123456789012345678901234"]

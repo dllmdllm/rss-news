@@ -257,49 +257,8 @@
         .slice(0, limit);
     }
 
-    function summaryPoints(summary) {
-      const text = String(summary || "").replace(/\r/g, "\n").trim();
-      if (!text) return [];
-      return text
-        .replace(/\s*・\s*/g, "\n")
-        .split(/\n+/)
-        .map(line => line.replace(/^・+/, "").trim())
-        .filter(Boolean);
-    }
-
-    function relatedDigestItems(articles, limit = 5) {
-      const seen = new Set();
-      const items = [];
-      for (const article of articles) {
-        for (const point of summaryPoints(article.summary)) {
-          const normalized = point.replace(/\s+/g, "").toLowerCase();
-          if (!normalized || seen.has(normalized)) continue;
-          seen.add(normalized);
-          items.push(point);
-          if (items.length >= limit) return items;
-        }
-      }
-      return items;
-    }
-
     function relatedSummaryHtml(articles) {
-      const digest = relatedDigestItems(articles);
-      const digestHtml = digest.length
-        ? `<ul class="related-digest-list">${digest.map(point => `<li>${esc(point)}</li>`).join("")}</ul>`
-        : `<div class="related-empty-summary">暫時未有足夠摘要</div>`;
-      const sourceRows = articles.map(article => {
-        const points = summaryPoints(article.summary).slice(0, 2);
-        const pointsHtml = points.length
-          ? `<div class="related-source-points">${points.map(point => `<div>${esc(point)}</div>`).join("")}</div>`
-          : "";
-        return `<div class="related-source-row">
-          <div class="related-source-head">
-            <span class="related-source-name">${esc(article.source || "未知來源")}</span>
-            <span class="related-source-title">${esc(article.title || "")}</span>
-          </div>
-          ${pointsHtml}
-        </div>`;
-      }).join("");
+      const { digestHtml, sourceRows } = aiSummaryBlockHtml(articles, "related");
       return `<div class="related-ai-title">AI 綜合摘要</div>
         ${digestHtml}
         <div class="related-source-list">${sourceRows}</div>`;

@@ -33,7 +33,7 @@ SYSTEM_PROMPT = (
     '"sentiment":"positive"或"negative"或"neutral",'
     '"topic":"標準化話題名稱，唔超過10字",'
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
-    '"entities":{"people":["人物"],"companies":["公司/機構"],"places":["地點"],"dates":["日期"],"numbers":["關鍵數字"]}}'
+    '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]}}'
 )
 
 # Derive version from the prompt hash so the cache auto-invalidates whenever
@@ -97,12 +97,6 @@ def looks_like_prompt_schema_summary(summary: str) -> bool:
     return hits >= 2
 
 
-# Backwards-compat alias — internal callers in this module use the underscore
-# name; exported name drops it so build.py can import without reaching into
-# a "private" attribute.
-_looks_like_prompt_schema_summary = looks_like_prompt_schema_summary
-
-
 def _normalise_string_list(raw, *, limit: int = 4, max_len: int = 24) -> list[str]:
     if raw is None:
         return []
@@ -131,11 +125,11 @@ def _normalise_entities(raw) -> dict:
     if not isinstance(raw, dict):
         raw = {}
     return {
-        "people":    _normalise_string_list(raw.get("people"), limit=4),
-        "companies": _normalise_string_list(raw.get("companies"), limit=4),
-        "places":    _normalise_string_list(raw.get("places"), limit=4),
-        "dates":     _normalise_string_list(raw.get("dates"), limit=4),
-        "numbers":   _normalise_string_list(raw.get("numbers"), limit=4),
+        "people":    _normalise_string_list(raw.get("people"), limit=2),
+        "companies": _normalise_string_list(raw.get("companies"), limit=2),
+        "places":    _normalise_string_list(raw.get("places"), limit=2),
+        "dates":     _normalise_string_list(raw.get("dates"), limit=2),
+        "numbers":   _normalise_string_list(raw.get("numbers"), limit=2),
     }
 
 
@@ -159,7 +153,7 @@ def _normalise_parsed(data: dict) -> dict | None:
         elif not isinstance(tags_raw, list):
             tags_raw = []
         summary = _normalise_summary(data.get("summary"))
-        if _looks_like_prompt_schema_summary(summary):
+        if looks_like_prompt_schema_summary(summary):
             return None
         return {
             "summary":   summary,
@@ -229,7 +223,7 @@ def _needs_full_analysis(cached: dict) -> bool:
     summary = cached.get("summary", "") or ""
     if summary.startswith("[") and summary.endswith("]") and "', '" in summary:
         return True
-    if _looks_like_prompt_schema_summary(summary):
+    if looks_like_prompt_schema_summary(summary):
         return True
     return False
 

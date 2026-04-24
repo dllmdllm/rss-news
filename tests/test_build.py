@@ -47,17 +47,18 @@ def test_build_trending_topics_groups_recent_articles_only():
     assert topics[0]["article_ids"] == ["t1", "t2"]
 
 
-def test_topic_normalisation_groups_related_wording():
+def test_topic_grouping_uses_exact_ai_topic():
     now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
     articles = [
-        _topic_article("t1", "特朗普伊朗政策", now, 1, source="A"),
-        _topic_article("t2", "霍爾木茲海峽危機", now, 2, source="B"),
+        _topic_article("t1", "  伊朗局勢  ", now, 1, source="A"),
+        _topic_article("t2", "伊朗局勢", now, 2, source="B"),
+        _topic_article("t3", "伊朗局勢 ", now, 3, source="C"),
     ]
 
     topics = build.build_trending_topics(articles, now=now, hours=4, limit=10)
 
     assert topics[0]["topic"] == "伊朗局勢"
-    assert topics[0]["count"] == 2
+    assert topics[0]["count"] == 3
 
 
 def test_cluster_articles_clears_stale_cluster_fields():

@@ -52,6 +52,58 @@ function setupFontSize() {
   });
 }
 
+// Split an AI summary string into its individual bullet points.
+// Handles both newline-separated bullets and "・" delimited single-line output.
+function summaryPoints(summary) {
+  const text = String(summary || "").replace(/\r/g, "\n").trim();
+  if (!text) return [];
+  return text
+    .replace(/\s*・\s*/g, "\n")
+    .split(/\n+/)
+    .map(line => line.replace(/^・+/, "").trim())
+    .filter(Boolean);
+}
+
+// Merge unique bullet points across multiple articles for a combined digest
+// view (related articles on article.html, cluster view on index.html).
+function digestAcross(articles, limit = 5) {
+  const seen = new Set();
+  const items = [];
+  for (const article of articles) {
+    for (const point of summaryPoints(article.summary)) {
+      const key = point.replace(/\s+/g, "").toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      items.push(point);
+      if (items.length >= limit) return items;
+    }
+  }
+  return items;
+}
+
+// Build the shared "AI 綜合摘要" block. `prefix` picks the CSS namespace:
+// "related" for article.html, "cluster" for index.html.
+function aiSummaryBlockHtml(articles, prefix) {
+  const digest = digestAcross(articles);
+  const digestHtml = digest.length
+    ? `<ul class="${prefix}-digest-list">${digest.map(p => `<li>${esc(p)}</li>`).join("")}</ul>`
+    : `<div class="${prefix}-empty-summary">暫時未有足夠摘要</div>`;
+  const sourceRows = articles.map(article => {
+    const points = summaryPoints(article.summary).slice(0, 2);
+    const pointsHtml = points.length
+      ? `<div class="${prefix}-source-points">${points.map(p => `<div>${esc(p)}</div>`).join("")}</div>`
+      : "";
+    return `<div class="${prefix}-source-row">
+      <div class="${prefix}-source-head">
+        <span class="${prefix}-source-name">${esc(article.source || "未知來源")}</span>
+        <span class="${prefix}-source-title">${esc(article.title || "")}</span>
+      </div>
+      ${pointsHtml}
+    </div>`;
+  }).join("");
+  return { digestHtml, sourceRows };
+}
+
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

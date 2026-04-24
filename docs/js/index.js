@@ -722,51 +722,10 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       toggleClusterSummary(cid);
     }
 
-    function summaryPoints(summary) {
-      const text = String(summary || "").replace(/\r/g, "\n").trim();
-      if (!text) return [];
-      return text
-        .replace(/\s*・\s*/g, "\n")
-        .split(/\n+/)
-        .map(line => line.replace(/^・+/, "").trim())
-        .filter(Boolean);
-    }
-
-    function clusterDigestItems(articles, limit = 5) {
-      const seen = new Set();
-      const items = [];
-      for (const article of articles) {
-        for (const point of summaryPoints(article.summary)) {
-          const normalized = point.replace(/\s+/g, "").toLowerCase();
-          if (!normalized || seen.has(normalized)) continue;
-          seen.add(normalized);
-          items.push(point);
-          if (items.length >= limit) return items;
-        }
-      }
-      return items;
-    }
-
     function clusterSummaryHtml(cid) {
       const articles = getSorted(all.filter(a => a.cluster_id === cid));
       if (!articles.length) return "";
-      const digest = clusterDigestItems(articles);
-      const digestHtml = digest.length
-        ? `<ul class="cluster-digest-list">${digest.map(point => `<li>${esc(point)}</li>`).join("")}</ul>`
-        : `<div class="cluster-empty-summary">暫時未有足夠摘要</div>`;
-      const sourceRows = articles.map(article => {
-        const points = summaryPoints(article.summary).slice(0, 2);
-        const pointsHtml = points.length
-          ? `<div class="cluster-source-points">${points.map(point => `<div>${esc(point)}</div>`).join("")}</div>`
-          : "";
-        return `<div class="cluster-source-row">
-          <div class="cluster-source-head">
-            <span class="cluster-source-name">${esc(article.source || "未知來源")}</span>
-            <span class="cluster-source-title">${esc(article.title || "")}</span>
-          </div>
-          ${pointsHtml}
-        </div>`;
-      }).join("");
+      const { digestHtml, sourceRows } = aiSummaryBlockHtml(articles, "cluster");
       return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}">
         <div class="cluster-ai-title">AI 綜合摘要</div>
         ${digestHtml}
