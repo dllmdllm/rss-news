@@ -30,7 +30,11 @@
       --link:    #1a6b9a;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; min-height: 100vh; transition: background .18s, color .18s; }
+    html, body { overflow-x: hidden; }
+    body {
+      background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif;
+      min-height: 100vh; transition: background .18s, color .18s; overscroll-behavior-x: none;
+    }
 
     /* ── header ── */
     header {
