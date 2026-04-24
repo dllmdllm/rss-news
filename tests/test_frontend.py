@@ -571,60 +571,6 @@ def test_index_summary_points_normalise_bullets():
     assert result.returncode == 0, result.stderr
 
 
-def test_index_key_fact_items_prioritise_event_entities():
-    node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    fn = _extract_js_function(source, "keyFactItems")
-    js = fn + """
-    const items = keyFactItems({
-      event_type: "事故",
-      entities: {
-        people: ["張三"],
-        companies: ["港鐵"],
-        places: ["大埔"],
-        dates: ["4月22日"],
-        numbers: ["8人"],
-      },
-    }).map(x => x.label + ":" + x.value);
-    if (JSON.stringify(items) !== JSON.stringify(["類型:事故", "人物:張三", "公司:港鐵", "地點:大埔", "日期:4月22日"])) {
-      throw new Error("bad key facts: " + JSON.stringify(items));
-    }
-    """
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_index_key_facts_html_labels_values():
-    node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    js = "\n".join([
-        "const esc = s => String(s);",
-        _extract_js_function(source, "keyFactItems"),
-        _extract_js_function(source, "keyFactsHtml"),
-        """
-        const html = keyFactsHtml({
-          event_type: "政治",
-          entities: { places: ["香港"], numbers: ["49國"] },
-        });
-        if (!html.includes("類型：政治") || !html.includes("地點：香港") || !html.includes("數字：49國")) {
-          throw new Error("labels missing: " + html);
-        }
-        """,
-    ])
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 def test_index_update_timestamp_opens_source_health():
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     listener = source[source.index('document.getElementById("updated").addEventListener("click"'):]

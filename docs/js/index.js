@@ -697,37 +697,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       </div>`;
     }
 
-    function keyFactItems(article) {
-      const items = [];
-      const type = String(article.event_type || "").trim();
-      if (type) items.push({ label: "類型", value: type, cls: "fact-type" });
-      const entities = article.entities || {};
-      const groups = [
-        ["人物", "people"],
-        ["公司", "companies"],
-        ["地點", "places"],
-        ["日期", "dates"],
-        ["數字", "numbers"],
-      ];
-      for (const [name, key] of groups) {
-        const values = Array.isArray(entities[key]) ? entities[key] : [];
-        for (const value of values) {
-          const text = String(value || "").trim();
-          if (text) items.push({ label: name, value: text, cls: "" });
-          if (items.length >= 5) return items;
-        }
-      }
-      return items;
-    }
-
-    function keyFactsHtml(article) {
-      const items = keyFactItems(article);
-      if (!items.length) return "";
-      return `<div class="key-facts">${items.map(item =>
-        `<span class="fact-chip ${item.cls}">${esc(item.label)}：${esc(item.value)}</span>`
-      ).join("")}</div>`;
-    }
-
     function renderFiltered() {
       expandedClusterId = "";
       expandedClusterSummaryId = "";
@@ -810,8 +779,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const summaryHtml = points.length
           ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
-        const factsHtml = keyFactsHtml(a);
-
         const catCls = catClass(a.category);
         const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
         const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
@@ -854,7 +821,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
             ${clusterBodySummary}
-            ${factsHtml}
             ${summaryHtml}
           </div>
         </a>`;
