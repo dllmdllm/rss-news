@@ -74,6 +74,36 @@ def test_cluster_articles_clears_stale_cluster_fields():
     assert "cluster_size" not in clustered[0]
 
 
+def test_detect_duplicates_marks_near_duplicate_titles():
+    a = _article("aaa")
+    a.update({"title": "港股今日收市升300點，恆指突破兩萬五", "score": 7, "date": "2026-04-21T12:00:00+00:00"})
+    b = _article("bbb")
+    b.update({"title": "港股今日收市升300點，恆指突破兩萬五!", "score": 9, "date": "2026-04-21T12:10:00+00:00"})
+    c = _article("ccc")
+    c.update({"title": "天文台下午發出黃色暴雨警告", "score": 6})
+
+    result = build.detect_duplicates([a, b, c])
+
+    canonical = next(x for x in result if x["id"] in {"aaa", "bbb"} and "duplicate_of" not in x)
+    duped = next(x for x in result if x["id"] in {"aaa", "bbb"} and x is not canonical)
+
+    assert canonical["id"] == "bbb"  # higher score wins
+    assert canonical["duplicate_count"] == 2
+    assert duped["duplicate_of"] == "bbb"
+    assert "duplicate_of" not in next(x for x in result if x["id"] == "ccc")
+
+
+def test_detect_duplicates_leaves_distinct_titles_untouched():
+    items = [
+        {**_article("x"), "title": "A 局勢 最新發展"},
+        {**_article("y"), "title": "完全無關的娛樂新聞"},
+    ]
+    result = build.detect_duplicates(items)
+    for art in result:
+        assert "duplicate_of" not in art
+        assert "duplicate_count" not in art
+
+
 def test_save_json_writes_trending_topics(tmp_path, monkeypatch):
     now = datetime.now(timezone.utc)
     data_dir = tmp_path / "data"

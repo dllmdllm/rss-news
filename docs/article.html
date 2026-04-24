@@ -52,6 +52,13 @@
     .topbar-source { font-size: .8rem; color: var(--muted); flex: 1; }
     .topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 
+    /* reading progress bar */
+    .read-progress {
+      position: fixed; top: 0; left: 0; height: 2px;
+      width: 0; background: var(--accent); z-index: 20;
+      transition: width .08s linear;
+    }
+
     /* font size buttons */
     .font-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
@@ -65,14 +72,16 @@
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
 
     /* share button */
-    .share-btn, .save-btn, .next-unread-btn {
+    .share-btn, .save-btn, .next-unread-btn, .tts-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: .8rem;
       transition: background .15s, color .15s, border-color .15s;
     }
-    .share-btn:hover, .save-btn:hover, .next-unread-btn:hover { border-color: var(--accent); color: var(--text); }
+    .share-btn:hover, .save-btn:hover, .next-unread-btn:hover, .tts-btn:hover { border-color: var(--accent); color: var(--text); }
     .share-btn.copied { border-color: #4ade80; color: #4ade80; }
     .save-btn.active { border-color: #fbbf24; color: #fbbf24; }
+    .tts-btn.active { border-color: #4ade80; color: #4ade80; }
+    .tts-btn.disabled { opacity: .35; pointer-events: none; }
     .next-unread-btn.disabled { opacity: .35; pointer-events: none; }
 
     /* article layout */
@@ -86,6 +95,7 @@
     .art-source { font-size: .8rem; color: var(--accent); font-weight: 600; text-decoration: none; }
     .art-source:hover { text-decoration: underline; }
     .art-date   { font-size: .78rem; color: var(--muted); }
+    .art-readtime { font-size: .76rem; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
 
     .art-score {
       font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
@@ -96,7 +106,8 @@
     body.theme-light .score-high { background: #fee2e2; color: #dc2626; }
     body.theme-light .score-mid  { background: #fef3c7; color: #b45309; }
     body.theme-light .score-low  { background: #f1f1ee; color: var(--muted); }
-    .art-sentiment { font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .art-sentiment { font-size: .72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+    .sent-icon { font-weight: 700; font-size: .72rem; }
     .sent-positive { background: #14401f; color: #4ade80; }
     .sent-negative { background: #401414; color: #f87171; }
     .sent-neutral  { background: #1e1e2e; color: #888; }
@@ -296,12 +307,14 @@
   </style>
 </head>
 <body>
+  <div class="read-progress" id="read-progress"></div>
   <div class="topbar">
     <a href="index.html" class="back">← 返回</a>
     <span id="topbar-source" class="topbar-source"></span>
     <div class="topbar-right">
       <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
       <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
+      <button class="tts-btn" id="tts-btn" type="button" title="朗讀文章">▶ 朗讀</button>
       <button class="save-btn" id="save-btn" type="button">收藏</button>
       <button class="next-unread-btn disabled" id="next-unread-btn" type="button">下一篇未讀</button>
       <button class="share-btn" id="share-btn">分享</button>

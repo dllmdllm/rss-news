@@ -24,7 +24,7 @@ load_dotenv()
 
 from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
-from src.analyse import analyse_all
+from src.analyse import analyse_all, looks_like_prompt_schema_summary
 
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
@@ -36,13 +36,6 @@ TRENDING_LIMIT = 10
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
 _CONTENT_FIELDS = ("content", "rss_content")
-_BAD_SUMMARY_PHRASES = (
-    "單一字串",
-    "非array",
-    "每點用",
-    "每點之間用換行符",
-    "唔超過10個字",
-)
 
 TOPIC_ALIASES = [
     (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
@@ -53,6 +46,94 @@ TOPIC_ALIASES = [
     (("港股", "恆指", "新股", "IPO"), "港股市場"),
     (("天氣", "天文台", "雷暴", "驟雨"), "香港天氣"),
 ]
+
+
+def _title_bigrams(title: str) -> set[str]:
+    """Character bigrams of normalized title — for Jaccard similarity."""
+    norm = "".join(
+        ch for ch in str(title or "").lower()
+        if ch.isalnum() or "\u4e00" <= ch <= "\u9fff"
+    )
+    if len(norm) < 2:
+        return set()
+    return {norm[i:i + 2] for i in range(len(norm) - 1)}
+
+
+def detect_duplicates(articles: list, *, threshold: float = 0.82) -> list:
+    """Mark near-duplicate articles by title similarity.
+
+    Uses Jaccard similarity on character bigrams of the normalized title.
+    Pairs above ``threshold`` are grouped (union-find); within each group
+    we pick a canonical article (highest score, newest date) and stamp
+    the rest with ``duplicate_of``. The canonical gets ``duplicate_count``
+    so the front-end can collapse or badge the group.
+
+    Jaccard-on-bigrams is more reliable than SimHash for short strings
+    like news headlines — SimHash needs long text to be stable.
+    """
+    if not articles:
+        return articles
+
+    bigrams: list[set[str]] = []
+    for a in articles:
+        a.pop("duplicate_of", None)
+        a.pop("duplicate_count", None)
+        bigrams.append(_title_bigrams(a.get("title", "")))
+
+    parent = list(range(len(articles)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    n = len(articles)
+    for i in range(n):
+        bi = bigrams[i]
+        if not bi:
+            continue
+        for j in range(i + 1, n):
+            bj = bigrams[j]
+            if not bj:
+                continue
+            inter = len(bi & bj)
+            if not inter:
+                continue
+            uni = len(bi | bj)
+            if uni and inter / uni >= threshold:
+                union(i, j)
+
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        if bigrams[i]:
+            groups[find(i)].append(i)
+
+    marked = 0
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        members.sort(
+            key=lambda idx: (
+                articles[idx].get("score") or 0,
+                articles[idx].get("date") or "",
+            ),
+            reverse=True,
+        )
+        canonical = articles[members[0]]
+        canonical["duplicate_count"] = len(members)
+        for idx in members[1:]:
+            articles[idx]["duplicate_of"] = canonical["id"]
+            marked += 1
+
+    if marked:
+        print(f"[dedup] {marked} near-duplicate articles marked")
+    return articles
 
 
 def cluster_articles(articles: list) -> list:
@@ -370,7 +451,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     old = {
         a["id"]: a
         for a in old_articles
-        if a.get("summary") and not _looks_like_prompt_schema_summary(a.get("summary", ""))
+        if a.get("summary") and not looks_like_prompt_schema_summary(a.get("summary", ""))
     }
     restored = 0
     for a in articles:
@@ -383,12 +464,6 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     if restored:
         print(f"[build] Restored {restored} summaries from previous articles.json")
     return articles
-
-
-def _looks_like_prompt_schema_summary(summary: str) -> bool:
-    text = str(summary or "")
-    hits = sum(1 for phrase in _BAD_SUMMARY_PHRASES if phrase in text)
-    return hits >= 2
 
 
 def _merge_missing_sources(articles: list, old_articles: list, source_stats: dict) -> list:
@@ -467,6 +542,7 @@ async def main():
 
     articles = _apply_fallback_summaries(articles, old_articles)
     articles = cluster_articles(articles)
+    articles = detect_duplicates(articles)
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles, source_stats)
     print(f"=== done in {time.monotonic()-t0:.1f}s ===")

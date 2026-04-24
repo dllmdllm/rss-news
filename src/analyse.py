@@ -89,10 +89,18 @@ def _normalise_summary(raw) -> str:
     return text
 
 
-def _looks_like_prompt_schema_summary(summary: str) -> bool:
+def looks_like_prompt_schema_summary(summary: str) -> bool:
+    """Detect when the model echoed the prompt schema instead of a real summary.
+    Shared with build.py's fallback restorer so both sides stay in sync."""
     text = str(summary or "")
     hits = sum(1 for phrase in _BAD_SUMMARY_PHRASES if phrase in text)
     return hits >= 2
+
+
+# Backwards-compat alias — internal callers in this module use the underscore
+# name; exported name drops it so build.py can import without reaching into
+# a "private" attribute.
+_looks_like_prompt_schema_summary = looks_like_prompt_schema_summary
 
 
 def _normalise_string_list(raw, *, limit: int = 4, max_len: int = 24) -> list[str]:
@@ -256,7 +264,10 @@ async def _post_messages(
             "system":     SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": user_text}],
         },
-        timeout=aiohttp.ClientTimeout(total=timeout),
+        # Explicit connect budget: per-request timeout overrides the session
+        # default entirely in aiohttp, so without `connect` here the 20s connect
+        # ceiling set on the session would silently become unlimited.
+        timeout=aiohttp.ClientTimeout(total=timeout, connect=20),
     ) as resp:
         status = resp.status
         data = await resp.json(content_type=None)
@@ -344,6 +355,8 @@ async def _analyse_one(
                     return
                 if err:
                     print(f"[WARN] analyse {article['url'][:60]}: {err}")
+                else:
+                    print(f"[WARN] analyse {article['url'][:60]}: empty response (status {status})")
                 return
             except Exception as exc:
                 if attempt == MAX_ATTEMPTS - 1:
@@ -421,6 +434,8 @@ async def _analyse_batch(
                     break
                 if err:
                     print(f"[WARN] batch({len(batch)}) analyse: {err}")
+                else:
+                    print(f"[WARN] batch({len(batch)}) analyse: empty response (status {status})")
                 break
             except Exception as exc:
                 if attempt == MAX_ATTEMPTS - 1:

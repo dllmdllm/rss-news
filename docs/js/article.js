@@ -97,12 +97,28 @@
       }
       btn.onclick = () => {
         const set = readJsonSet(BOOKMARK_KEY);
-        if (set.has(id)) set.delete(id);
-        else set.add(id);
+        const wasSaved = set.has(id);
+        if (wasSaved) set.delete(id);
+        else {
+          set.add(id);
+          // Warm the cache so the sidecar is available offline next time
+          // the user re-opens this bookmarked article without a network.
+          prefetchForOffline(id);
+        }
         writeJsonSet(BOOKMARK_KEY, set);
         sync();
       };
       sync();
+    }
+
+    function prefetchForOffline(id) {
+      try {
+        const url = "data/content/" + encodeURIComponent(id) + ".json";
+        // Fire-and-forget. Service worker's stale-while-revalidate handler
+        // populates the cache on this request, so a later offline visit hits
+        // the cached copy via sw.js.
+        fetch(url, { cache: "reload" }).catch(() => {});
+      } catch (_) {}
     }
 
     function setupNextUnread(currentId, articles) {
@@ -343,6 +359,139 @@
       }
     });
 
+    // ── Reading progress bar ──────────────────────────────────────
+    function setupReadProgress() {
+      const bar = document.getElementById("read-progress");
+      if (!bar) return;
+      let ticking = false;
+      function update() {
+        const doc = document.documentElement;
+        const scrolled = window.scrollY || doc.scrollTop || 0;
+        const height = (doc.scrollHeight - doc.clientHeight) || 1;
+        const pct = Math.max(0, Math.min(1, scrolled / height)) * 100;
+        bar.style.width = pct + "%";
+        ticking = false;
+      }
+      window.addEventListener("scroll", () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(update);
+      }, { passive: true });
+      window.addEventListener("resize", update);
+      update();
+    }
+
+    function estimateReadMinutes(article) {
+      // Prefer the server-side char count — avoids re-parsing HTML client-side.
+      const qualityChars = Number(article?.content_quality?.chars);
+      let chars = Number.isFinite(qualityChars) && qualityChars > 0 ? qualityChars : 0;
+      if (!chars && article.content) {
+        const plain = String(article.content).replace(/<[^>]+>/g, "").trim();
+        chars = plain.length;
+      }
+      if (!chars) return 0;
+      // 500 CJK chars/min is the common reading-rate heuristic.
+      return Math.max(1, Math.round(chars / 500));
+    }
+
+    // ── Sentiment icons (a11y) ────────────────────────────────────
+    const SENT_ICON = { positive: "▲", negative: "▼", neutral: "–" };
+
+    // ── Swipe gestures (mobile) ───────────────────────────────────
+    function setupSwipeNav() {
+      let startX = 0, startY = 0, active = false, startT = 0;
+      const SLOP_Y = 60;   // vertical movement above this aborts — user is scrolling
+      const THRESHOLD_X = 70;
+      const MAX_DURATION = 600;
+      document.addEventListener("touchstart", e => {
+        if (e.touches.length !== 1) { active = false; return; }
+        const t = e.touches[0];
+        startX = t.clientX; startY = t.clientY;
+        startT = Date.now();
+        active = true;
+      }, { passive: true });
+      document.addEventListener("touchend", e => {
+        if (!active) return;
+        active = false;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        if (Date.now() - startT > MAX_DURATION) return;
+        if (Math.abs(dy) > SLOP_Y) return;
+        if (Math.abs(dx) < THRESHOLD_X) return;
+        // Swipe right → prev article (matches natural "pull back" gesture).
+        clickNav(dx > 0 ? "nav-prev" : "nav-next");
+      }, { passive: true });
+    }
+
+    // ── TTS 朗讀 ─────────────────────────────────────────────────
+    function setupTts() {
+      const btn = document.getElementById("tts-btn");
+      if (!btn) return;
+      const synth = window.speechSynthesis;
+      if (!synth) {
+        btn.classList.add("disabled");
+        btn.title = "瀏覽器不支援語音合成";
+        return;
+      }
+      let speaking = false;
+
+      function pickVoice() {
+        const voices = synth.getVoices() || [];
+        // Prefer Cantonese, fall back to any Chinese voice.
+        return voices.find(v => /zh-HK|yue/i.test(v.lang))
+          || voices.find(v => /zh/i.test(v.lang))
+          || voices[0]
+          || null;
+      }
+
+      function articleText() {
+        const title = document.getElementById("art-title")?.textContent || "";
+        const body = document.getElementById("art-content")?.innerText || "";
+        // Trim trailing "閱讀原文" link text if present.
+        return (title + "。" + body).replace(/閱讀原文[↗\s]*$/, "").trim();
+      }
+
+      function stop() {
+        synth.cancel();
+        speaking = false;
+        btn.classList.remove("active");
+        btn.textContent = "▶ 朗讀";
+      }
+
+      btn.addEventListener("click", () => {
+        if (speaking) { stop(); return; }
+        const text = articleText();
+        if (!text) return;
+        // Long articles can exceed some engines' per-utterance limit; chunk
+        // by sentence boundaries so playback does not cut out silently.
+        const chunks = text.match(/[^。！？\n]+[。！？\n]?/g) || [text];
+        const voice = pickVoice();
+        for (const chunk of chunks) {
+          const utter = new SpeechSynthesisUtterance(chunk);
+          if (voice) utter.voice = voice;
+          utter.lang = voice?.lang || "zh-HK";
+          utter.rate = 1;
+          utter.onend = () => {
+            if (synth.pending || synth.speaking) return;
+            stop();
+          };
+          utter.onerror = () => stop();
+          synth.speak(utter);
+        }
+        speaking = true;
+        btn.classList.add("active");
+        btn.textContent = "■ 停止";
+      });
+
+      // Stop speaking when the user navigates away — avoids zombie playback
+      // when the page unloads mid-utterance.
+      window.addEventListener("beforeunload", () => synth.cancel());
+      // Some browsers only populate voices after an async event.
+      if (synth.onvoiceschanged === null) {
+        synth.onvoiceschanged = () => { /* warm-up; pickVoice runs on click */ };
+      }
+    }
+
     // ── Share ─────────────────────────────────────────────────────
     document.getElementById("share-btn").addEventListener("click", async () => {
       const btn   = document.getElementById("share-btn");
@@ -414,15 +563,17 @@
         }
         const sent      = _SENT_WL.has(art.sentiment) ? art.sentiment : "neutral";
         const sentLabel = { positive: "正面", negative: "負面", neutral: "中性" }[sent];
-        const sentHtml  = `<span class="art-sentiment sent-${sent}">${sentLabel}</span>`;
+        const sentHtml  = `<span class="art-sentiment sent-${sent}" role="img" aria-label="情緒：${sentLabel}"><span class="sent-icon" aria-hidden="true">${SENT_ICON[sent]}</span>${sentLabel}</span>`;
 
         const cat = _CAT_WL.has(art.category) ? art.category : "";
         const srcUrl = safeUrl(art.url);
         currentSourceUrl = srcUrl !== "#" ? srcUrl : "";
+        const readMin = estimateReadMinutes(art);
+        const readHtml = readMin ? `<span class="art-readtime" title="估算閱讀時間">⏱ ${readMin} 分鐘</span>` : "";
         document.getElementById("art-meta").innerHTML =
           `<span class="art-cat cat-${esc(cat)}">${esc(cat)}</span>
            <a class="art-source" href="${esc(srcUrl)}" target="_blank" rel="noopener">${esc(art.source)}</a>
-           ${scoreHtml}${sentHtml}
+           ${scoreHtml}${sentHtml}${readHtml}
            <span class="art-date">${esc(date)}</span>`;
 
         document.getElementById("art-title").textContent = art.title;
@@ -482,6 +633,9 @@
         document.getElementById("loading").style.display = "none";
         document.getElementById("art-body").style.display = "block";
         renderRelatedArticles(art, data.articles);
+        setupReadProgress();
+        setupSwipeNav();
+        setupTts();
       } catch {
         document.getElementById("loading").textContent = "載入失敗";
       }

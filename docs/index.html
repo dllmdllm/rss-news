@@ -330,7 +330,13 @@
     body.theme-light .score-mid  { background: #fef3c7; color: #b45309; }
     body.theme-light .score-low  { background: #f1f1ee; color: var(--muted); }
 
-    .sentiment       { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .sentiment       {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 14px; height: 14px; border-radius: 50%;
+      font-size: .58rem; font-weight: 800; line-height: 1;
+      color: #0f0f13; flex-shrink: 0;
+    }
+    body.theme-light .sentiment { color: #fafaf8; }
     .sent-positive   { background: #4ade80; }
     .sent-negative   { background: #f87171; }
     .sent-neutral    { background: #888; }
@@ -469,6 +475,32 @@
       padding: 60px; color: var(--muted); font-size: .9rem;
     }
 
+    /* ── skeleton loader ── */
+    @keyframes skel-shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .skel-block {
+      background: linear-gradient(90deg, var(--border) 0%, #3a3a4a 50%, var(--border) 100%);
+      background-size: 800px 100%;
+      animation: skel-shimmer 1.2s infinite linear;
+      border-radius: 4px;
+    }
+    body.theme-light .skel-block {
+      background: linear-gradient(90deg, #e6e6e0 0%, #f0f0ea 50%, #e6e6e0 100%);
+      background-size: 800px 100%;
+    }
+    .skel-thumb { width: 100%; aspect-ratio: 3/2; border-radius: 0; }
+    .skel-body  { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .skel-line  { height: 12px; }
+    .skel-line.short { width: 40%; }
+    .skel-line.mid   { width: 75%; }
+    .skel-line.long  { width: 92%; }
+
     /* ── keyboard focus ring ── */
     .card.kb-focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -574,6 +606,7 @@
         <button class="sort-btn" data-sort="ai">AI</button>
       </div>
       <div class="quick-toggle" id="quick-toggle">
+        <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 重要</button>
         <button class="view-btn" id="unread-toggle" type="button">未讀</button>
         <button class="view-btn" id="saved-toggle" type="button">收藏</button>
         <button class="view-btn" id="compact-toggle" type="button">精簡</button>
@@ -588,7 +621,7 @@
   </header>
 
   <div class="search-row">
-    <input class="search-input" id="search" type="search" placeholder="搜尋標題、來源、標籤…" autocomplete="off">
+    <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
   </div>
 
   <div class="trending-topics" id="trending-topics"></div>
@@ -596,7 +629,14 @@
   <div class="filters"        id="filters"></div>
   <div class="source-filters" id="source-filters"></div>
   <div class="tag-filters"    id="tag-filters"></div>
-  <div class="grid" id="grid"><div class="loading">載入中…</div></div>
+  <div class="grid" id="grid">
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+  </div>
 
   <!-- source health modal -->
   <div class="health-overlay" id="health-overlay">

@@ -1,7 +1,9 @@
 const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
     const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     let all = [], activeCat = "全部", activeSource = "", activeTag = "", activeTopic = "", sortMode = "date";
-    let onlyUnread = false, onlySaved = false;
+    let onlyUnread = false, onlySaved = false, onlyImportant = false;
+    const IMPORTANT_SCORE_MIN = 7;
+    const SENT_ICON = { positive: "▲", negative: "▼", neutral: "–" };
     let expandedClusterId = "";
     let expandedClusterSummaryId = "";
     let currentRenderArticles = [];
@@ -59,15 +61,22 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const unreadBtn = document.getElementById("unread-toggle");
       const savedBtn = document.getElementById("saved-toggle");
       const compactBtn = document.getElementById("compact-toggle");
+      const importantBtn = document.getElementById("important-toggle");
 
       function syncButtons() {
         unreadBtn?.classList.toggle("active", onlyUnread);
         savedBtn?.classList.toggle("active", onlySaved);
+        importantBtn?.classList.toggle("active", onlyImportant);
         const compact = localStorage.getItem(COMPACT_KEY) === "1";
         compactBtn?.classList.toggle("active", compact);
         document.body.classList.toggle("view-compact", compact);
       }
 
+      importantBtn?.addEventListener("click", () => {
+        onlyImportant = !onlyImportant;
+        syncButtons();
+        renderFiltered();
+      });
       unreadBtn?.addEventListener("click", () => {
         onlyUnread = !onlyUnread;
         if (onlyUnread) onlySaved = false;
@@ -86,6 +95,10 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         syncButtons();
       });
       syncButtons();
+      // Expose so keyboard shortcuts can use the same code path.
+      window.__toggleImportant = () => importantBtn?.click();
+      window.__toggleUnread = () => unreadBtn?.click();
+      window.__toggleSaved = () => savedBtn?.click();
     }
 
     // ── Read tracking ─────────────────────────────────────────────
@@ -551,7 +564,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     function buildTopPicks() {
       const container = document.getElementById("top-picks");
       if (!container) return;
-      if (searchQuery || activeCat !== "å…¨éƒ¨" || activeSource || activeTag || activeTopic || onlyUnread || onlySaved) {
+      if (searchQuery || activeCat !== "全部" || activeSource || activeTag || activeTopic || onlyUnread || onlySaved || onlyImportant) {
         container.classList.remove("show");
         container.innerHTML = "";
         return;
@@ -633,9 +646,16 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
 
     function compactClusters(articles) {
+      // Drop articles flagged as near-duplicates when their canonical is
+      // also visible — keeps the grid focused on distinct stories.
+      const visibleIds = new Set(articles.map(a => a.id));
+      const afterDup = articles.filter(a => {
+        const dupOf = a.duplicate_of;
+        return !(dupOf && visibleIds.has(dupOf));
+      });
       const picked = new Map();
       const singles = [];
-      for (const article of articles) {
+      for (const article of afterDup) {
         const key = clusterKey(article);
         if (!key) {
           singles.push(article);
@@ -661,8 +681,17 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       render(getSorted(all.filter(a => a.cluster_id === cid)));
     }
 
+    function prefetchForOffline(id) {
+      try {
+        const url = "data/content/" + encodeURIComponent(id) + ".json";
+        fetch(url, { cache: "reload" }).catch(() => {});
+      } catch (_) {}
+    }
+
     function toggleBookmark(id) {
+      const before = getBookmarks().has(id);
       toggleStoredSet(BOOKMARK_KEY, id);
+      if (!before) prefetchForOffline(id);
       render(currentRenderArticles);
     }
 
@@ -787,6 +816,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       list = list.filter(a => !muted.has(a.source));
       if (onlyUnread) list = list.filter(a => !reads.has(a.id));
       if (onlySaved) list = list.filter(a => bookmarks.has(a.id));
+      if (onlyImportant) list = list.filter(a => (Number(a.score) || 0) >= IMPORTANT_SCORE_MIN);
       list = applySearchOperators(list, parsedSearch);
       // search takes priority — override category/tag if query present
       if (searchQuery && fuse) {
@@ -837,7 +867,8 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const scoreBadge = score !== null
           ? `<span class="score-badge ${scoreClass(score)}">${score >= 8 ? "🔥 " : ""}${score}</span>` : "";
         const sentiment = ["positive", "negative", "neutral"].includes(a.sentiment) ? a.sentiment : "neutral";
-        const sentDot   = `<span class="sentiment sent-${sentiment}"></span>`;
+        const sentLabel = sentiment === "positive" ? "正面" : sentiment === "negative" ? "負面" : "中性";
+        const sentDot   = `<span class="sentiment sent-${sentiment}" role="img" aria-label="情緒：${sentLabel}" title="情緒：${sentLabel}">${SENT_ICON[sentiment]}</span>`;
         // cluster_id is 8-hex MD5; still clamp to [0-9a-f] to be defensive
         const cid = /^[0-9a-f]{1,16}$/i.test(a.cluster_id || "") ? a.cluster_id : "";
         const isCluster = Number(a.cluster_size) > 1 && cid;
@@ -933,6 +964,18 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       else if (e.key === "k") { e.preventDefault(); focusCard(-1); }
       else if (e.key === "g") { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); kbIndex = -1; }
       else if (e.key === "h") { e.preventDefault(); openHealthModal(); }
+      else if (e.key === "u") { e.preventDefault(); window.__toggleUnread?.(); }
+      else if (e.key === "s") { e.preventDefault(); window.__toggleSaved?.(); }
+      else if (e.key === "i" || e.key === "!") { e.preventDefault(); window.__toggleImportant?.(); }
+      else if (e.key === "b") {
+        e.preventDefault();
+        const cards = [...document.querySelectorAll("#grid .card")];
+        const target = kbIndex >= 0 ? cards[kbIndex] : null;
+        if (!target) return;
+        const href = target.getAttribute("href") || "";
+        const match = href.match(/id=([0-9a-f]{1,32})/i);
+        if (match) toggleBookmark(match[1]);
+      }
       else if (e.key === "Enter" && kbIndex >= 0) {
         const cards = document.querySelectorAll("#grid .card");
         if (cards[kbIndex]) cards[kbIndex].click();
