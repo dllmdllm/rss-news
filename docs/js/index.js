@@ -722,11 +722,12 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       toggleClusterSummary(cid);
     }
 
-    function clusterSummaryHtml(cid) {
+    function clusterSummaryHtml(cid, suffix = "") {
       const articles = getSorted(all.filter(a => a.cluster_id === cid));
       if (!articles.length) return "";
       const { digestHtml, sourceRows } = aiSummaryBlockHtml(articles, "cluster");
-      return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}">
+      const idSuffix = suffix ? `-${esc(suffix)}` : "";
+      return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}${idSuffix}">
         <div class="cluster-ai-title">AI 綜合摘要</div>
         ${digestHtml}
         <div class="cluster-source-list">${sourceRows}</div>
@@ -805,9 +806,11 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       kbIndex = -1;
       currentRenderArticles = articles;
       const grid  = document.getElementById("grid");
+      const isMobileCard = window.matchMedia?.("(max-width: 640px)")?.matches;
       const reads = getRead();
       const bookmarks = getBookmarks();
       const downranked = getDownrankSources();
+      const renderedClusterSummaries = new Set();
       saveArticleNavContext(articles);
       if (!articles.length) {
         grid.innerHTML = '<div class="empty">沒有文章</div>';
@@ -850,7 +853,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
           ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
         const factsHtml = keyFactsHtml(a);
-        const clusterSummary = isClusterStack && expandedClusterSummaryId === cid ? clusterSummaryHtml(cid) : "";
 
         const catCls = catClass(a.category);
         const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
@@ -865,13 +867,23 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         const clusterStrip = isCluster
           ? `<div class="cluster-strip"><span>多來源報道</span><span>${Number(a.cluster_size)} 個來源</span></div>`
           : "";
+        const shouldRenderClusterSummary = isClusterStack
+          && expandedClusterSummaryId === cid
+          && !renderedClusterSummaries.has(cid);
+        if (shouldRenderClusterSummary) renderedClusterSummaries.add(cid);
+        const clusterOverlaySummary = isMobileCard && shouldRenderClusterSummary
+          ? clusterSummaryHtml(cid, "overlay")
+          : "";
+        const clusterBodySummary = !isMobileCard && shouldRenderClusterSummary
+          ? clusterSummaryHtml(cid, "body")
+          : "";
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           <div class="card-media">
             ${thumb}
-            ${isCluster ? `<div class="card-overlay">
+            ${isMobileCard && isCluster ? `<div class="card-overlay">
               ${clusterStrip}
               ${isClusterStack ? clusterSummaryButton : ""}
-              ${isClusterStack && expandedClusterSummaryId === cid ? clusterSummaryHtml(cid) : ""}
+              ${clusterOverlaySummary}
             </div>` : ""}
           </div>
           <div class="card-body">
@@ -883,7 +895,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
-            ${clusterSummary}
+            ${clusterBodySummary}
             ${factsHtml}
             ${summaryHtml}
           </div>

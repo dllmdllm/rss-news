@@ -33,6 +33,16 @@ CONTENT_SCHEMA_VERSION = 1
 TRENDING_WINDOW_HOURS = 4
 TRENDING_LIMIT = 10
 
+TOPIC_ALIASES = [
+    (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
+    (("宏福苑", "宏新閣", "火警聽證", "居民上樓"), "宏福苑跟進"),
+    (("高市早苗", "靖國", "日本首相"), "日本政局"),
+    (("蘋果", "庫克", "特努斯", "Ternus", "Apple"), "蘋果CEO交接"),
+    (("機械人", "機器人", "人形機械", "半馬"), "機械人發展"),
+    (("港股", "恆指", "新股", "IPO"), "港股市場"),
+    (("天氣", "天文台", "雷暴", "驟雨"), "香港天氣"),
+]
+
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
 _CONTENT_FIELDS = ("content", "rss_content")
@@ -158,7 +168,16 @@ def cluster_articles(articles: list) -> list:
 
 
 def normalise_topic(article: dict) -> str:
-    return (article.get("topic") or "").strip()
+    raw = (article.get("topic") or "").strip()
+    haystack = " ".join(
+        str(article.get(field, ""))
+        for field in ("topic", "title", "summary")
+        if article.get(field)
+    )
+    for keywords, canonical in TOPIC_ALIASES:
+        if any(keyword in haystack for keyword in keywords):
+            return canonical
+    return raw
 
 
 def _parse_article_datetime(value: str):

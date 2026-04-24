@@ -133,6 +133,252 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
     assert result.returncode == 0, result.stderr
 
 
+def _ignored_index_mobile_cluster_summary_renders_once():
+    node = _require_node()
+    js = textwrap.dedent(
+        """
+        const crypto = require("crypto");
+        const fs = require("fs");
+        const vm = require("vm");
+
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.innerHTML = "";
+            this.textContent = "";
+            this.className = "";
+            this.dataset = {};
+            this.style = {};
+            this.tagName = "DIV";
+            this.value = "";
+            this.classList = {
+              add: () => null,
+              remove: () => null,
+              contains: () => false,
+              toggle: () => null,
+            };
+          }
+          addEventListener() {}
+          querySelectorAll() { return []; }
+        }
+
+        const clusterId = crypto.createHash("md5").update("伊朗局勢").digest("hex").slice(0, 8);
+        const articles = [
+          {
+            id: "a1",
+            title: "美伊局勢升溫",
+            url: "https://example.com/a1",
+            date: "2026-04-21T12:00:00+00:00",
+            source: "A",
+            category: "新聞",
+            summary: "・伊朗升溫\n・航道受關注",
+            cluster_id: clusterId,
+            cluster_size: 2,
+          },
+          {
+            id: "a2",
+            title: "以色列回應美伊緊張",
+            url: "https://example.com/a2",
+            date: "2026-04-21T11:00:00+00:00",
+            source: "B",
+            category: "新聞",
+            summary: "・以色列施壓\n・局勢升級",
+            cluster_id: clusterId,
+            cluster_size: 2,
+          },
+        ];
+
+        const els = new Map();
+        for (const id of [
+          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
+          "updated", "health-overlay", "health-close", "health-body", "search",
+          "filters", "source-filters", "tag-filters", "trending-topics",
+          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
+        ]) {
+          els.set(id, new El(id));
+        }
+
+        const document = {
+          body: new El("body"),
+          getElementById: id => els.get(id) || new El(id),
+          querySelector: () => ({ setAttribute() {} }),
+          querySelectorAll: () => [],
+          addEventListener() {},
+        };
+        const context = {
+          console,
+          document,
+          window: { matchMedia: () => ({ matches: true }), addEventListener() {} },
+          navigator: {},
+          localStorage: { getItem: () => null, setItem() {} },
+          setInterval() {},
+          setTimeout,
+          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          Fuse: class {
+            constructor(items) { this.items = items; }
+            search() { return []; }
+          },
+          fetch: async () => ({
+            json: async () => ({
+              articles,
+              trending_topics: [],
+              sources: {},
+            }),
+          }),
+        };
+        context.globalThis = context;
+
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
+        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
+
+        setTimeout(() => {
+          context.toggleClusterSummary(clusterId);
+          const html = els.get("grid").innerHTML;
+          const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
+          const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
+          if (overlayCount !== 1) {
+            throw new Error("expected one mobile overlay summary, got " + overlayCount);
+          }
+          if (bodyCount !== 0) {
+            throw new Error("expected no desktop body summary on mobile, got " + bodyCount);
+          }
+        }, 0);
+        """
+    )
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_index_mobile_cluster_summary_renders_once():
+    node = _require_node()
+    js = textwrap.dedent(
+        """
+        const crypto = require("crypto");
+        const fs = require("fs");
+        const vm = require("vm");
+
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.innerHTML = "";
+            this.textContent = "";
+            this.className = "";
+            this.dataset = {};
+            this.style = {};
+            this.tagName = "DIV";
+            this.value = "";
+            this.classList = {
+              add: () => null,
+              remove: () => null,
+              contains: () => false,
+              toggle: () => null,
+            };
+          }
+          addEventListener() {}
+          querySelectorAll() { return []; }
+        }
+
+        const clusterId = crypto.createHash("md5").update("伊朗局勢").digest("hex").slice(0, 8);
+        const articles = [
+          {
+            id: "a1",
+            title: "美伊局勢升溫",
+            url: "https://example.com/a1",
+            date: "2026-04-21T12:00:00+00:00",
+            source: "A",
+            category: "新聞",
+            summary: "・伊朗升溫\\n・航道受關注",
+            cluster_id: clusterId,
+            cluster_size: 2,
+          },
+          {
+            id: "a2",
+            title: "以色列回應美伊緊張",
+            url: "https://example.com/a2",
+            date: "2026-04-21T11:00:00+00:00",
+            source: "B",
+            category: "新聞",
+            summary: "・以色列施壓\\n・局勢升級",
+            cluster_id: clusterId,
+            cluster_size: 2,
+          },
+        ];
+
+        const els = new Map();
+        for (const id of [
+          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
+          "updated", "health-overlay", "health-close", "health-body", "search",
+          "filters", "source-filters", "tag-filters", "trending-topics",
+          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
+        ]) {
+          els.set(id, new El(id));
+        }
+
+        const document = {
+          body: new El("body"),
+          getElementById: id => els.get(id) || new El(id),
+          querySelector: () => ({ setAttribute() {} }),
+          querySelectorAll: () => [],
+          addEventListener() {},
+        };
+        const context = {
+          console,
+          document,
+          window: { matchMedia: () => ({ matches: true }), addEventListener() {} },
+          navigator: {},
+          localStorage: { getItem: () => null, setItem() {} },
+          setInterval() {},
+          setTimeout,
+          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          Fuse: class {
+            constructor(items) { this.items = items; }
+            search() { return []; }
+          },
+          fetch: async () => ({
+            json: async () => ({
+              articles,
+              trending_topics: [],
+              sources: {},
+            }),
+          }),
+        };
+        context.globalThis = context;
+
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
+        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
+
+        setTimeout(() => {
+          context.toggleClusterSummary(clusterId);
+          const html = els.get("grid").innerHTML;
+          const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
+          const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
+          if (overlayCount !== 1) {
+            throw new Error("expected one mobile overlay summary, got " + overlayCount);
+          }
+          if (bodyCount !== 0) {
+            throw new Error("expected no desktop body summary on mobile, got " + bodyCount);
+          }
+        }, 0);
+        """
+    )
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_tag_filters_are_scoped_per_category():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")

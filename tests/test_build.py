@@ -61,6 +61,24 @@ def test_topic_grouping_uses_exact_ai_topic():
     assert topics[0]["count"] == 3
 
 
+def test_topic_grouping_canonicalises_known_aliases():
+    now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
+    articles = [
+        _topic_article("t1", "中東動向", now, 1, source="A"),
+        _topic_article("t2", "國際焦點", now, 2, source="B"),
+    ]
+    articles[0]["title"] = "美伊局勢升溫"
+    articles[0]["summary"] = "霍爾木茲航道受關注"
+    articles[1]["title"] = "以色列回應美伊緊張"
+    articles[1]["summary"] = "伊朗與以色列互相施壓"
+
+    topics = build.build_trending_topics(articles, now=now, hours=4, limit=10)
+
+    assert len(topics) == 1
+    assert topics[0]["topic"] == "伊朗局勢"
+    assert topics[0]["count"] == 2
+
+
 def test_cluster_articles_clears_stale_cluster_fields():
     article = _article("solo", content="<p>full text</p>")
     article.update({
