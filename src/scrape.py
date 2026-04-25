@@ -459,6 +459,55 @@ def _remove_leading_title(content: str, title: str) -> str:
     return content
 
 
+def _weekendhk_restore_intro(html: str, content: str, title: str, source: str) -> str:
+    """Restore WeekendHK's intro paragraph from og:description when trafilatura
+    starts at the first heading.
+
+    WeekendHK often stores a short lead paragraph in og:description and then
+    begins the visible article body at the first heading. If the extracted body
+    is missing that lead, we prepend it once here.
+    """
+    if "WeekendHK" not in (source or ""):
+        return content
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    meta = soup.find("meta", attrs={"property": "og:description"}) or soup.find("meta", attrs={"name": "description"})
+    desc = _normalise_oncc_text(meta.get("content") if meta else "")
+    if not desc or not content:
+        return content
+
+    body = BeautifulSoup(content, "html.parser")
+    container = body.body or body
+    body_text = _normalise_oncc_text(container.get_text(" ", strip=True))
+    if not body_text:
+        return content
+
+    first_heading = ""
+    for node in container.find_all(["h2", "h3", "h4"], recursive=True):
+        text = _normalise_oncc_text(node.get_text(" ", strip=True))
+        if text and text != _normalise_oncc_text(title):
+            first_heading = text
+            break
+    if not first_heading:
+        return content
+
+    split_at = desc.find(first_heading)
+    if split_at <= 0:
+        return content
+    intro = desc[:split_at].strip()
+    if not intro:
+        return content
+
+    # Skip if the intro is already present near the top of the body.
+    if intro in body_text[: max(len(intro) + 128, 256)]:
+        return content
+
+    wrapper = body.new_tag("p")
+    wrapper.string = intro
+    container.insert(0, wrapper)
+    return str(body)
+
+
 def _add_featured_image(content: str, thumbnail: str) -> str:
     """Prepend thumbnail as featured image if content has no inline images."""
     if thumbnail and '<img' not in content:
@@ -708,6 +757,7 @@ async def _scrape_one(
 
                 if content:
                     content = _fix_graphic_tags(content)
+                    content = _weekendhk_restore_intro(html, content, article.get("title", ""), article.get("source", ""))
                     content = _remove_leading_title(content, article.get("title", ""))
                     content = _add_featured_image(content, article.get("thumbnail") or "")
                     if article["source"] in SIMPLIFIED_SOURCES:

@@ -150,6 +150,28 @@ def test_scrape_one_keeps_english_content_untranslated(monkeypatch):
     assert "Hello world from source." in out["content"]
 
 
+def test_weekendhk_restore_intro_uses_og_description_prefix():
+    html = """
+    <html>
+      <head>
+        <meta property="og:description" content="\u9996\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002\u7b2c\u4e00\u500b\u6a19\u984c">
+      </head>
+      <body>
+        <h1>\u4e3b\u6a19\u984c</h1>
+        <h2>\u7b2c\u4e00\u500b\u6a19\u984c</h2>
+        <p>\u6b63\u6587\u7b2c\u4e00\u6bb5\u3002</p>
+      </body>
+    </html>
+    """
+    content = "<html><body><h1>\u4e3b\u6a19\u984c</h1><h2>\u7b2c\u4e00\u500b\u6a19\u984c</h2><p>\u6b63\u6587\u7b2c\u4e00\u6bb5\u3002</p></body></html>"
+
+    out = scrape._weekendhk_restore_intro(html, content, "\u4e3b\u6a19\u984c", "WeekendHK")
+
+    assert "\u9996\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002" in out
+    assert out.index("\u9996\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002") < out.index("\u7b2c\u4e00\u500b\u6a19\u984c")
+    assert out.count("\u9996\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002") == 1
+
+
 def test_build_oncc_content_preserves_text_image_order():
     html = """
     <html><body>
