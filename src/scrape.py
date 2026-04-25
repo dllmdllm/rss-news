@@ -459,15 +459,17 @@ def _remove_leading_title(content: str, title: str) -> str:
     return content
 
 
-def _weekendhk_restore_intro(html: str, content: str, title: str, source: str) -> str:
-    """Restore WeekendHK's intro paragraph from og:description when trafilatura
-    starts at the first heading.
+_INTRO_RESTORE_SOURCES = ("WeekendHK", "GoTrip")
 
-    WeekendHK often stores a short lead paragraph in og:description and then
-    begins the visible article body at the first heading. If the extracted body
-    is missing that lead, we prepend it once here.
+
+def _restore_intro_from_description(html: str, content: str, title: str, source: str) -> str:
+    """Restore a missing intro paragraph from og:description for known sites.
+
+    Some sites keep a short lead paragraph in og:description and start the
+    visible article body at the first heading. If extraction skips that lead,
+    prepend it once here.
     """
-    if "WeekendHK" not in (source or ""):
+    if not any(name in (source or "") for name in _INTRO_RESTORE_SOURCES):
         return content
 
     soup = BeautifulSoup(html or "", "html.parser")
@@ -757,7 +759,7 @@ async def _scrape_one(
 
                 if content:
                     content = _fix_graphic_tags(content)
-                    content = _weekendhk_restore_intro(html, content, article.get("title", ""), article.get("source", ""))
+                    content = _restore_intro_from_description(html, content, article.get("title", ""), article.get("source", ""))
                     content = _remove_leading_title(content, article.get("title", ""))
                     content = _add_featured_image(content, article.get("thumbnail") or "")
                     if article["source"] in SIMPLIFIED_SOURCES:
