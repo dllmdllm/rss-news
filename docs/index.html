@@ -283,20 +283,6 @@
     body.theme-light .card-thumb-placeholder {
       background: linear-gradient(135deg, #eef3f7 0%, #f7f2ed 100%);
     }
-    .card-overlay {
-      display: none;
-      position: absolute;
-      inset: 10px;
-      z-index: 2;
-      pointer-events: none;
-      gap: 6px;
-    }
-    .card-overlay .cluster-ai-btn {
-      width: fit-content;
-      background: #082f3acc;
-      backdrop-filter: blur(6px);
-      pointer-events: auto;
-    }
 
     /* card body */
     .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
@@ -552,9 +538,7 @@
       .card-media         { grid-column: 1; grid-row: 1; }
       .card-thumb,
       .card-thumb-placeholder { width: 100%; height: auto; min-height: 180px; aspect-ratio: 16 / 9; }
-      .card-overlay       { display: flex; flex-direction: column; gap: 6px; }
       .card-body          { grid-column: 1; grid-row: 2; padding: 9px 10px 10px; gap: 5px; }
-      .card-body .cluster-ai-btn { display: none; }
       .card-title         { line-height: 1.4; }
       body.fs-1 .card-title   { font-size: .92rem; }
       body.fs-1 .card-summary { font-size: .8rem; }
@@ -571,7 +555,6 @@
       body.view-compact .card-thumb-placeholder {
         width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto;
       }
-      body.view-compact .card-overlay { display: none; }
     }
   </style>
 </head>

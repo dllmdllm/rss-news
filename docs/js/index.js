@@ -807,9 +807,6 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
         return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
           <div class="card-media">
             ${thumb}
-            ${isMobileCard && isClusterStack ? `<div class="card-overlay">
-              ${clusterSummaryButton}
-            </div>` : ""}
           </div>
           <div class="card-body">
             <div class="card-meta">
