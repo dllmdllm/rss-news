@@ -52,6 +52,21 @@ function setupFontSize() {
   });
 }
 
+// Render a date as a relative time like "15 小時前" / "23 分鐘前".
+// Returns "" when the input cannot be parsed.
+function relativeTime(dateStr) {
+  const ts = Date.parse(dateStr || "");
+  if (isNaN(ts)) return "";
+  const diffSec = Math.max(0, (Date.now() - ts) / 1000);
+  if (diffSec < 60) return "剛剛";
+  const min = Math.round(diffSec / 60);
+  if (min < 60) return `${min} 分鐘前`;
+  const hr = Math.round(diffSec / 3600);
+  if (hr < 48) return `${hr} 小時前`;
+  const day = Math.round(diffSec / 86400);
+  return `${day} 日前`;
+}
+
 // Split an AI summary string into its individual bullet points.
 // Handles both newline-separated bullets and "・" delimited single-line output.
 function summaryPoints(summary) {
@@ -93,9 +108,12 @@ function aiSummaryBlockHtml(articles, prefix) {
     const pointsHtml = points.length
       ? `<div class="${prefix}-source-points">${points.map(p => `<div>${esc(p)}</div>`).join("")}</div>`
       : "";
+    const ago = relativeTime(article.date);
+    const agoHtml = ago ? `<span class="${prefix}-source-ago">${esc(ago)}</span>` : "";
     return `<div class="${prefix}-source-row">
       <div class="${prefix}-source-head">
         <span class="${prefix}-source-name">${esc(article.source || "未知來源")}</span>
+        ${agoHtml}
         <span class="${prefix}-source-title">${esc(article.title || "")}</span>
       </div>
       ${pointsHtml}
