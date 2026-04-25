@@ -503,17 +503,56 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       };
     }
 
+    const TOP_PICKS_RECENT_KEY = "topPicks.recent";
+    const TOP_PICKS_RECENT_TTL_MS = 24 * 3600 * 1000;
+    let _topPicksSnapshot = null;
+    let _topPicksRecorded = false;
+
+    function topPickKey(a) {
+      return String(a.cluster_id || a.topic || "");
+    }
+
+    function readRecentTopPicks() {
+      try {
+        const obj = JSON.parse(localStorage.getItem(TOP_PICKS_RECENT_KEY) || "{}");
+        const now = Date.now();
+        const fresh = {};
+        for (const [k, v] of Object.entries(obj)) {
+          if (typeof v === "number" && now - v < TOP_PICKS_RECENT_TTL_MS) fresh[k] = v;
+        }
+        return fresh;
+      } catch (_) { return {}; }
+    }
+
+    function recencyBoost(dateStr) {
+      const ts = Date.parse(dateStr || "");
+      if (isNaN(ts)) return 0;
+      const hr = (Date.now() - ts) / 3600000;
+      if (hr < 1) return 2;
+      if (hr < 3) return 1;
+      if (hr < 6) return 0.5;
+      return 0;
+    }
+
     function topPicks(articles) {
       const muted = getMutedSources();
+      if (_topPicksSnapshot === null) _topPicksSnapshot = readRecentTopPicks();
+      const recent = _topPicksSnapshot;
       const cats = CATS.filter(c => c !== "全部");
-      const sorted = getSorted(articles)
+      const ranked = articles
         .filter(a => !muted.has(a.source))
-        .filter(a => !a.duplicate_of);
+        .filter(a => !a.duplicate_of)
+        .map(a => ({ a, w: (Number(a.score) || 0) + recencyBoost(a.date) }))
+        .sort((x, y) => y.w - x.w);
       const seenCluster = new Set();
-      const takeOne = pool => {
-        for (const a of pool) {
+      const tryPick = (pool, skipRecent) => {
+        for (const { a } of pool) {
           const cid = String(a.cluster_id || "");
           if (cid && seenCluster.has(cid)) continue;
+          if (skipRecent) {
+            const k = topPickKey(a);
+            if (k && recent[k]) continue;
+          }
           if (cid) seenCluster.add(cid);
           return a;
         }
@@ -521,12 +560,25 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       };
       const picks = [];
       for (const cat of cats) {
-        const scope = sorted.filter(a => a.category === cat);
-        const shortlisted = scope.filter(
-          a => (Number(a.score) || 0) >= 7 || Number(a.cluster_size) > 1
+        const scope = ranked.filter(r => r.a.category === cat);
+        const shortlist = scope.filter(r =>
+          (Number(r.a.score) || 0) >= 7 || Number(r.a.cluster_size) > 1
         );
-        const pick = takeOne(shortlisted) || takeOne(scope);
+        const pick = tryPick(shortlist, true)
+          || tryPick(shortlist, false)
+          || tryPick(scope, true)
+          || tryPick(scope, false);
         if (pick) picks.push(pick);
+      }
+      if (!_topPicksRecorded && picks.length) {
+        _topPicksRecorded = true;
+        const updated = { ...recent };
+        const now = Date.now();
+        for (const a of picks) {
+          const k = topPickKey(a);
+          if (k) updated[k] = now;
+        }
+        try { localStorage.setItem(TOP_PICKS_RECENT_KEY, JSON.stringify(updated)); } catch (_) {}
       }
       return picks;
     }
