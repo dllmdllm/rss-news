@@ -553,8 +553,10 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       <div class="top-picks-list">${picks.map(a => {
         const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
         const score = typeof a.score === "number" ? a.score : 5;
+        const ago = relativeTime(a.date);
+        const agoHtml = ago ? `<span>${esc(ago)}</span>` : "";
         return `<a class="top-pick" href="article.html?id=${encodeURIComponent(aid)}">
-          <div class="top-pick-meta"><span>${esc(a.source || "")}</span><span>重要度 ${score}</span></div>
+          <div class="top-pick-meta"><span>${esc(a.source || "")}</span><span>重要度 ${score}</span>${agoHtml}</div>
           <div class="top-pick-title">${esc(a.title || "")}</div>
         </a>`;
       }).join("")}</div>`;
