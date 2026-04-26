@@ -53,6 +53,10 @@ def _is_oncc_url(url: str) -> bool:
     return "hk.on.cc" in (url or "").lower()
 
 
+def _is_skypost_url(url: str) -> bool:
+    return "skypost.hk" in (url or "").lower()
+
+
 def _hk01_tokens_to_text(tokens: list) -> str:
     """Flatten HK01 htmlTokens paragraphs into plain text.
     Only 'text' tokens observed in practice; unknown types fall back to content."""
@@ -321,6 +325,84 @@ def _build_oncc_content(html: str, url: str) -> str | None:
     if text_chars < 80 and not seen_images:
         return None
     return "<html><body>" + "".join(parts) + "</body></html>"
+
+
+_SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
+
+
+def _skypost_hidden_text(soup: BeautifulSoup, field: str) -> str:
+    node = soup.select_one(f".hiddenOG .{field}")
+    return _normalise_oncc_text(node.get_text(" ", strip=True) if node else "")
+
+
+def _build_skypost_content(html: str, url: str) -> str | None:
+    """Extract SkyPost article content while preserving inline image order.
+
+    SkyPost renders the article body as sequential <p> nodes, with inline image
+    placeholders hidden inside display:none paragraphs. The actual image base
+    path is exposed via hiddenOG.prefixHidden, so we can reconstruct inline
+    <img> tags in DOM order instead of flattening the story.
+    """
+    soup = BeautifulSoup(html or "", "html.parser")
+    root = soup.select_one(".article-details-content-container")
+    if not root:
+        return None
+
+    prefix = _skypost_hidden_text(soup, "prefixHidden")
+    hero = soup.select_one(".article-details-img-container img")
+    parts: list[str] = []
+
+    def _emit_image(src: str, alt: str = ""):
+        src = (src or "").strip()
+        if not src:
+            return
+        safe_src = _html_escape(src, quote=True)
+        safe_alt = _html_escape(alt or "", quote=True)
+        if alt:
+            parts.append(
+                f'<figure><img src="{safe_src}" alt="{safe_alt}">'
+                f'<figcaption>{_html_escape(alt)}</figcaption></figure>'
+            )
+        else:
+            parts.append(f'<img src="{safe_src}" alt="{safe_alt}">')
+
+    if hero and (hero.get("src") or hero.get("data-src")):
+        _emit_image(hero.get("src") or hero.get("data-src") or "", hero.get("alt") or "")
+
+    def walk(node):
+        if getattr(node, "name", None) is None:
+            return
+        if node.name in {"script", "style", "noscript"}:
+            return
+        if node.name == "img":
+            _emit_image(node.get("src") or node.get("data-src") or "", node.get("alt") or "")
+            return
+        if node.name == "p":
+            raw = node.decode_contents() or ""
+            names = _SKYPOST_INLINE_IMAGE_RE.findall(raw)
+            text = _normalise_oncc_text(node.get_text(" ", strip=True))
+            if names and not text:
+                for name in names:
+                    if prefix:
+                        _emit_image(prefix.rstrip("/") + "/" + name, "")
+                return
+            if names and text:
+                parts.append(f"<p>{_html_escape(text)}</p>")
+                for name in names:
+                    if prefix:
+                        _emit_image(prefix.rstrip("/") + "/" + name, "")
+                return
+            if text:
+                parts.append(f"<p>{_html_escape(text)}</p>")
+            return
+        for child in list(getattr(node, "children", [])):
+            walk(child)
+
+    walk(root)
+    if not parts:
+        return None
+    content = "<html><body>" + "".join(parts) + "</body></html>"
+    return content
 
 
 def _extra_headers_for_url(url: str) -> dict:
@@ -686,6 +768,8 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
         content = _build_hk01_content(html)
     elif _is_oncc_url(url):
         content = _build_oncc_content(html, url)
+    elif _is_skypost_url(url):
+        content = _build_skypost_content(html, url)
     if content is None:
         content = trafilatura.extract(
             html,

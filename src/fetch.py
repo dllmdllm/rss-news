@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -195,6 +196,164 @@ def _parse_oncc_datetime(url: str) -> datetime:
         return dt.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
     except Exception:
         return datetime.min.replace(tzinfo=timezone.utc)
+
+
+_SKYPOST_SITEMAP_INDEX_URL = "http://skypost.hk/sitemap.xml"
+_SKYPOST_NEWS_SECTION = "港聞"
+
+
+def _skypost_article_id(url: str) -> str:
+    match = re.search(r"/article/(\d+)", url or "")
+    return match.group(1) if match else ""
+
+
+def _parse_sitemap_urls(xml: str) -> list[str]:
+    soup = BeautifulSoup(xml or "", "xml")
+    return [loc.get_text(strip=True) for loc in soup.find_all("loc") if loc.get_text(strip=True)]
+
+
+def _dedupe_skypost_urls(urls: list[str]) -> list[str]:
+    ordered_ids: list[str] = []
+    by_id: dict[str, str] = {}
+    for url in urls:
+        aid = _skypost_article_id(url)
+        if not aid:
+            continue
+        prev = by_id.get(aid)
+        # Prefer the slugged URL over the bare /article/{id}/ entry.
+        if not prev or len(url) > len(prev):
+            by_id[aid] = url
+        if aid not in ordered_ids:
+            ordered_ids.append(aid)
+    return [by_id[aid] for aid in ordered_ids if aid in by_id]
+
+
+def _skypost_hidden_text(soup: BeautifulSoup, field: str) -> str:
+    node = soup.select_one(f".hiddenOG .{field}")
+    return re.sub(r"\s+", " ", node.get_text(" ", strip=True) if node else "").strip()
+
+
+def _skypost_http(url: str) -> str:
+    return url.replace("https://", "http://", 1) if url.startswith("https://") else url
+
+
+def _skypost_parse_date(soup: BeautifulSoup) -> datetime | None:
+    raw = _skypost_hidden_text(soup, "ga4PublishDateHidden")
+    if not raw:
+        raw = re.sub(r"^\s*發佈時間:\s*", "", soup.select_one(".publish-time") .get_text(" ", strip=True) if soup.select_one(".publish-time") else "")
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            dt = datetime.strptime(raw[:10], fmt)
+            return dt.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
+        except Exception:
+            pass
+    return None
+
+
+def _skypost_parse_article(html: str, url: str, cutoff: datetime, feed_info: dict) -> dict | None:
+    soup = BeautifulSoup(html or "", "html.parser")
+    section = _skypost_hidden_text(soup, "sectionNameHidden") or _skypost_hidden_text(soup, "SectionNameCodeHidden")
+    if section != _SKYPOST_NEWS_SECTION:
+        return None
+    date = _skypost_parse_date(soup)
+    if not date:
+        return None
+
+    title = _skypost_hidden_text(soup, "metaTitleHidden") or (
+        soup.select_one("h1").get_text(" ", strip=True) if soup.select_one("h1") else ""
+    ) or _skypost_hidden_text(soup, "urlHeadlineHidden")
+    if not title:
+        return None
+
+    thumbnail = _skypost_hidden_text(soup, "ogImageUrlHidden")
+    if not thumbnail:
+        hero = soup.select_one(".article-details-img-container img")
+        thumbnail = (hero.get("src") or hero.get("data-src") or "").strip() if hero else ""
+
+    return {
+        "id":          _make_id(url),
+        "title":       title,
+        "url":         url,
+        "date":        date.isoformat(),
+        "source":      feed_info["name"],
+        "category":    feed_info["category"],
+        "content":     None,
+        "thumbnail":   thumbnail or None,
+        "rss_content": None,
+    }
+
+
+async def _fetch_skypost(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """SkyPost does not expose a stable RSS feed, so pull candidate article
+    URLs from the sitemap and filter by the page's hidden section markers.
+    """
+    articles: list = []
+    async def _fetch_text(url: str, *, accept: str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", referer: str | None = None) -> str | None:
+        loop = asyncio.get_running_loop()
+
+        def _read():
+            req_headers = {"User-Agent": HTTP_HEADERS["User-Agent"], "Accept": accept}
+            if referer:
+                req_headers["Referer"] = referer
+            req = urllib.request.Request(url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                raw = resp.read()
+                charset = resp.headers.get_content_charset() or "utf-8"
+                return raw.decode(charset, errors="replace")
+
+        try:
+            return await loop.run_in_executor(None, _read)
+        except Exception:
+            return None
+
+    index_xml = await _fetch_text(_SKYPOST_SITEMAP_INDEX_URL, accept="application/xml,text/xml,*/*;q=0.8")
+    if not index_xml:
+        return articles, "sitemap index fetch failed", False
+
+    sitemap_urls = _parse_sitemap_urls(index_xml)
+    monthly_url = sitemap_urls[-1] if sitemap_urls else ""
+    if not monthly_url:
+        return articles, "empty sitemap index", False
+
+    month_xml = await _fetch_text(_skypost_http(monthly_url), accept="application/xml,text/xml,*/*;q=0.8")
+    if not month_xml:
+        return articles, "monthly sitemap fetch failed", False
+
+    candidate_urls = _dedupe_skypost_urls(_parse_sitemap_urls(month_xml))
+    # The sitemap is newest-first, so the first few dozen URLs are enough to
+    # pick up the current news articles without hammering the whole month's
+    # archive.
+    candidate_urls = candidate_urls[:120]
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+
+    async def _fetch_and_parse(article_url: str) -> dict | None:
+        html = await _fetch_text(
+            _skypost_http(article_url),
+            referer="http://skypost.hk/news/%E8%A6%81%E8%81%9E/",
+        )
+        if not html:
+            return None
+        return _skypost_parse_article(html, article_url, cutoff, feed_info)
+
+    # Batch in small groups so we keep ordering while still overlapping the
+    # slow page fetches.
+    for i in range(0, len(candidate_urls), 10):
+        batch = candidate_urls[i:i + 10]
+        results = await asyncio.gather(*[_fetch_and_parse(url) for url in batch])
+        for article in results:
+            if not article:
+                continue
+            articles.append(article)
+            if len(articles) >= max_items:
+                return articles, None, False
+
+    return articles, None, False
 
 
 def _oncc_link_title(anchor) -> str:
@@ -426,6 +585,8 @@ async def _fetch_one(
         return await _fetch_hk01(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "oncc":
         return await _fetch_oncc(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "skypost":
+        return await _fetch_skypost(session, feed_info, cutoff)
     articles = []
     url = feed_info["url"]
     prev = http_cache.get(url) or {}

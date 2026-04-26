@@ -194,6 +194,34 @@ def test_restore_intro_from_description_uses_og_description_prefix_for_gotrip():
     assert out.count("\u7b2c\u4e00\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002") == 1
 
 
+def test_build_skypost_content_preserves_inline_image_order():
+    html = """
+    <html>
+      <body>
+        <div class="hiddenOG">
+          <div class="prefixHidden">https://resource01-proxy.ulifestyle.com.hk/res/v3/image/content/2255000/2255133/</div>
+        </div>
+        <div class="article-details-img-container">
+          <img src="https://resource01-proxy.ulifestyle.com.hk/res/v3/image/content/2255000/2255133/cover1_1024.jpeg" alt="封面圖">
+        </div>
+        <div class="article-details-content-container">
+          <p>第一段文字。</p>
+          <p style="display:none;">{{hket:inline-image name="5.jpg"}}{{/hket:inline-image}}</p>
+          <p>第二段文字。</p>
+          <p style="display:none;">{{hket:inline-image name="3.jpg"}}{{/hket:inline-image}}</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    out = scrape._build_skypost_content(html, "https://skypost.hk/article/2255133/")
+
+    assert out is not None
+    assert out.index("cover1_1024.jpeg") < out.index("第一段文字。") < out.index("/2255133/5.jpg") < out.index("第二段文字。") < out.index("/2255133/3.jpg")
+    assert out.count("/2255133/5.jpg") == 1
+    assert out.count("/2255133/3.jpg") == 1
+
+
 def test_build_oncc_content_preserves_text_image_order():
     html = """
     <html><body>

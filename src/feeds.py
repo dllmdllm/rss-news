@@ -35,6 +35,7 @@ RSS_FEEDS = [
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},
     {"name": "GoTrip",            "url": "https://www.gotrip.hk/feed",                                            "category": "消閒"},
+    {"name": "SkyPost 要聞",      "url": "https://skypost.hk/news/%E8%A6%81%E8%81%9E/",                              "category": "新聞", "fetcher": "skypost"},
     # 科技
     {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技"},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
