@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -295,20 +294,20 @@ async def _fetch_skypost(
     """
     articles: list = []
     async def _fetch_text(url: str, *, accept: str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", referer: str | None = None) -> str | None:
-        loop = asyncio.get_running_loop()
-
-        def _read():
-            req_headers = {"User-Agent": HTTP_HEADERS["User-Agent"], "Accept": accept}
-            if referer:
-                req_headers["Referer"] = referer
-            req = urllib.request.Request(url, headers=req_headers)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                raw = resp.read()
-                charset = resp.headers.get_content_charset() or "utf-8"
-                return raw.decode(charset, errors="replace")
-
         try:
-            return await loop.run_in_executor(None, _read)
+            headers = {"Accept": accept}
+            if referer:
+                headers["Referer"] = referer
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=20),
+                headers=headers,
+            ) as resp:
+                if resp.status >= 400:
+                    return None
+                raw = await resp.read()
+                charset = resp.charset or "utf-8"
+                return raw.decode(charset, errors="replace")
         except Exception:
             return None
 
@@ -317,15 +316,26 @@ async def _fetch_skypost(
         return articles, "sitemap index fetch failed", False
 
     sitemap_urls = _parse_sitemap_urls(index_xml)
-    monthly_url = sitemap_urls[-1] if sitemap_urls else ""
-    if not monthly_url:
+    sitemap_url = sitemap_urls[-1] if sitemap_urls else ""
+    if not sitemap_url:
         return articles, "empty sitemap index", False
 
-    month_xml = await _fetch_text(_skypost_http(monthly_url), accept="application/xml,text/xml,*/*;q=0.8")
-    if not month_xml:
-        return articles, "monthly sitemap fetch failed", False
+    candidate_urls: list[str] = []
+    for _ in range(4):
+        sitemap_xml = await _fetch_text(_skypost_http(sitemap_url), accept="application/xml,text/xml,*/*;q=0.8")
+        if not sitemap_xml:
+            return articles, "monthly sitemap fetch failed", False
+        parsed_urls = _parse_sitemap_urls(sitemap_xml)
+        if not parsed_urls:
+            return articles, "empty sitemap page", False
+        if any(u.lower().endswith(".xml") for u in parsed_urls):
+            sitemap_url = parsed_urls[-1]
+            continue
+        candidate_urls = _dedupe_skypost_urls(parsed_urls)
+        break
+    else:
+        return articles, "sitemap depth exceeded", False
 
-    candidate_urls = _dedupe_skypost_urls(_parse_sitemap_urls(month_xml))
     # The sitemap is newest-first, so the first few dozen URLs are enough to
     # pick up the current news articles without hammering the whole month's
     # archive.
