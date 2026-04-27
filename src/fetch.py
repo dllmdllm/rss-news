@@ -4,10 +4,11 @@ import hashlib
 import json
 import os
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 
 import aiohttp
 import feedparser
@@ -170,6 +171,16 @@ def _clean_url(url: str) -> str:
     return re.split(r'[\s"<>]', url, maxsplit=1)[0].strip()
 
 
+def _map_category_for_url(article_url: str, feed_info: dict) -> str:
+    category = feed_info["category"]
+    decoded = unquote(article_url or "")
+    for pattern, cat in (feed_info.get("url_category") or {}).items():
+        if pattern in article_url or pattern in decoded:
+            category = cat
+            break
+    return category
+
+
 def _rss_thumbnail(entry) -> str | None:
     """Extract image URL from RSS media tags."""
     if getattr(entry, "media_thumbnail", None):
@@ -195,6 +206,62 @@ def _parse_oncc_datetime(url: str) -> datetime:
         return dt.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
     except Exception:
         return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _parse_am730_date(raw: str) -> datetime:
+    if not raw:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        return _as_utc(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _am730_find_text(node: ET.Element, path: str) -> str:
+    found = node.find(path)
+    return (found.text or "").strip() if found is not None and found.text else ""
+
+
+def _parse_am730_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> list[dict]:
+    try:
+        root = ET.fromstring(xml_text or "")
+    except ET.ParseError:
+        return []
+
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    articles: list[dict] = []
+    seen: set[str] = set()
+
+    for url_node in root.findall(".//{*}url"):
+        article_url = _clean_url(_am730_find_text(url_node, "{*}loc"))
+        if not article_url or article_url in seen:
+            continue
+        pub_raw = _am730_find_text(url_node, ".//{*}publication_date")
+        title = _am730_find_text(url_node, ".//{*}title")
+        if not pub_raw or not title:
+            continue
+
+        date = _parse_am730_date(pub_raw)
+        if date < cutoff:
+            continue
+
+        thumbnail = _clean_url(_am730_find_text(url_node, ".//{*}image/{*}loc")) or None
+        seen.add(article_url)
+        articles.append({
+            "id": _make_id(article_url),
+            "title": title,
+            "url": article_url,
+            "date": date.isoformat(),
+            "source": feed_info["name"],
+            "category": _map_category_for_url(article_url, feed_info),
+            "content": None,
+            "thumbnail": thumbnail,
+            "rss_content": None,
+        })
+        if len(articles) >= max_items:
+            break
+
+    return articles
 
 
 _SKYPOST_SITEMAP_INDEX_URL = "http://skypost.hk/sitemap.xml"
@@ -515,23 +582,42 @@ async def _fetch_hk01(
             or None
         description = (d.get("description") or "").strip() or None
 
-        category = feed_info["category"]
-        for pattern, cat in (feed_info.get("url_category") or {}).items():
-            if pattern in article_url:
-                category = cat
-                break
-
         articles.append({
             "id":          _make_id(article_url),
             "title":       d.get("title", "(no title)"),
             "url":         article_url,
             "date":        date.isoformat(),
             "source":      feed_info["name"],
-            "category":    category,
+            "category":    _map_category_for_url(article_url, feed_info),
             "content":     None,
             "thumbnail":   thumbnail,
             "rss_content": description,
         })
+    return articles, None, False
+
+
+async def _fetch_am730(
+    session: aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff: datetime,
+) -> tuple[list, str | None, bool]:
+    """am730 publishes a Google News-style sitemap with title/date/image."""
+    try:
+        async with session.get(
+            feed_info["url"],
+            timeout=aiohttp.ClientTimeout(total=20),
+            headers={"Accept": "application/xml,text/xml,*/*;q=0.8"},
+        ) as resp:
+            if resp.status >= 400:
+                return [], f"HTTP {resp.status}", False
+            raw = await resp.read()
+            charset = resp.charset or "utf-8"
+    except Exception as exc:
+        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+        return [], repr(exc), False
+
+    xml_text = raw.decode(charset, errors="replace")
+    articles = _parse_am730_sitemap(xml_text, feed_info, cutoff)
     return articles, None, False
 
 
@@ -593,6 +679,8 @@ async def _fetch_one(
     reuse previously-built articles for this source."""
     if feed_info.get("fetcher") == "hk01":
         return await _fetch_hk01(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "am730":
+        return await _fetch_am730(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "oncc":
         return await _fetch_oncc(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "skypost":
@@ -656,20 +744,13 @@ async def _fetch_one(
             if feed_info["name"] in SIMPLIFIED_SOURCES:
                 title = zhconv.convert(title, "zh-hk")
 
-            # Allow per-feed URL-based category override
-            category = feed_info["category"]
-            for pattern, cat in (feed_info.get("url_category") or {}).items():
-                if pattern in article_url:
-                    category = cat
-                    break
-
             article = {
                 "id":          _make_id(article_url),
                 "title":       title,
                 "url":         article_url,
                 "date":        date.isoformat(),
                 "source":      feed_info["name"],
-                "category":    category,
+                "category":    _map_category_for_url(article_url, feed_info),
                 "content":     None,
                 "thumbnail":   thumbnail,
                 "rss_content": rss_content,

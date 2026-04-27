@@ -12,6 +12,14 @@ RSS_FEEDS = [
     # 新聞
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},
     {"name": "明報 本地",          "url": "https://news.mingpao.com/rss/ins/s00001.xml",                           "category": "新聞"},
+    {"name": "am730",              "url": "https://www.am730.com.hk/sitemap.xml",                                  "category": "新聞", "fetcher": "am730",
+     "max_items": 40,
+     "url_category": {
+         "/國際/": "國際", "/中國/": "國際",
+         "/娛樂/": "娛樂",
+         "/生活/": "消閒", "/健康/": "消閒", "/體育/": "消閒",
+         "/科技/": "科技",
+     }},
     {"name": "東網 本地",          "url": "https://hk.on.cc/hk/news/index.html",                                    "category": "新聞", "fetcher": "oncc", "oncc_section": "news"},
     {"name": "星島頭條",           "url": "https://www.stheadline.com/rss",                                        "category": "新聞",
      "max_items": 100,
