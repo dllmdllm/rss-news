@@ -48,6 +48,7 @@ RSS_FEEDS = [
     {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技"},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
     {"name": "Unwire",            "url": "https://unwire.hk/feed/",                                               "category": "科技"},
+    {"name": "Engadget 中文",      "url": "https://chinese.engadget.com/rss.xml",                                  "category": "科技"},
     {"name": "9to5Mac",           "url": "https://9to5mac.com/feed/",                                             "category": "科技"},
     {"name": "New MobileLife",    "url": "https://www.newmobilelife.com/feed/",                                   "category": "科技"},
     # 網媒
