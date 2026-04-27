@@ -172,13 +172,11 @@ def _clean_url(url: str) -> str:
 
 
 def _map_category_for_url(article_url: str, feed_info: dict) -> str:
-    category = feed_info["category"]
     decoded = unquote(article_url or "")
     for pattern, cat in (feed_info.get("url_category") or {}).items():
-        if pattern in article_url or pattern in decoded:
-            category = cat
-            break
-    return category
+        if pattern in decoded:
+            return cat
+    return feed_info["category"]
 
 
 def _rss_thumbnail(entry) -> str | None:
@@ -258,10 +256,8 @@ def _parse_am730_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> li
             "thumbnail": thumbnail,
             "rss_content": None,
         })
-        if len(articles) >= max_items:
-            break
-
-    return articles
+    articles.sort(key=lambda a: a["date"], reverse=True)
+    return articles[:max_items]
 
 
 _SKYPOST_SITEMAP_INDEX_URL = "http://skypost.hk/sitemap.xml"

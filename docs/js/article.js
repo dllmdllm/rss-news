@@ -26,42 +26,7 @@
       return doc.body.innerHTML;
     }
 
-    function applySavedTheme() {
-      let theme = "dark";
-      try {
-        const saved = localStorage.getItem("rss_theme");
-        if (saved === "light" || saved === "dark") {
-          theme = saved;
-        } else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) {
-          theme = "light";
-        }
-      } catch (_) {}
-      document.body.classList.toggle("theme-light", theme === "light");
-      document.body.classList.toggle("theme-dark", theme === "dark");
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#fafaf8" : "#0f0f13");
-    }
-
-    applySavedTheme();
-    const TEXT_ONLY_KEY = "rss_text_only";
-    function setupTextOnlyMode() {
-      const btn = document.getElementById("text-toggle");
-      if (!btn) return;
-
-      function apply(enabled) {
-        document.body.classList.toggle("text-only", enabled);
-        btn.textContent = enabled ? "圖" : "文";
-        btn.title = enabled ? "顯示圖片" : "切換純文字模式";
-        btn.dataset.textOnly = enabled ? "1" : "0";
-      }
-
-      const saved = localStorage.getItem(TEXT_ONLY_KEY) === "1";
-      apply(saved);
-      btn.addEventListener("click", () => {
-        const next = btn.dataset.textOnly !== "1";
-        localStorage.setItem(TEXT_ONLY_KEY, next ? "1" : "0");
-        apply(next);
-      });
-    }
+    setupThemeMode();
     setupTextOnlyMode();
     setupFontSize();
     const READ_KEY = "rss_read_ids";

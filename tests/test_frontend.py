@@ -419,6 +419,7 @@ def test_index_has_ai_sort_button():
 def test_index_has_reading_controls_and_top_picks():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     assert 'id="unread-toggle"' in html
     assert 'id="saved-toggle"' in html
     assert 'id="compact-toggle"' in html
@@ -427,7 +428,7 @@ def test_index_has_reading_controls_and_top_picks():
     assert "BOOKMARK_KEY" in source
     assert "MUTED_SOURCES_KEY" in source
     assert "DOWNRANK_SOURCES_KEY" in source
-    assert "TEXT_ONLY_KEY" in source
+    assert "TEXT_ONLY_KEY" in common_source
     assert "parseSearchQuery" in source
     assert "score([<>]=?)" in source
 
@@ -687,33 +688,34 @@ def test_index_update_timestamp_opens_source_health():
 
 def test_article_page_applies_saved_light_theme():
     node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    fn = _extract_js_function(source, "applySavedTheme")
-    js = fn + """
-    const classes = new Set();
-    const document = {
-      body: {
-        classList: {
-          toggle(name, on) {
-            if (on) classes.add(name);
-            else classes.delete(name);
+    common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    js = common + textwrap.dedent(
+        """
+        const classes = new Set();
+        let themeColor;
+        const document = {
+          body: {
+            classList: {
+              toggle(name, on) {
+                if (on) classes.add(name);
+                else classes.delete(name);
+              },
+            },
           },
-        },
-      },
-      querySelector() {
-        return { setAttribute(name, value) { this[name] = value; globalThis.themeColor = value; } };
-      },
-    };
-    const localStorage = { getItem: key => key === "rss_theme" ? "light" : null };
-    const window = { matchMedia: () => ({ matches: false }) };
-    applySavedTheme();
-    if (!classes.has("theme-light") || classes.has("theme-dark")) {
-      throw new Error("saved light theme was not applied");
-    }
-    if (globalThis.themeColor !== "#fafaf8") {
-      throw new Error("theme color not updated: " + globalThis.themeColor);
-    }
-    """
+          getElementById: () => null,
+          querySelector: () => ({ setAttribute(_, value) { themeColor = value; } }),
+        };
+        const localStorage = { getItem: key => (key === "rss_theme" ? "light" : null), setItem() {} };
+        const window = { matchMedia: () => ({ matches: false }) };
+        setupThemeMode();
+        if (!classes.has("theme-light") || classes.has("theme-dark")) {
+          throw new Error("saved light theme was not applied");
+        }
+        if (themeColor !== "#fafaf8") {
+          throw new Error("theme color not updated: " + themeColor);
+        }
+        """
+    )
     result = subprocess.run(
         [node, "-e", js],
         cwd=ROOT,
@@ -725,9 +727,9 @@ def test_article_page_applies_saved_light_theme():
 
 def test_article_has_text_only_toggle():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     assert 'id="text-toggle"' in html
-    assert "TEXT_ONLY_KEY" in source
+    assert "TEXT_ONLY_KEY" in common_source
     assert "body.text-only .content img" in html
 
 

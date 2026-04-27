@@ -319,6 +319,20 @@
   </style>
 </head>
 <body>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("rss_theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.body.classList.add("theme-" + t);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", t === "light" ? "#fafaf8" : "#0f0f13");
+        if (localStorage.getItem("rss_text_only") === "1") document.body.classList.add("text-only");
+      } catch (_) {}
+    })();
+  </script>
   <div class="read-progress" id="read-progress"></div>
   <div class="topbar">
     <a href="index.html" class="back">← 返回</a>

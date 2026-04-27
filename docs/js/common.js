@@ -24,6 +24,66 @@ function writeJsonSet(key, set, limit = 1000) {
   } catch (_) {}
 }
 
+const THEME_KEY = "rss_theme";
+const TEXT_ONLY_KEY = "rss_text_only";
+
+function _applyTheme(theme) {
+  document.body.classList.toggle("theme-light", theme === "light");
+  document.body.classList.toggle("theme-dark", theme === "dark");
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", theme === "light" ? "#fafaf8" : "#0f0f13");
+}
+
+function _themeIcon(theme) {
+  if (theme === "light") {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M21 12.8A8.5 8.5 0 1111.2 3 6.5 6.5 0 0021 12.8z"/>
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+  </svg>`;
+}
+
+function setupThemeMode() {
+  const saved = localStorage.getItem(THEME_KEY);
+  let theme = (saved === "light" || saved === "dark")
+    ? saved
+    : (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  _applyTheme(theme);
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  btn.innerHTML = _themeIcon(theme);
+  btn.dataset.theme = theme;
+  btn.addEventListener("click", () => {
+    theme = theme === "light" ? "dark" : "light";
+    localStorage.setItem(THEME_KEY, theme);
+    _applyTheme(theme);
+    btn.innerHTML = _themeIcon(theme);
+    btn.dataset.theme = theme;
+  });
+}
+
+function setupTextOnlyMode() {
+  const enabled = localStorage.getItem(TEXT_ONLY_KEY) === "1";
+  document.body.classList.toggle("text-only", enabled);
+  const btn = document.getElementById("text-toggle");
+  if (!btn) return;
+  function syncBtn(on) {
+    btn.textContent = on ? "圖" : "文";
+    btn.title = on ? "顯示圖片" : "切換純文字模式";
+    btn.dataset.textOnly = on ? "1" : "0";
+  }
+  syncBtn(enabled);
+  btn.addEventListener("click", () => {
+    const next = btn.dataset.textOnly !== "1";
+    document.body.classList.toggle("text-only", next);
+    localStorage.setItem(TEXT_ONLY_KEY, next ? "1" : "0");
+    syncBtn(next);
+  });
+}
+
 function setupFontSize() {
   let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
   if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;
