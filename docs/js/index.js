@@ -56,6 +56,28 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     }
     setupThemeMode();
 
+    const TEXT_ONLY_KEY = "rss_text_only";
+    function setupTextOnlyMode() {
+      const btn = document.getElementById("text-toggle");
+      if (!btn) return;
+
+      function apply(enabled) {
+        document.body.classList.toggle("text-only", enabled);
+        btn.textContent = enabled ? "圖" : "文";
+        btn.title = enabled ? "顯示圖片" : "切換純文字模式";
+        btn.dataset.textOnly = enabled ? "1" : "0";
+      }
+
+      const saved = localStorage.getItem(TEXT_ONLY_KEY) === "1";
+      apply(saved);
+      btn.addEventListener("click", () => {
+        const next = btn.dataset.textOnly !== "1";
+        localStorage.setItem(TEXT_ONLY_KEY, next ? "1" : "0");
+        apply(next);
+      });
+    }
+    setupTextOnlyMode();
+
     function setupQuickToggles() {
       const unreadBtn = document.getElementById("unread-toggle");
       const savedBtn = document.getElementById("saved-toggle");

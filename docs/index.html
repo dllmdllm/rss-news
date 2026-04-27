@@ -87,6 +87,7 @@
     }
     .font-btn:hover, .theme-btn:hover { border-color: var(--accent); color: var(--text); }
     .theme-btn { color: var(--accent); }
+    .text-btn { font-size: .82rem; font-weight: 800; letter-spacing: .04em; color: var(--accent); }
     .font-btn:first-child { font-size: .82rem; }
     .font-btn:last-child  { font-size: 1.02rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
@@ -412,6 +413,11 @@
     body.theme-light .cluster-ai-summary { background: #f8fbfc; }
     body.theme-light .cluster-digest-list { color: #24333d; }
     .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
+    body.text-only .card-media { display: none; }
+    body.text-only .card { display: flex; flex-direction: column; }
+    body.text-only .card-body { grid-column: auto; grid-row: auto; }
+    body.text-only .card-thumb,
+    body.text-only .card-thumb-placeholder { display: none; }
 
     /* ── font size levels ── */
     body.fs-0 .card-title   { font-size: .82rem; }
@@ -555,6 +561,8 @@
       body.view-compact .card-thumb-placeholder {
         width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto;
       }
+      body.text-only .card { display: flex; flex-direction: column; }
+      body.text-only .card-body { grid-column: auto; grid-row: auto; }
     }
   </style>
 </head>
@@ -583,6 +591,7 @@
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
         <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
       </div>
+      <button class="theme-btn text-btn" id="text-toggle" title="切換純文字模式" aria-label="切換純文字模式">文</button>
       <button class="theme-btn" id="theme-toggle" title="切換日夜模式" aria-label="切換日夜模式"></button>
       <span id="updated" class="updated"></span>
     </div>

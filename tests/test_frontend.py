@@ -422,12 +422,117 @@ def test_index_has_reading_controls_and_top_picks():
     assert 'id="unread-toggle"' in html
     assert 'id="saved-toggle"' in html
     assert 'id="compact-toggle"' in html
+    assert 'id="text-toggle"' in html
     assert 'id="top-picks"' in html
     assert "BOOKMARK_KEY" in source
     assert "MUTED_SOURCES_KEY" in source
     assert "DOWNRANK_SOURCES_KEY" in source
+    assert "TEXT_ONLY_KEY" in source
     assert "parseSearchQuery" in source
     assert "score([<>]=?)" in source
+
+
+def test_index_text_only_mode_applies_body_class():
+    node = _require_node()
+    js = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.innerHTML = "";
+            this.textContent = "";
+            this.className = "";
+            this.dataset = {};
+            this.style = {};
+            this.tagName = "DIV";
+            this.value = "";
+            this.classList = {
+              add: () => null,
+              remove: () => null,
+              contains: () => false,
+              toggle: () => null,
+            };
+          }
+          addEventListener() {}
+          querySelectorAll() { return []; }
+        }
+
+        const els = new Map();
+        for (const id of [
+          "theme-toggle", "text-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
+          "updated", "health-overlay", "health-close", "health-body", "search",
+          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
+          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
+        ]) {
+          els.set(id, new El(id));
+        }
+
+        const bodyClasses = new Set();
+        const body = {
+          className: "",
+          classList: {
+            add: (...names) => { names.forEach(n => bodyClasses.add(n)); body.className = [...bodyClasses].join(" "); },
+            remove: (...names) => { names.forEach(n => bodyClasses.delete(n)); body.className = [...bodyClasses].join(" "); },
+            contains: name => bodyClasses.has(name),
+            toggle: (name, force) => {
+              const next = force === undefined ? !bodyClasses.has(name) : !!force;
+              if (next) bodyClasses.add(name);
+              else bodyClasses.delete(name);
+              body.className = [...bodyClasses].join(" ");
+              return next;
+            },
+          },
+        };
+
+        const document = {
+          body,
+          getElementById: id => els.get(id) || new El(id),
+          querySelector: () => ({ setAttribute() {} }),
+          querySelectorAll: () => [],
+          addEventListener() {},
+        };
+        const context = {
+          console,
+          document,
+          window: { matchMedia: () => ({ matches: false }), addEventListener() {} },
+          navigator: {},
+          localStorage: { getItem: key => (key === "rss_text_only" ? "1" : null), setItem() {} },
+          setInterval() {},
+          setTimeout,
+          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          Fuse: class {
+            constructor(items) { this.items = items; }
+            search() { return []; }
+          },
+          fetch: async () => ({
+            json: async () => ({ articles: [], trending_topics: [], sources: {} }),
+          }),
+        };
+        context.globalThis = context;
+
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
+        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
+
+        setTimeout(() => {
+          if (!body.classList.contains("text-only")) {
+            throw new Error("expected body.text-only to be applied");
+          }
+          if (els.get("text-toggle").textContent !== "圖") {
+            throw new Error("expected toggle label to switch to 圖, got " + els.get("text-toggle").textContent);
+          }
+        }, 0);
+        """
+    )
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_index_latest_sort_orders_by_date():
@@ -609,6 +714,119 @@ def test_article_page_applies_saved_light_theme():
       throw new Error("theme color not updated: " + globalThis.themeColor);
     }
     """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_article_has_text_only_toggle():
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert 'id="text-toggle"' in html
+    assert "TEXT_ONLY_KEY" in source
+    assert "body.text-only .content img" in html
+
+
+def test_article_text_only_mode_applies_body_class():
+    node = _require_node()
+    js = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+
+        class El {
+          constructor(id) {
+            this.id = id;
+            this.innerHTML = "";
+            this.textContent = "";
+            this.className = "";
+            this.dataset = {};
+            this.style = {};
+            this.tagName = "DIV";
+            this.value = "";
+            this.classList = {
+              add: () => null,
+              remove: () => null,
+              contains: () => false,
+              toggle: () => null,
+            };
+          }
+          addEventListener() {}
+          querySelectorAll() { return []; }
+          setAttribute() {}
+        }
+
+        const els = new Map();
+        for (const id of [
+          "save-btn", "text-toggle", "font-dec", "font-inc", "share-btn", "nav-prev",
+          "nav-back", "nav-next", "related-toggle", "art-meta", "art-title", "art-tags",
+          "art-facts", "art-summary", "art-content", "related-section", "related-ai-summary",
+          "related-list", "loading", "art-body", "topbar-source",
+        ]) {
+          els.set(id, new El(id));
+        }
+
+        const bodyClasses = new Set();
+        const body = {
+          className: "",
+          classList: {
+            add: (...names) => { names.forEach(n => bodyClasses.add(n)); body.className = [...bodyClasses].join(" "); },
+            remove: (...names) => { names.forEach(n => bodyClasses.delete(n)); body.className = [...bodyClasses].join(" "); },
+            contains: name => bodyClasses.has(name),
+            toggle: (name, force) => {
+              const next = force === undefined ? !bodyClasses.has(name) : !!force;
+              if (next) bodyClasses.add(name);
+              else bodyClasses.delete(name);
+              body.className = [...bodyClasses].join(" ");
+              return next;
+            },
+          },
+        };
+
+        const document = {
+          body,
+          getElementById: id => els.get(id) || new El(id),
+          querySelector: () => ({ setAttribute() {} }),
+          querySelectorAll: () => [],
+          addEventListener() {},
+        };
+        const context = {
+          console,
+          document,
+          window: { matchMedia: () => ({ matches: false }), addEventListener() {}, scrollTo() {} },
+          navigator: {},
+          localStorage: { getItem: key => (key === "rss_text_only" ? "1" : null), setItem() {} },
+          setTimeout,
+          Date, URL, URLSearchParams, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          history: { replaceState() {} },
+          location: { search: "?id=abc" },
+          fetch: async () => ({
+            json: async () => ({
+              articles: [{ id: "abc", title: "測試文章", source: "來源", date: "2026-04-27T00:00:00+00:00", category: "新聞" }],
+              sources: {},
+            }),
+            ok: true,
+          }),
+        };
+        context.globalThis = context;
+
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
+        vm.runInNewContext(fs.readFileSync("docs/js/article.js", "utf8"), context);
+
+        setTimeout(() => {
+          if (!body.classList.contains("text-only")) {
+            throw new Error("expected body.text-only to be applied");
+          }
+          if (els.get("text-toggle").textContent !== "圖") {
+            throw new Error("expected toggle label to switch to 圖, got " + els.get("text-toggle").textContent);
+          }
+        }, 0);
+        """
+    )
     result = subprocess.run(
         [node, "-e", js],
         cwd=ROOT,

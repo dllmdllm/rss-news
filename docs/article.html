@@ -67,6 +67,13 @@
       transition: background .15s, color .15s, border-color .15s;
     }
     .font-btn:hover { border-color: var(--accent); color: var(--text); }
+    .text-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--accent);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      font-weight: 800; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .text-btn:hover { border-color: var(--accent); color: var(--text); }
     .font-btn:first-child { font-size: .72rem; }
     .font-btn:last-child  { font-size: .92rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
@@ -140,6 +147,9 @@
     .content li     { margin-bottom: .4em; }
     .content figure { margin: 1.2em 0; }
     .content figcaption { font-size: .8rem; color: var(--muted); margin-top: .4em; }
+    body.text-only .content img,
+    body.text-only .content figure,
+    body.text-only .image-fallback { display: none !important; }
 
     .no-content { text-align: center; padding: 60px 20px; color: var(--muted); }
     .ext-link {
@@ -238,6 +248,7 @@
       margin-top: 4px; color: var(--muted); font-size: .84em; line-height: 1.45;
     }
     .related-empty-summary { color: var(--muted); font-size: .9em; }
+    .article-text-toggle { margin-left: 2px; }
     .related-card {
       display: block; text-decoration: none; color: inherit;
       border: 1px solid var(--border); border-radius: 8px;
@@ -319,6 +330,7 @@
       <button class="save-btn" id="save-btn" type="button">收藏</button>
       <button class="next-unread-btn disabled" id="next-unread-btn" type="button">下一篇未讀</button>
       <button class="share-btn" id="share-btn">分享</button>
+      <button class="text-btn article-text-toggle" id="text-toggle" type="button" title="切換純文字模式" aria-label="切換純文字模式">文</button>
     </div>
   </div>
 
