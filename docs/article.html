@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#7c6af7">
   <link rel="manifest" href="manifest.json">
@@ -39,12 +39,21 @@
       --tag-text: #7d4ab0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif; transition: background .18s, color .18s; }
+    body {
+      background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif;
+      transition: background .18s, color .18s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button, a { -webkit-tap-highlight-color: transparent; }
 
     /* top bar */
     .topbar {
       background: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 12px 24px; display: flex; align-items: center; gap: 12px;
+      padding: 12px 24px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+      display: flex; align-items: center; gap: 12px;
       position: sticky; top: 0; z-index: 10;
     }
     .back { color: var(--accent); text-decoration: none; font-size: .9rem; flex-shrink: 0; }
@@ -62,26 +71,27 @@
     /* font size buttons */
     .font-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
       font-weight: 700; display: flex; align-items: center; justify-content: center;
       transition: background .15s, color .15s, border-color .15s;
     }
     .font-btn:hover { border-color: var(--accent); color: var(--text); }
     .text-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--accent);
-      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
       font-weight: 800; display: flex; align-items: center; justify-content: center;
       transition: background .15s, color .15s, border-color .15s;
     }
     .text-btn:hover { border-color: var(--accent); color: var(--text); }
-    .font-btn:first-child { font-size: .72rem; }
-    .font-btn:last-child  { font-size: .92rem; }
+    .font-btn:first-child { font-size: .82rem; }
+    .font-btn:last-child  { font-size: 1.02rem; }
     .font-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
 
     /* share button */
     .share-btn, .save-btn, .next-unread-btn, .tts-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: .8rem;
+      padding: 7px 12px; min-height: 36px; border-radius: 8px; cursor: pointer; font-size: .8rem;
+      display: inline-flex; align-items: center; justify-content: center;
       transition: background .15s, color .15s, border-color .15s;
     }
     .share-btn:hover, .save-btn:hover, .next-unread-btn:hover, .tts-btn:hover { border-color: var(--accent); color: var(--text); }
@@ -92,7 +102,13 @@
     .next-unread-btn.disabled { opacity: .35; pointer-events: none; }
 
     /* article layout */
-    main { max-width: 780px; margin: 0 auto; padding: 28px 24px 80px; }
+    main {
+      max-width: 780px; margin: 0 auto;
+      padding: 28px 24px 80px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+      padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    }
 
     .art-meta {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -302,19 +318,33 @@
     body.fs-2 .related-ai-summary { font-size: 1.25rem; }
 
     @media (max-width: 640px) {
-      .topbar { padding: 10px 14px; gap: 8px; }
-      .topbar-right { gap: 6px; }
+      .topbar {
+        padding: 10px 14px; gap: 8px;
+        padding-top: max(10px, env(safe-area-inset-top));
+        padding-left: max(14px, env(safe-area-inset-left));
+        padding-right: max(14px, env(safe-area-inset-right));
+      }
+      .topbar-right { gap: 6px; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
       .topbar-source { display: none; }
-      main { padding: 22px 16px 64px; }
+      main {
+        padding: 22px 16px 64px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: calc(64px + env(safe-area-inset-bottom));
+      }
       h1#art-title { line-height: 1.45; margin-bottom: 18px; }
       body.fs-0 h1#art-title { font-size: 1.05rem; }
       body.fs-1 h1#art-title { font-size: 1.2rem; }
       body.fs-2 h1#art-title { font-size: 1.38rem; }
       .content img { margin: .75em 0; }
       .article-nav { gap: 6px; margin-top: 28px; }
-      .nav-link { padding: 9px 8px; font-size: .8rem; }
+      .nav-link { padding: 11px 8px; font-size: .85rem; min-height: 44px; }
       .nav-back { min-width: 60px; }
-      .related-toggle { padding: 6px 10px; font-size: .76rem; }
+      .related-toggle { padding: 9px 12px; font-size: .8rem; min-height: 36px; }
+      .share-btn, .save-btn, .next-unread-btn, .tts-btn {
+        padding: 8px 10px; min-height: 38px; font-size: .78rem;
+      }
+      .font-btn, .text-btn { width: 38px; height: 38px; }
     }
   </style>
 </head>
