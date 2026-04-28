@@ -1,6 +1,6 @@
 {
-  "name": "新聞快訊",
-  "short_name": "新聞",
+  "name": "News Pulse",
+  "short_name": "News Pulse",
   "description": "Aggregated Hong Kong news",
   "start_url": "./index.html",
   "scope": "./",

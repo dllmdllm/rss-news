@@ -409,7 +409,7 @@ def _write_rss(articles: list):
     rss = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<rss version="2.0"><channel>'
-        '<title>新聞快訊</title>'
+        '<title>News Pulse</title>'
         '<link>https://github.com/</link>'
         '<description>Aggregated Hong Kong news</description>'
         f'<lastBuildDate>{now_rfc822}</lastBuildDate>'

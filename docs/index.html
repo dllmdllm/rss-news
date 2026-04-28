@@ -9,7 +9,7 @@
        card thumbnails load the same way article.html already does. -->
   <meta name="referrer" content="no-referrer">
   <link rel="manifest" href="manifest.json">
-  <title>新聞快訊</title>
+  <title>News Pulse</title>
   <style>
     :root {
       --bg:      #0f0f13;
@@ -414,13 +414,19 @@
       margin-top: 4px; color: var(--muted); font-size: .84em; line-height: 1.45;
     }
     .cluster-empty-summary { color: var(--muted); font-size: .9em; }
-    body.theme-light .card-summary { color: #555; }
+    body.theme-light .card-summary {
+      color: #555;
+      background: linear-gradient(90deg, #e0f7fa66, transparent);
+      border-left-color: #0891b266;
+    }
     body.theme-light .tag-chip { background: #f5edff; color: #7d4ab0; border-color: #dfccf5; }
     body.theme-light .cluster-ai-btn { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
     body.theme-light .cluster-ai-btn:hover,
     body.theme-light .cluster-ai-btn.active { background: #cffafe; color: #155e75; border-color: #22d3ee; }
-    body.theme-light .cluster-ai-summary { background: #f8fbfc; }
+    body.theme-light .cluster-ai-summary { background: #f8fbfc; border-color: #d4e4eb; }
+    body.theme-light .cluster-ai-title { color: #0e7490; }
     body.theme-light .cluster-digest-list { color: #24333d; }
+    body.theme-light .cluster-source-row { border-top-color: #e2e8f0; }
     .no-content { font-size: .72rem; color: var(--muted); margin-top: auto; }
     body.text-only .card-media { display: none; }
     body.text-only .card { display: flex; flex-direction: column; }
@@ -615,11 +621,11 @@
   </div>
 
   <header>
-    <h1>新聞快訊</h1>
+    <h1>News Pulse</h1>
     <div class="header-right">
       <div class="sort-toggle" id="sort-toggle">
-        <button class="sort-btn" data-sort="date">🕒 最新</button>
-        <button class="sort-btn active" data-sort="ai">✨ 推薦</button>
+        <button class="sort-btn active" data-sort="date">🕒 最新</button>
+        <button class="sort-btn" data-sort="ai">✨ 推薦</button>
       </div>
       <div class="quick-toggle" id="quick-toggle">
         <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>
