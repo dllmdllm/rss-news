@@ -26,6 +26,7 @@ load_dotenv()
 from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
 from src.analyse import analyse_all, looks_like_prompt_schema_summary
+from src.panel_digest import generate_panel_digests
 
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
@@ -741,6 +742,10 @@ async def main():
     # Dedup first so clusters count only distinct reports.
     articles = detect_duplicates(articles)
     articles = cluster_articles(articles)
+
+    t = time.monotonic();  await generate_panel_digests(articles)
+    print(f"[time] digest  {time.monotonic()-t:.1f}s")
+
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles, source_stats)
     print(f"=== done in {time.monotonic()-t0:.1f}s ===")

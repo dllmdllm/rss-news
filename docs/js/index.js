@@ -9,6 +9,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     let currentRenderArticles = [];
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let sourceStats = {};
+    let panelDigests = {};       // {cluster_id: {headline, consensus, angles, tension}}
     let fuse = null;
     // Map category to CSS class; returns "" for unknown values so class
     // splitting on accidental whitespace can't happen.
@@ -142,8 +143,23 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
     // ── Load ──────────────────────────────────────────────────────
     async function load() {
       try {
-        const res  = await fetch("data/articles.json?" + Date.now());
+        const [res, digestRes] = await Promise.all([
+          fetch("data/articles.json?" + Date.now()),
+          fetch("data/panel_digests.json?" + Date.now()).catch(() => null),
+        ]);
         const data = await res.json();
+        if (digestRes && digestRes.ok) {
+          try {
+            const cache = await digestRes.json();
+            // Cache file is keyed by cluster_id; pull `.digest` so the rendering
+            // code only sees the model output, not the cache wrapper.
+            panelDigests = Object.fromEntries(
+              Object.entries(cache || {})
+                .filter(([_, v]) => v && v.digest)
+                .map(([k, v]) => [k, v.digest])
+            );
+          } catch (_) { panelDigests = {}; }
+        }
         updateHeader(data);
         all = data.articles;
         sourceStats = data.sources || {};
@@ -706,6 +722,29 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       toggleClusterSummary(cid);
     }
 
+    function panelDigestHtml(cid) {
+      const d = panelDigests[cid];
+      if (!d) return "";
+      const angles = (d.angles || []).map(a => `
+        <li>
+          <div class="panel-angle-head">
+            <span class="panel-angle-label">${esc(a.label || "")}</span>
+            <span class="panel-angle-sources">${(a.sources || []).map(s => esc(s)).join("、")}</span>
+          </div>
+          ${a.detail ? `<div class="panel-angle-detail">${esc(a.detail)}</div>` : ""}
+        </li>
+      `).join("");
+      const tension = d.tension
+        ? `<div class="panel-tension"><span class="panel-tension-label">分歧</span> ${esc(d.tension)}</div>`
+        : "";
+      return `<div class="panel-digest">
+        ${d.headline ? `<div class="panel-headline">${esc(d.headline)}</div>` : ""}
+        ${d.consensus ? `<div class="panel-consensus"><span class="panel-consensus-label">共識</span> ${esc(d.consensus)}</div>` : ""}
+        ${angles ? `<ul class="panel-angles">${angles}</ul>` : ""}
+        ${tension}
+      </div>`;
+    }
+
     function clusterSummaryHtml(cid, suffix = "") {
       const articles = getSorted(all.filter(a => a.cluster_id === cid));
       if (!articles.length) return "";
@@ -713,6 +752,7 @@ const CATS = ["全部", "新聞", "國際", "娛樂", "消閒", "科技", "網�
       const idSuffix = suffix ? `-${esc(suffix)}` : "";
       return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}${idSuffix}">
         <div class="cluster-ai-title">AI 綜合摘要</div>
+        ${panelDigestHtml(cid)}
         ${digestHtml}
         <div class="cluster-source-list">${sourceRows}</div>
       </div>`;

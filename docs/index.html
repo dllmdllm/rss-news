@@ -416,6 +416,52 @@
       margin-top: 4px; color: var(--muted); font-size: .84em; line-height: 1.45;
     }
     .cluster-empty-summary { color: var(--muted); font-size: .9em; }
+
+    /* AI panel digest — compares how outlets cover the same story. */
+    .panel-digest {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 9px 10px; border-radius: 6px;
+      background: rgba(124, 106, 247, 0.08);
+      border: 1px solid rgba(124, 106, 247, 0.25);
+    }
+    .panel-headline {
+      font-weight: 700; color: #c4b5fd; font-size: .92em; line-height: 1.4;
+    }
+    .panel-consensus, .panel-tension {
+      font-size: .85em; line-height: 1.5; color: #cbd5e1;
+    }
+    .panel-consensus-label, .panel-tension-label {
+      display: inline-block; font-size: .72em; font-weight: 700;
+      padding: 1px 6px; border-radius: 3px; margin-right: 4px;
+      letter-spacing: .04em;
+    }
+    .panel-consensus-label { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+    .panel-tension-label   { background: rgba(244, 114, 182, 0.18); color: #f9a8d4; }
+    .panel-angles {
+      list-style: none; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .panel-angles li {
+      padding: 6px 8px; border-left: 2px solid rgba(124, 106, 247, 0.4);
+      font-size: .85em; line-height: 1.45;
+    }
+    .panel-angle-head {
+      display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+    }
+    .panel-angle-label { font-weight: 700; color: var(--text); }
+    .panel-angle-sources {
+      font-size: .85em; color: var(--accent); font-weight: 600;
+    }
+    .panel-angle-detail { color: var(--muted); margin-top: 2px; }
+    body.theme-light .panel-digest {
+      background: #f4f1ff; border-color: #d4cdf3;
+    }
+    body.theme-light .panel-headline { color: #4c3fbf; }
+    body.theme-light .panel-consensus,
+    body.theme-light .panel-tension { color: #3a3a4a; }
+    body.theme-light .panel-consensus-label { background: #d6f4dd; color: #16653b; }
+    body.theme-light .panel-tension-label   { background: #fde4f1; color: #ab2d72; }
+    body.theme-light .panel-angle-detail { color: #555; }
     body.theme-light .card-summary {
       color: #555;
       background: linear-gradient(90deg, #e0f7fa66, transparent);
