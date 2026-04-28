@@ -79,8 +79,10 @@
     .view-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
       padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: .78rem;
+      text-decoration: none; display: inline-flex; align-items: center;
       transition: background .15s, color .15s, border-color .15s;
     }
+    .view-btn:hover { color: var(--text); border-color: var(--accent); }
     .view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     /* font size buttons */
@@ -632,6 +634,7 @@
         <button class="view-btn" id="unread-toggle" type="button">📬 未讀</button>
         <button class="view-btn" id="saved-toggle" type="button">🔖 收藏</button>
         <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
+        <a class="view-btn" href="graph.html" title="知識圖譜：人物/機構/地點關係網絡">🕸️ 圖譜</a>
       </div>
       <div class="font-btns">
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>

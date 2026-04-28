@@ -32,6 +32,12 @@ CONTENT_DIR = DATA_DIR / "content"
 CONTENT_SCHEMA_VERSION = 1
 TRENDING_WINDOW_HOURS = 4
 TRENDING_LIMIT = 10
+GRAPH_WINDOW_HOURS = 168     # 7-day knowledge graph window
+GRAPH_MIN_NODE_COUNT = 2     # drop entities mentioned in only 1 article
+GRAPH_MIN_EDGE_WEIGHT = 2    # drop pairs that co-occur in only 1 article
+GRAPH_MAX_NODES = 150        # browser ceiling — cytoscape gets sluggish above this
+GRAPH_MAX_EDGES = 300
+GRAPH_ENTITY_TYPES = ("people", "companies", "places")
 
 TOPIC_ALIASES = [
     (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
@@ -248,6 +254,119 @@ def build_trending_topics(
     return trending[:limit]
 
 
+def build_knowledge_graph(
+    articles: list,
+    *,
+    now: datetime | None = None,
+    hours: int = GRAPH_WINDOW_HOURS,
+) -> dict:
+    """Aggregate entity co-occurrence over the past `hours` window.
+
+    Pure aggregation, no LLM cost. Each entity becomes a node keyed by
+    `type:label`; each unordered pair of entities sharing an article
+    becomes an edge. Pruned by GRAPH_MIN_* thresholds and capped to
+    GRAPH_MAX_* so the cytoscape view stays responsive.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
+
+    node_counts: dict[str, int] = defaultdict(int)
+    node_labels: dict[str, str] = {}
+    node_types: dict[str, str] = {}
+    node_articles: dict[str, set[str]] = defaultdict(set)
+    edge_weights: dict[tuple[str, str], int] = defaultdict(int)
+    edge_articles: dict[tuple[str, str], set[str]] = defaultdict(set)
+
+    for article in articles:
+        if article.get("duplicate_of"):
+            continue
+        dt = _parse_article_datetime(article.get("date", ""))
+        if not dt or dt < cutoff:
+            continue
+        aid = article.get("id")
+        if not aid:
+            continue
+        entities = article.get("entities") or {}
+        keys: list[str] = []
+        for etype in GRAPH_ENTITY_TYPES:
+            for raw in entities.get(etype) or []:
+                label = str(raw or "").strip()
+                if not label or len(label) < 2:
+                    continue
+                key = f"{etype}:{label}"
+                if key not in node_labels:
+                    node_labels[key] = label
+                    node_types[key] = etype
+                node_counts[key] += 1
+                node_articles[key].add(aid)
+                keys.append(key)
+
+        # Each unordered pair within this article gets an edge bump.
+        unique_keys = list(dict.fromkeys(keys))
+        for i in range(len(unique_keys)):
+            for j in range(i + 1, len(unique_keys)):
+                a, b = sorted((unique_keys[i], unique_keys[j]))
+                edge_weights[(a, b)] += 1
+                edge_articles[(a, b)].add(aid)
+
+    # Prune low-frequency nodes first; edges referencing pruned nodes drop too.
+    kept_nodes = {
+        key for key, count in node_counts.items()
+        if count >= GRAPH_MIN_NODE_COUNT
+    }
+    nodes_sorted = sorted(
+        kept_nodes,
+        key=lambda k: (node_counts[k], node_labels[k]),
+        reverse=True,
+    )[:GRAPH_MAX_NODES]
+    kept_nodes = set(nodes_sorted)
+
+    edges_filtered = [
+        (pair, weight) for pair, weight in edge_weights.items()
+        if weight >= GRAPH_MIN_EDGE_WEIGHT
+        and pair[0] in kept_nodes and pair[1] in kept_nodes
+    ]
+    edges_filtered.sort(key=lambda x: x[1], reverse=True)
+    edges_filtered = edges_filtered[:GRAPH_MAX_EDGES]
+
+    nodes_payload = [
+        {
+            "id": key,
+            "label": node_labels[key],
+            "type": node_types[key],
+            "count": node_counts[key],
+            "articles": sorted(node_articles[key])[:20],
+        }
+        for key in nodes_sorted
+    ]
+    edges_payload = [
+        {
+            "source": a,
+            "target": b,
+            "weight": w,
+            "articles": sorted(edge_articles[(a, b)])[:10],
+        }
+        for (a, b), w in edges_filtered
+    ]
+
+    return {
+        "updated": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
+        "window_hours": hours,
+        "nodes": nodes_payload,
+        "edges": edges_payload,
+    }
+
+
+def _write_graph(articles: list) -> None:
+    graph = build_knowledge_graph(articles)
+    path = DATA_DIR / "graph.json"
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(graph, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+    print(f"[graph] {len(graph['nodes'])} nodes, {len(graph['edges'])} edges")
+
+
 def save_json(articles: list, source_stats: dict):
     """Write three artefacts:
       - data/articles.json          metadata only (index page)
@@ -261,6 +380,7 @@ def save_json(articles: list, source_stats: dict):
     # articles.json that points at missing data/content/{id}.json files.
     content_stats = _write_content_sidecars(articles)
     _write_rss(articles)
+    _write_graph(articles)
 
     meta = [
         {k: v for k, v in a.items() if k not in _CONTENT_FIELDS}

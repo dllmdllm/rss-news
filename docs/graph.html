@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#7c6af7">
+  <link rel="manifest" href="manifest.json">
+  <title>News Pulse · 知識圖譜</title>
+  <style>
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a22;
+      --border:  #2e2e3e;
+      --accent:  #7c6af7;
+      --text:    #e0e0f0;
+      --muted:   #888;
+    }
+    body.theme-light {
+      --bg:      #fafaf8;
+      --surface: #ffffff;
+      --border:  #e6e6e0;
+      --accent:  #1a6b9a;
+      --text:    #141414;
+      --muted:   #777;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      display: flex; flex-direction: column;
+    }
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .back { color: var(--accent); text-decoration: none; font-size: .9rem; }
+    .back:hover { text-decoration: underline; }
+    .title { font-size: 1rem; color: var(--accent); letter-spacing: .04em; font-weight: 700; }
+    .subtitle { font-size: .76rem; color: var(--muted); }
+    .topbar-right { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .filter-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: .76rem;
+      min-height: 32px;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    main {
+      flex: 1; display: flex; min-height: 0;
+    }
+    #cy {
+      flex: 1; background: var(--bg); min-height: 0;
+      touch-action: none;
+    }
+    .sidebar {
+      width: 320px; max-width: 40vw;
+      background: var(--surface); border-left: 1px solid var(--border);
+      padding: 16px;
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      overflow-y: auto;
+      display: none; flex-direction: column; gap: 10px;
+    }
+    .sidebar.show { display: flex; }
+    .sidebar-close {
+      align-self: flex-end; background: transparent; border: none;
+      color: var(--muted); cursor: pointer; font-size: 1.1rem; padding: 0 6px;
+    }
+    .sidebar-close:hover { color: var(--text); }
+    .sidebar-label {
+      font-size: .72rem; color: var(--muted); letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .sidebar-name { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+    .sidebar-stat { font-size: .82rem; color: var(--muted); }
+    .sidebar-section {
+      border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px;
+    }
+    .sidebar-articles { display: flex; flex-direction: column; gap: 6px; }
+    .sidebar-articles a {
+      color: var(--text); text-decoration: none; font-size: .82rem;
+      padding: 6px 8px; border-radius: 6px; line-height: 1.4;
+      border: 1px solid transparent;
+    }
+    .sidebar-articles a:hover {
+      border-color: var(--border); background: var(--bg);
+    }
+
+    .legend {
+      position: absolute; bottom: 14px; left: 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 8px 12px; border-radius: 8px; display: flex; gap: 12px;
+      font-size: .72rem; color: var(--muted);
+      box-shadow: 0 2px 8px #00000033;
+    }
+    .legend-dot {
+      display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+      margin-right: 4px; vertical-align: middle;
+    }
+    .legend-people    { background: #f87171; }
+    .legend-companies { background: #fbbf24; }
+    .legend-places    { background: #67e8f9; }
+
+    .empty {
+      align-self: center; margin: auto; color: var(--muted); font-size: .9rem;
+      text-align: center; padding: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .topbar { padding: 10px 14px; gap: 6px; }
+      .sidebar {
+        position: fixed; top: 0; right: 0; bottom: 0;
+        width: 88vw; max-width: 360px;
+        z-index: 50; box-shadow: -4px 0 16px #00000088;
+      }
+      .legend { font-size: .68rem; padding: 6px 9px; }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("rss_theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.body.classList.add("theme-" + t);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", t === "light" ? "#fafaf8" : "#0f0f13");
+      } catch (_) {}
+    })();
+  </script>
+  <div class="topbar">
+    <a href="index.html" class="back">← 返回</a>
+    <span class="title">知識圖譜</span>
+    <span class="subtitle" id="subtitle">載入中…</span>
+    <div class="topbar-right">
+      <button class="filter-btn active" data-type="all">全部</button>
+      <button class="filter-btn" data-type="people">人物</button>
+      <button class="filter-btn" data-type="companies">機構</button>
+      <button class="filter-btn" data-type="places">地點</button>
+    </div>
+  </div>
+  <main>
+    <div id="cy"></div>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" id="sidebar-close" aria-label="關閉">✕</button>
+      <span class="sidebar-label" id="sidebar-label"></span>
+      <div class="sidebar-name" id="sidebar-name"></div>
+      <div class="sidebar-stat" id="sidebar-stat"></div>
+      <div class="sidebar-section">
+        <span class="sidebar-label">相關文章</span>
+        <div class="sidebar-articles" id="sidebar-articles"></div>
+      </div>
+    </aside>
+  </main>
+  <div class="legend">
+    <span><span class="legend-dot legend-people"></span>人物</span>
+    <span><span class="legend-dot legend-companies"></span>機構</span>
+    <span><span class="legend-dot legend-places"></span>地點</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script>
+    const TYPE_COLOR = {
+      people:    "#f87171",
+      companies: "#fbbf24",
+      places:    "#67e8f9",
+    };
+    const TYPE_LABEL = { people: "人物", companies: "機構", places: "地點" };
+
+    let cy = null;
+    let articleIndex = new Map();   // id -> { title, source, date }
+    let activeType = "all";
+
+    function lookupArticle(id) {
+      return articleIndex.get(id);
+    }
+
+    function renderArticleLinks(ids) {
+      const items = ids.map(lookupArticle).filter(Boolean);
+      if (!items.length) return '<div class="sidebar-stat">無相關文章</div>';
+      return items.map(a => {
+        const date = a.date
+          ? new Date(a.date).toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" })
+          : "";
+        const safeTitle = String(a.title || "").replace(/[<>&"']/g, c =>
+          ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
+        const safeSource = String(a.source || "").replace(/[<>&"']/g, c =>
+          ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
+        return `<a href="article.html?id=${encodeURIComponent(a.id)}">
+          <div>${safeTitle}</div>
+          <div style="color:var(--muted);font-size:.74rem;margin-top:2px">${safeSource} · ${date}</div>
+        </a>`;
+      }).join("");
+    }
+
+    function showNodeDetail(node) {
+      const data = node.data();
+      document.getElementById("sidebar-label").textContent = TYPE_LABEL[data.etype] || "";
+      document.getElementById("sidebar-name").textContent = data.label;
+      document.getElementById("sidebar-stat").textContent = `出現喺 ${data.count} 篇文章`;
+      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
+      document.getElementById("sidebar").classList.add("show");
+    }
+
+    function showEdgeDetail(edge) {
+      const data = edge.data();
+      const src = cy.getElementById(data.source).data();
+      const tgt = cy.getElementById(data.target).data();
+      document.getElementById("sidebar-label").textContent = "共同出現";
+      document.getElementById("sidebar-name").textContent = `${src.label} ↔ ${tgt.label}`;
+      document.getElementById("sidebar-stat").textContent = `共出現喺 ${data.weight} 篇文章`;
+      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
+      document.getElementById("sidebar").classList.add("show");
+    }
+
+    function applyFilter() {
+      if (!cy) return;
+      cy.batch(() => {
+        cy.nodes().forEach(n => {
+          const visible = activeType === "all" || n.data("etype") === activeType;
+          n.style("display", visible ? "element" : "none");
+        });
+        cy.edges().forEach(e => {
+          const s = cy.getElementById(e.data("source"));
+          const t = cy.getElementById(e.data("target"));
+          const visible = s.style("display") !== "none" && t.style("display") !== "none";
+          e.style("display", visible ? "element" : "none");
+        });
+      });
+    }
+
+    async function load() {
+      try {
+        const [graphRes, articlesRes] = await Promise.all([
+          fetch("data/graph.json?" + Date.now()),
+          fetch("data/articles.json?" + Date.now()),
+        ]);
+        const graph = await graphRes.json();
+        const articlesData = await articlesRes.json();
+
+        articleIndex = new Map(
+          (articlesData.articles || []).map(a => [a.id, {
+            id: a.id, title: a.title, source: a.source, date: a.date,
+          }])
+        );
+
+        document.getElementById("subtitle").textContent =
+          `${graph.nodes.length} 個實體 · ${graph.edges.length} 個連結 · 過去 ${Math.round(graph.window_hours / 24)} 日`;
+
+        if (!graph.nodes.length) {
+          document.getElementById("cy").innerHTML =
+            '<div class="empty">過去 7 日尚無足夠數據生成圖譜</div>';
+          return;
+        }
+
+        // Map count → node size (sqrt to flatten outliers).
+        const maxCount = Math.max(...graph.nodes.map(n => n.count));
+        const elements = [
+          ...graph.nodes.map(n => ({
+            data: {
+              id: n.id, label: n.label, etype: n.type,
+              count: n.count, articles: n.articles,
+              size: 16 + Math.sqrt(n.count / maxCount) * 36,
+              color: TYPE_COLOR[n.type] || "#888",
+            },
+          })),
+          ...graph.edges.map((e, i) => ({
+            data: {
+              id: `e${i}`, source: e.source, target: e.target,
+              weight: e.weight, articles: e.articles,
+              width: 1 + Math.sqrt(e.weight) * 1.2,
+            },
+          })),
+        ];
+
+        const isDark = !document.body.classList.contains("theme-light");
+
+        cy = cytoscape({
+          container: document.getElementById("cy"),
+          elements,
+          minZoom: 0.2, maxZoom: 2.5, wheelSensitivity: 0.25,
+          style: [
+            {
+              selector: "node",
+              style: {
+                "background-color": "data(color)",
+                "label": "data(label)",
+                "width": "data(size)",
+                "height": "data(size)",
+                "font-size": 11,
+                "color": isDark ? "#e0e0f0" : "#141414",
+                "text-outline-color": isDark ? "#0f0f13" : "#fafaf8",
+                "text-outline-width": 2,
+                "text-valign": "bottom",
+                "text-margin-y": 4,
+                "border-width": 1,
+                "border-color": isDark ? "#2e2e3e" : "#e6e6e0",
+              },
+            },
+            {
+              selector: "edge",
+              style: {
+                "width": "data(width)",
+                "line-color": isDark ? "#3a3a4a" : "#cfcfc8",
+                "curve-style": "haystack",
+                "opacity": 0.7,
+              },
+            },
+            {
+              selector: "node:selected",
+              style: {
+                "border-width": 3,
+                "border-color": "#7c6af7",
+              },
+            },
+          ],
+          layout: {
+            name: "cose",
+            animate: false,
+            nodeRepulsion: 6000,
+            idealEdgeLength: 90,
+            edgeElasticity: 80,
+            gravity: 0.3,
+            numIter: 1500,
+            fit: true, padding: 40,
+          },
+        });
+
+        cy.on("tap", "node", evt => showNodeDetail(evt.target));
+        cy.on("tap", "edge", evt => showEdgeDetail(evt.target));
+        cy.on("tap", evt => {
+          if (evt.target === cy) {
+            document.getElementById("sidebar").classList.remove("show");
+          }
+        });
+      } catch (err) {
+        document.getElementById("subtitle").textContent = "載入失敗";
+        document.getElementById("cy").innerHTML =
+          `<div class="empty">無法載入圖譜：${String(err)}</div>`;
+      }
+    }
+
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeType = btn.dataset.type;
+        applyFilter();
+      });
+    });
+
+    document.getElementById("sidebar-close").addEventListener("click", () => {
+      document.getElementById("sidebar").classList.remove("show");
+    });
+
+    load();
+  </script>
+</body>
+</html>
