@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#0f0f13">
+  <title>📅 預告 — News Pulse</title>
+  <link rel="manifest" href="manifest.json">
+  <script>
+    // FOUC guard — match index/article so theme flips before paint.
+    (function () {
+      try {
+        const t = localStorage.getItem("rss_theme") || "dark";
+        if (t === "light") document.documentElement.classList.add("pre-light");
+      } catch (_) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --bg: #0f0f13; --surface: #1a1a22; --border: #2a2a36;
+      --text: #e0e0f0; --muted: #8a8aa0; --accent: #7c6af7;
+    }
+    html.pre-light, html.pre-light body { background: #fafaf8; color: #141414; }
+    body.theme-light {
+      --bg: #fafaf8; --surface: #ffffff; --border: #e6e6e0;
+      --text: #141414; --muted: #6c6c70; --accent: #5b48d6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Microsoft JhengHei", sans-serif;
+      background: var(--bg); color: var(--text); -webkit-tap-highlight-color: transparent;
+    }
+    .topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
+      padding-top: max(14px, env(safe-area-inset-top));
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .back { color: var(--muted); text-decoration: none; font-size: 1.1rem; }
+    .back:hover { color: var(--accent); }
+    .topbar-title { flex: 1; min-width: 0; }
+    .topbar-title h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+    .topbar-title .sub { font-size: .76rem; color: var(--muted); margin-top: 2px; }
+    .ics-all-btn {
+      background: var(--accent); color: #fff; border: 0; padding: 7px 14px;
+      border-radius: 6px; font-size: .82rem; cursor: pointer;
+    }
+    .ics-all-btn:disabled { opacity: .4; cursor: default; }
+
+    main { max-width: 760px; margin: 0 auto; padding: 22px max(16px, env(safe-area-inset-right)) 80px max(16px, env(safe-area-inset-left)); }
+    .empty { text-align: center; color: var(--muted); padding: 80px 20px; }
+
+    .section-label {
+      font-size: .78rem; color: var(--muted); margin: 22px 0 10px;
+      text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    .event {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+      display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: start;
+    }
+    .ev-date {
+      text-align: center; padding: 4px 0; border-radius: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+    }
+    .ev-day { font-size: 1.3rem; font-weight: 700; color: var(--text); line-height: 1.1; }
+    .ev-month { font-size: .68rem; color: var(--muted); margin-top: 2px; letter-spacing: .04em; }
+    .ev-body { min-width: 0; }
+    .ev-title { font-size: .98rem; font-weight: 600; color: var(--text); margin: 2px 0 6px; }
+    .ev-relative { font-size: .72rem; color: var(--accent); margin-bottom: 6px; }
+    .ev-articles { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: .76rem; }
+    .ev-articles a { color: var(--muted); text-decoration: none; }
+    .ev-articles a:hover { color: var(--accent); }
+    .ev-articles .src { color: var(--muted); }
+
+    .ics-btn {
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 4px; font-size: .74rem; cursor: pointer;
+      align-self: start; white-space: nowrap;
+    }
+    .ics-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    @media (max-width: 600px) {
+      .topbar { gap: 10px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); }
+      .topbar-title h1 { font-size: .95rem; }
+      .ics-all-btn { padding: 6px 11px; font-size: .76rem; }
+      .event { grid-template-columns: 52px 1fr; gap: 10px; padding: 12px; }
+      .ics-btn { grid-column: 1 / -1; justify-self: end; margin-top: 4px; }
+    }
+  </style>
+</head>
+<body class="theme-dark">
+  <div class="topbar">
+    <a href="index.html" class="back" title="返回">←</a>
+    <div class="topbar-title">
+      <h1>📅 預告</h1>
+      <div class="sub" id="subtitle">載入中…</div>
+    </div>
+    <button class="ics-all-btn" id="ics-all" disabled>下載全部 .ics</button>
+  </div>
+
+  <main>
+    <div id="content"><div class="empty">載入中…</div></div>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script>
+    setupThemeMode();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    function relativeLabel(dateStr) {
+      const d = new Date(dateStr + "T00:00:00");
+      const diffDays = Math.round((d - today) / 86400000);
+      if (diffDays === 0) return "今日";
+      if (diffDays === 1) return "明日";
+      if (diffDays > 1 && diffDays <= 6) return diffDays + " 日後";
+      if (diffDays > 6 && diffDays <= 13) return "下星期";
+      return "";
+    }
+
+    function bucketLabel(dateStr) {
+      const d = new Date(dateStr + "T00:00:00");
+      const diffDays = Math.round((d - today) / 86400000);
+      if (diffDays <= 1) return "本週";
+      if (diffDays <= 13) return "未來兩週";
+      if (diffDays <= 30) return "本月";
+      return "之後";
+    }
+
+    function fmtDate(dateStr) {
+      const d = new Date(dateStr + "T00:00:00");
+      return {
+        day: d.getDate(),
+        month: (d.getMonth() + 1) + " 月",
+        weekday: ["日", "一", "二", "三", "四", "五", "六"][d.getDay()],
+      };
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+      ));
+    }
+
+    // RFC-5545 — escape commas, semicolons, backslashes, newlines.
+    function icsEscape(s) {
+      return String(s ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/;/g, "\\;")
+        .replace(/,/g, "\\,")
+        .replace(/\r?\n/g, "\\n");
+    }
+
+    function buildVEvent(ev) {
+      const dt = ev.date.replace(/-/g, "");
+      const d = new Date(ev.date + "T00:00:00");
+      const dtEnd = new Date(d.getTime() + 86400000)
+        .toISOString().slice(0, 10).replace(/-/g, "");
+      const uid = "ev-" + dt + "-" + Math.abs(ev.title.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)) + "@news-pulse";
+      const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+      return [
+        "BEGIN:VEVENT",
+        "UID:" + uid,
+        "DTSTAMP:" + stamp,
+        "DTSTART;VALUE=DATE:" + dt,
+        "DTEND;VALUE=DATE:" + dtEnd,
+        "SUMMARY:" + icsEscape(ev.title),
+        "DESCRIPTION:" + icsEscape("News Pulse 預告 — 來源：" + (ev.articles || []).map(a => a.source).filter(Boolean).join("、")),
+        "END:VEVENT",
+      ].join("\r\n");
+    }
+
+    function buildICS(events) {
+      return [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//News Pulse//Upcoming Events//EN",
+        "CALSCALE:GREGORIAN",
+        ...events.map(buildVEvent),
+        "END:VCALENDAR",
+      ].join("\r\n");
+    }
+
+    function downloadICS(filename, ics) {
+      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("data/upcoming.json?" + Date.now());
+        const data = await res.json();
+        const events = (data.events || []).filter(ev => {
+          const d = new Date(ev.date + "T00:00:00");
+          return d >= today;
+        });
+
+        const sub = document.getElementById("subtitle");
+        sub.textContent = events.length
+          ? events.length + " 個未來活動 · 過去 " + (data.lookahead_days || 90) + " 日內"
+          : "未有未來活動數據";
+
+        const root = document.getElementById("content");
+        if (!events.length) {
+          root.innerHTML = '<div class="empty">尚未提取到未來事件。<br>稍後新分析嘅文章會在這裡出現。</div>';
+          return;
+        }
+
+        const allBtn = document.getElementById("ics-all");
+        allBtn.disabled = false;
+        allBtn.addEventListener("click", () => {
+          downloadICS("news-pulse-upcoming.ics", buildICS(events));
+        });
+
+        // Group by bucket label, preserving order from sorted events.
+        const groups = new Map();
+        for (const ev of events) {
+          const k = bucketLabel(ev.date);
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(ev);
+        }
+
+        const html = [...groups.entries()].map(([label, group]) => {
+          const rows = group.map(ev => {
+            const f = fmtDate(ev.date);
+            const rel = relativeLabel(ev.date);
+            const arts = (ev.articles || []).map(a =>
+              '<a href="article.html?id=' + encodeURIComponent(a.id) + '" title="' +
+              escapeHtml(a.title) + '"><span class="src">[' + escapeHtml(a.source) + ']</span> ' +
+              escapeHtml((a.title || "").slice(0, 28)) + '</a>'
+            ).join("");
+            return (
+              '<div class="event">' +
+                '<div class="ev-date">' +
+                  '<div class="ev-day">' + f.day + '</div>' +
+                  '<div class="ev-month">' + f.month + ' · ' + f.weekday + '</div>' +
+                '</div>' +
+                '<div class="ev-body">' +
+                  (rel ? '<div class="ev-relative">' + rel + '</div>' : '') +
+                  '<div class="ev-title">' + escapeHtml(ev.title) + '</div>' +
+                  '<div class="ev-articles">' + arts + '</div>' +
+                '</div>' +
+                '<button class="ics-btn" data-date="' + escapeHtml(ev.date) +
+                  '" data-title="' + escapeHtml(ev.title) +
+                  '" data-sources="' + escapeHtml((ev.articles || []).map(a => a.source).join("|")) +
+                  '">📅 .ics</button>' +
+              '</div>'
+            );
+          }).join("");
+          return '<div class="section-label">' + label + '</div>' + rows;
+        }).join("");
+
+        root.innerHTML = html;
+
+        root.querySelectorAll(".ics-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const ev = {
+              date: btn.dataset.date,
+              title: btn.dataset.title,
+              articles: btn.dataset.sources.split("|").filter(Boolean).map(s => ({ source: s })),
+            };
+            downloadICS(
+              ev.date + "-" + ev.title.replace(/[^\w\u4e00-\u9fff]+/g, "-").slice(0, 40) + ".ics",
+              buildICS([ev]),
+            );
+          });
+        });
+      } catch (err) {
+        document.getElementById("subtitle").textContent = "載入失敗";
+        document.getElementById("content").innerHTML =
+          '<div class="empty">無法載入：' + escapeHtml(String(err)) + '</div>';
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

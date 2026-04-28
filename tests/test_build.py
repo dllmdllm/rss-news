@@ -219,6 +219,48 @@ def test_merge_missing_sources_respects_article_max_age(monkeypatch):
     assert [a["id"] for a in merged] == ["recent"]
 
 
+def test_build_upcoming_merges_same_event_across_sources():
+    today = datetime(2026, 4, 27).date()
+    arts = [
+        {"id": "a1", "title": "T1", "source": "明報",
+         "upcoming_events": [{"date": "2026-05-01", "title": "勞動節活動"}]},
+        {"id": "a2", "title": "T2", "source": "RTHK",
+         "upcoming_events": [{"date": "2026-05-01", "title": "勞動節活動"}]},
+    ]
+    out = build.build_upcoming(arts, today=today)
+    assert len(out["events"]) == 1
+    assert {a["id"] for a in out["events"][0]["articles"]} == {"a1", "a2"}
+
+
+def test_build_upcoming_filters_past_and_too_distant():
+    today = datetime(2026, 4, 27).date()
+    arts = [
+        {"id": "a1", "title": "T1", "source": "X",
+         "upcoming_events": [
+             {"date": "2025-01-01", "title": "過去"},
+             {"date": "2099-01-01", "title": "太遠未來"},
+             {"date": "2026-05-15", "title": "合理範圍"},
+         ]},
+    ]
+    out = build.build_upcoming(arts, today=today)
+    assert [e["title"] for e in out["events"]] == ["合理範圍"]
+
+
+def test_build_upcoming_skips_duplicates_and_invalid_dates():
+    today = datetime(2026, 4, 27).date()
+    arts = [
+        {"id": "a1", "title": "T1", "source": "X", "duplicate_of": "real",
+         "upcoming_events": [{"date": "2026-05-01", "title": "活動"}]},
+        {"id": "a2", "title": "T2", "source": "X",
+         "upcoming_events": [
+             {"date": "2026/05/02", "title": "格式錯"},
+             {"title": "缺日期"},
+         ]},
+    ]
+    out = build.build_upcoming(arts, today=today)
+    assert out["events"] == []
+
+
 def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"

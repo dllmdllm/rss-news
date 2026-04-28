@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -367,6 +368,79 @@ def _write_graph(articles: list) -> None:
     print(f"[graph] {len(graph['nodes'])} nodes, {len(graph['edges'])} edges")
 
 
+UPCOMING_LOOKAHEAD_DAYS = 90      # ignore "events" further out than this — usually noise
+UPCOMING_MAX_EVENTS     = 80      # cap so the view stays readable
+
+
+def build_upcoming(articles: list, *, today=None) -> dict:
+    """Aggregate `upcoming_events` from per-article analysis into a sorted
+    timeline. Events sharing the same (date, normalised-title) are merged
+    so multiple outlets covering the same announcement collapse into one
+    row with multiple article links."""
+    today_hk = today or datetime.now(timezone(timedelta(hours=8))).date()
+    horizon = today_hk + timedelta(days=UPCOMING_LOOKAHEAD_DAYS)
+
+    # key = (date, lowercased+stripped title) → merged record
+    merged: dict[tuple, dict] = {}
+    for article in articles:
+        if article.get("duplicate_of"):
+            continue
+        events = article.get("upcoming_events") or []
+        if not isinstance(events, list):
+            continue
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            date_s = str(ev.get("date") or "")
+            title  = str(ev.get("title") or "").strip()
+            if not date_s or not title:
+                continue
+            try:
+                date_obj = datetime.strptime(date_s, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if date_obj < today_hk or date_obj > horizon:
+                continue
+            key = (date_s, re.sub(r"\s+", "", title.lower())[:30])
+            row = merged.setdefault(key, {
+                "date": date_s,
+                "title": title,
+                "articles": [],
+                "_seen": set(),
+            })
+            aid = article.get("id")
+            if aid and aid not in row["_seen"]:
+                row["articles"].append({
+                    "id": aid,
+                    "title": article.get("title", ""),
+                    "source": article.get("source", ""),
+                })
+                row["_seen"].add(aid)
+
+    events_out = sorted(
+        ({"date": r["date"], "title": r["title"], "articles": r["articles"][:6]}
+         for r in merged.values()),
+        key=lambda r: (r["date"], r["title"]),
+    )[:UPCOMING_MAX_EVENTS]
+
+    return {
+        "updated": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
+        "today":   today_hk.isoformat(),
+        "lookahead_days": UPCOMING_LOOKAHEAD_DAYS,
+        "events":  events_out,
+    }
+
+
+def _write_upcoming(articles: list) -> None:
+    payload = build_upcoming(articles)
+    path = DATA_DIR / "upcoming.json"
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+    print(f"[upcoming] {len(payload['events'])} events")
+
+
 def save_json(articles: list, source_stats: dict):
     """Write three artefacts:
       - data/articles.json          metadata only (index page)
@@ -381,6 +455,7 @@ def save_json(articles: list, source_stats: dict):
     content_stats = _write_content_sidecars(articles)
     _write_rss(articles)
     _write_graph(articles)
+    _write_upcoming(articles)
 
     meta = [
         {k: v for k, v in a.items() if k not in _CONTENT_FIELDS}
