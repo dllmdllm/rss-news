@@ -33,7 +33,9 @@ SYSTEM_PROMPT = (
     '"sentiment":"positive"或"negative"或"neutral",'
     '"topic":"標準化話題名稱，唔超過10字",'
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
-    '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]}}'
+    '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
+    '"key_sentences":["原文逐字摘錄最關鍵嘅 1 至 2 句句子（必須完全一致，唔好改寫，每句 10-50 字）"],'
+    '"upcoming_events":[{"date":"YYYY-MM-DD（文中提及嘅未來日期）","title":"短描述，唔超過20字"}]（最多 2 個；若無未來事件就回傳空陣列 []）}'
 )
 
 # Derive version from the prompt hash so the cache auto-invalidates whenever
@@ -133,6 +135,53 @@ def _normalise_entities(raw) -> dict:
     }
 
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _normalise_key_sentences(raw) -> list[str]:
+    """Verbatim quotes used by the article view to wrap <mark> highlights.
+    Reject anything that's clearly not a real sentence (too short, too long,
+    or contains line breaks — line breaks would never survive a verbatim
+    match against a single text node)."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, list):
+        return []
+    out, seen = [], set()
+    for item in raw:
+        text = re.sub(r"\s+", " ", str(item or "")).strip().strip('"\u201c\u201d「」『』')
+        if not (8 <= len(text) <= 80):
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= 2:
+            break
+    return out
+
+
+def _normalise_upcoming_events(raw) -> list[dict]:
+    """Future-dated events extracted from the article body.
+    Drops entries with a malformed date or empty title."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        date = str(item.get("date") or "").strip()
+        title = re.sub(r"\s+", " ", str(item.get("title") or "")).strip()
+        if not _DATE_RE.match(date) or not title:
+            continue
+        out.append({"date": date, "title": title[:30]})
+        if len(out) >= 2:
+            break
+    return out
+
+
 def _normalise_parsed(data: dict) -> dict | None:
     """Coerce a parsed JSON object into our canonical analysis dict."""
     if not isinstance(data, dict):
@@ -163,6 +212,8 @@ def _normalise_parsed(data: dict) -> dict | None:
             "topic":     str(data.get("topic", "")).strip()[:20],
             "event_type": str(data.get("event_type", "")).strip()[:12],
             "entities":  _normalise_entities(data.get("entities")),
+            "key_sentences":   _normalise_key_sentences(data.get("key_sentences")),
+            "upcoming_events": _normalise_upcoming_events(data.get("upcoming_events")),
             "version":   ANALYSIS_VERSION,
         }
     except Exception:
@@ -299,6 +350,8 @@ async def _apply_results(
         a["topic"]     = p["topic"]
         a["event_type"] = p.get("event_type", "")
         a["entities"]   = p.get("entities", _normalise_entities({}))
+        a["key_sentences"]   = p.get("key_sentences", [])
+        a["upcoming_events"] = p.get("upcoming_events", [])
         cache[a["id"]] = p
     prev = counter[0]
     counter[0] += len(batch)
@@ -326,7 +379,7 @@ async def _analyse_one(
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
             try:
-                raw, err, status = await _post_messages(session, user_content, max_tokens=500, timeout=30)
+                raw, err, status = await _post_messages(session, user_content, max_tokens=700, timeout=30)
                 if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
@@ -383,9 +436,10 @@ async def _analyse_batch(
         f"分析以下 {len(batch)} 篇新聞，返回長度 = {len(batch)} 嘅 JSON 陣列：\n\n"
         + "\n\n".join(parts)
     )
-    # Per-article output is ~200-350 tokens; budget generously and let the
-    # server cap to the model ceiling. Timeout scales with batch size.
-    max_tokens = min(4000, 400 * len(batch) + 200)
+    # Per-article output is ~300-450 tokens once key_sentences + upcoming_events
+    # are included; budget generously and let the server cap to the model ceiling.
+    # Timeout scales with batch size.
+    max_tokens = min(5000, 500 * len(batch) + 200)
     timeout    = 30 + 10 * len(batch)
 
     batch_ok = False
@@ -470,6 +524,8 @@ async def analyse_all(articles: list) -> list:
             a["topic"]     = c.get("topic", "")
             a["event_type"] = c.get("event_type", "")
             a["entities"]   = _normalise_entities(c.get("entities"))
+            a["key_sentences"]   = _normalise_key_sentences(c.get("key_sentences"))
+            a["upcoming_events"] = _normalise_upcoming_events(c.get("upcoming_events"))
         else:
             pending.append(a)
 

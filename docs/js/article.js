@@ -26,6 +26,62 @@
       return doc.body.innerHTML;
     }
 
+    // Wrap verbatim model-supplied key sentences in <mark> within the article
+    // body. Whitespace runs are matched as \s+ so minor formatting drift
+    // (e.g. NBSP vs space) doesn't kill the highlight. Limited to single text
+    // nodes — sentences split across <p> boundaries are rare and not worth
+    // the cross-node walking complexity.
+    function highlightKeySentences(root, sentences) {
+      if (!root || !Array.isArray(sentences) || !sentences.length) return;
+      const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const patterns = sentences
+        .map(s => String(s || "").trim())
+        .filter(s => s.length >= 6 && s.length <= 200)
+        .map(s => new RegExp(escape(s).replace(/\s+/g, "\\s+"), "g"));
+      if (!patterns.length) return;
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => {
+          const p = n.parentElement;
+          if (!p) return NodeFilter.FILTER_REJECT;
+          if (p.closest("script, style, mark, a")) return NodeFilter.FILTER_REJECT;
+          return n.nodeValue && n.nodeValue.length >= 6
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        },
+      });
+      const tnodes = [];
+      while (walker.nextNode()) tnodes.push(walker.currentNode);
+
+      for (const node of tnodes) {
+        const text = node.nodeValue;
+        let matches = [];
+        for (const re of patterns) {
+          re.lastIndex = 0;
+          const m = [...text.matchAll(re)];
+          if (m.length) { matches = m; break; }
+        }
+        if (!matches.length) continue;
+
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        for (const m of matches) {
+          if (m.index > cursor) {
+            frag.appendChild(document.createTextNode(text.slice(cursor, m.index)));
+          }
+          const mark = document.createElement("mark");
+          mark.className = "ai-key";
+          mark.textContent = m[0];
+          frag.appendChild(mark);
+          cursor = m.index + m[0].length;
+        }
+        if (cursor < text.length) {
+          frag.appendChild(document.createTextNode(text.slice(cursor)));
+        }
+        node.parentNode.replaceChild(frag, node);
+      }
+    }
+
     setupThemeMode();
     setupTextOnlyMode();
     setupFontSize();
@@ -551,6 +607,7 @@
               img.replaceWith(fallback);
             };
           });
+          highlightKeySentences(body, art.key_sentences);
           if (art.thumbnail && body.querySelectorAll("img").length === 0) {
             const thumb = safeUrl(art.thumbnail);
             if (thumb !== "#") {

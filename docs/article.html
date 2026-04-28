@@ -194,6 +194,14 @@
       padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
       color: var(--summary-text); line-height: 1.6; white-space: pre-line;
     }
+    /* AI-picked key sentences inside the article body. */
+    mark.ai-key {
+      background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.34) 55%);
+      color: inherit; padding: 0 1px; border-radius: 2px;
+    }
+    body.theme-light mark.ai-key {
+      background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.22) 55%);
+    }
     .summary-label {
       display: block; font-size: .72rem; color: var(--accent);
       font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;

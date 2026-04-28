@@ -13,7 +13,9 @@ from src.analyse import (
     ANALYSIS_VERSION,
     _needs_full_analysis,
     _normalise_entities,
+    _normalise_key_sentences,
     _normalise_summary,
+    _normalise_upcoming_events,
     _parse_analysis,
     _parse_batch,
     looks_like_prompt_schema_summary,
@@ -274,6 +276,70 @@ def test_parse_batch_single_accepts_bare_object():
 def test_parse_batch_strips_fence():
     raw = '```json\n[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}]\n```'
     assert _parse_batch(raw, 1) is not None
+
+
+# ── _normalise_key_sentences ─────────────────────────────────────
+
+def test_key_sentences_strips_quote_chars_and_dedupes():
+    out = _normalise_key_sentences([
+        '"政府宣布即日起實施新措施。"',
+        "「政府宣布即日起實施新措施。」",  # same after stripping CJK quotes
+        "另一個合理長度嘅句子。",
+    ])
+    # Second is a dupe of first after normalising quote chars.
+    assert len(out) == 2
+    assert out[0] == "政府宣布即日起實施新措施。"
+
+
+def test_key_sentences_drops_too_short_and_too_long():
+    out = _normalise_key_sentences([
+        "短",                          # too short — drop
+        "x" * 200,                     # too long — drop
+        "啱啱好長度嘅句子應該保留。",   # keep
+    ])
+    assert out == ["啱啱好長度嘅句子應該保留。"]
+
+
+def test_key_sentences_caps_at_two():
+    out = _normalise_key_sentences([
+        "第一句話，足夠長度嘅內容。",
+        "第二句話，足夠長度嘅內容。",
+        "第三句話，足夠長度嘅內容。",
+    ])
+    assert len(out) == 2
+
+
+def test_key_sentences_handles_garbage_input():
+    assert _normalise_key_sentences(None) == []
+    assert _normalise_key_sentences(123) == []
+    assert _normalise_key_sentences("單一字串足夠長嘅句子。") == ["單一字串足夠長嘅句子。"]
+
+
+# ── _normalise_upcoming_events ───────────────────────────────────
+
+def test_upcoming_events_keeps_iso_dates():
+    out = _normalise_upcoming_events([
+        {"date": "2026-05-01", "title": "勞動節活動"},
+        {"date": "2026/05/01", "title": "格式錯誤嘅日期"},  # non-ISO — drop
+        {"date": "2026-05-15", "title": ""},                 # empty title — drop
+        {"date": "2026-06-01", "title": "未來活動"},
+    ])
+    assert out == [
+        {"date": "2026-05-01", "title": "勞動節活動"},
+        {"date": "2026-06-01", "title": "未來活動"},
+    ]
+
+
+def test_upcoming_events_caps_at_two():
+    raw = [{"date": "2026-05-0%d" % i, "title": "活動 %d" % i} for i in range(1, 6)]
+    out = _normalise_upcoming_events(raw)
+    assert len(out) == 2
+
+
+def test_upcoming_events_handles_garbage():
+    assert _normalise_upcoming_events(None) == []
+    assert _normalise_upcoming_events("not a list") == []
+    assert _normalise_upcoming_events([{"foo": "bar"}]) == []
 
 
 # ── _clean_url ────────────────────────────────────────────────────

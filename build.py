@@ -579,7 +579,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     for a in articles:
         if not a.get("summary") and a["id"] in old:
             src = old[a["id"]]
-            for field in ("summary", "score", "tags", "sentiment", "topic", "event_type", "entities"):
+            for field in ("summary", "score", "tags", "sentiment", "topic", "event_type", "entities", "key_sentences", "upcoming_events"):
                 if src.get(field) is not None:
                     a[field] = src[field]
             restored += 1
