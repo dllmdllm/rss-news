@@ -25,7 +25,13 @@ load_dotenv()
 
 from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
-from src.analyse import analyse_all, looks_like_prompt_schema_summary
+from src.analyse import (
+    _normalise_entities,
+    _normalise_key_sentences,
+    _normalise_upcoming_events,
+    analyse_all,
+    looks_like_prompt_schema_summary,
+)
 from src.panel_digest import generate_panel_digests
 
 DOCS_DIR    = ROOT / "docs"
@@ -101,18 +107,26 @@ def detect_duplicates(articles: list, *, threshold: float = 0.82) -> list:
             parent[ra] = rb
 
     n = len(articles)
+    # Inverted index: bigram -> list of article indices that contain it.
+    # Lets us count pair-wise overlap without comparing every (i, j) — only
+    # articles sharing at least one bigram show up as candidates.
+    postings: dict[str, list[int]] = defaultdict(list)
+    for i, bi in enumerate(bigrams):
+        for b in bi:
+            postings[b].append(i)
+
     for i in range(n):
         bi = bigrams[i]
         if not bi:
             continue
-        for j in range(i + 1, n):
-            bj = bigrams[j]
-            if not bj:
-                continue
-            inter = len(bi & bj)
-            if not inter:
-                continue
-            uni = len(bi | bj)
+        size_i = len(bi)
+        overlap: dict[int, int] = defaultdict(int)
+        for b in bi:
+            for j in postings[b]:
+                if j > i:
+                    overlap[j] += 1
+        for j, inter in overlap.items():
+            uni = size_i + len(bigrams[j]) - inter
             if uni and inter / uni >= threshold:
                 union(i, j)
 
@@ -478,6 +492,23 @@ def save_json(articles: list, source_stats: dict):
     meta_kb = meta_path.stat().st_size // 1024
     print(f"[build] articles.json {meta_kb} KB, {len(articles)} articles")
 
+    # Slim index for graph.html — needs only id/title/source/date/category to
+    # render sidebar links. Pulling articles.json there forces ~750 KB just to
+    # build a Map of 5 fields per row.
+    index_path = DATA_DIR / "articles_index.json"
+    index_payload = {
+        "articles": [
+            {"id": a["id"], "title": a.get("title"), "source": a.get("source"),
+             "date": a.get("date"), "category": a.get("category")}
+            for a in articles
+        ],
+    }
+    tmp = index_path.with_suffix(index_path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(index_payload, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, index_path)
+    print(f"[build] articles_index.json {index_path.stat().st_size // 1024} KB")
+
     dropped = _prune_stale_content(active_ids={a["id"] for a in articles})
     print(
         f"[build] content/ {content_stats['written']} written, "
@@ -652,12 +683,20 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
         if a.get("summary") and not looks_like_prompt_schema_summary(a.get("summary", ""))
     }
     restored = 0
+    structured_normalisers = {
+        "entities":        _normalise_entities,
+        "key_sentences":   _normalise_key_sentences,
+        "upcoming_events": _normalise_upcoming_events,
+    }
     for a in articles:
         if not a.get("summary") and a["id"] in old:
             src = old[a["id"]]
-            for field in ("summary", "score", "tags", "sentiment", "topic", "event_type", "entities", "key_sentences", "upcoming_events"):
+            for field in ("summary", "score", "tags", "sentiment", "topic", "event_type"):
                 if src.get(field) is not None:
                     a[field] = src[field]
+            for field, normaliser in structured_normalisers.items():
+                if src.get(field) is not None:
+                    a[field] = normaliser(src[field])
             restored += 1
     if restored:
         print(f"[build] Restored {restored} summaries from previous articles.json")

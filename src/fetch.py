@@ -302,7 +302,9 @@ def _skypost_http(url: str) -> str:
 def _skypost_parse_date(soup: BeautifulSoup) -> datetime | None:
     raw = _skypost_hidden_text(soup, "ga4PublishDateHidden")
     if not raw:
-        raw = re.sub(r"^\s*發佈時間:\s*", "", soup.select_one(".publish-time") .get_text(" ", strip=True) if soup.select_one(".publish-time") else "")
+        node = soup.select_one(".publish-time")
+        if node:
+            raw = re.sub(r"^\s*發佈時間:\s*", "", node.get_text(" ", strip=True))
     if not raw:
         return None
     for fmt in ("%Y-%m-%d", "%Y/%m/%d"):

@@ -249,7 +249,7 @@
       return "";  // 超過一個月就唔顯示相對時間，只顯示絕對日期
     }
 
-    const _CAT_WL = new Set(["新聞","國際","娛樂","消閒","科技","網媒"]);
+    const CAT_WL = new Set(["新聞","國際","娛樂","消閒","科技","網媒"]);
     function renderArticleLinks(ids) {
       const items = ids.map(lookupArticle).filter(Boolean);
       if (!items.length) return '<div class="sidebar-stat">無相關文章</div>';
@@ -263,7 +263,7 @@
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
         const safeSource = String(a.source || "").replace(/[<>&"']/g, c =>
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
-        const catAttr = _CAT_WL.has(a.category) ? ` data-cat="${a.category}"` : "";
+        const catAttr = CAT_WL.has(a.category) ? ` data-cat="${a.category}"` : "";
         return `<a href="article.html?id=${encodeURIComponent(a.id)}"${catAttr}>
           <div>${safeTitle}</div>
           <div class="sidebar-article-meta" style="color:var(--muted);margin-top:2px">${safeSource} · ${dateStr}</div>
@@ -313,16 +313,13 @@
       try {
         const [graphRes, articlesRes] = await Promise.all([
           fetch("data/graph.json?" + Date.now()),
-          fetch("data/articles.json?" + Date.now()),
+          fetch("data/articles_index.json?" + Date.now()),
         ]);
         const graph = await graphRes.json();
         const articlesData = await articlesRes.json();
 
         articleIndex = new Map(
-          (articlesData.articles || []).map(a => [a.id, {
-            id: a.id, title: a.title, source: a.source, date: a.date,
-            category: a.category,
-          }])
+          (articlesData.articles || []).map(a => [a.id, a])
         );
 
         document.getElementById("subtitle").textContent =

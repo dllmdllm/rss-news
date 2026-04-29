@@ -498,10 +498,14 @@ async def _analyse_batch(
     if batch_ok:
         return
     # Fallback: run each article as its own single-item batch. sem is already
-    # released here, so each fallback call re-acquires it independently.
-    for a in batch:
-        if a["id"] not in applied_ids:
-            await _analyse_one(session, a, sem, cache, save_lock, counter)
+    # released here, so each fallback call re-acquires it independently — and
+    # they can run in parallel up to ANALYSE_CONCURRENCY.
+    fallback = [a for a in batch if a["id"] not in applied_ids]
+    if fallback:
+        await asyncio.gather(*(
+            _analyse_one(session, a, sem, cache, save_lock, counter)
+            for a in fallback
+        ))
 
 
 async def analyse_all(articles: list) -> list:
@@ -537,11 +541,7 @@ async def analyse_all(articles: list) -> list:
     sem       = asyncio.Semaphore(ANALYSE_CONCURRENCY)
     save_lock = asyncio.Lock()
     counter   = [0]
-    # Session-wide timeout protects against a single stuck connection holding
-    # the whole analyse phase open. Per-request timeouts inside _post_messages
-    # still cover individual calls.
-    session_timeout = aiohttp.ClientTimeout(total=180, connect=20)
-    async with aiohttp.ClientSession(timeout=session_timeout) as session:
+    async with aiohttp.ClientSession() as session:
         tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
         await asyncio.gather(*tasks)
 

@@ -62,7 +62,7 @@ jobs:
           set +e
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/data/articles.json docs/data/analyses.json docs/data/feed.xml docs/data/feed_http_cache.json docs/data/content docs/data/graph.json docs/data/upcoming.json docs/data/panel_digests.json
+          git add docs/data/articles.json docs/data/articles_index.json docs/data/analyses.json docs/data/feed.xml docs/data/feed_http_cache.json docs/data/content docs/data/graph.json docs/data/upcoming.json docs/data/panel_digests.json
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0

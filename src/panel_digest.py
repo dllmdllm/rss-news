@@ -17,7 +17,6 @@ import aiohttp
 from src.analyse import (
     MINIMAX_API_KEY,
     MINIMAX_MODEL,
-    _post_messages,
     _should_retry,
     _strip_fences,
 )
@@ -168,9 +167,8 @@ async def _digest_one(
         total_waited = 0.0
         for attempt in range(DIGEST_MAX_ATTEMPTS):
             try:
-                # Override the analyse module's per-article system prompt — a
-                # cluster digest needs a different schema. Manually invoke the
-                # underlying _post_messages with our prompt as the system block.
+                # Cluster digest needs a different system prompt than the
+                # per-article schema in analyse.py — call the API directly.
                 async with session.post(
                     "https://api.minimax.io/anthropic/v1/messages",
                     headers={
@@ -266,8 +264,7 @@ async def generate_panel_digests(articles: list) -> dict:
     if pending:
         sem = asyncio.Semaphore(DIGEST_CONCURRENCY)
         new_results: dict = {}
-        session_timeout = aiohttp.ClientTimeout(total=240, connect=20)
-        async with aiohttp.ClientSession(timeout=session_timeout) as session:
+        async with aiohttp.ClientSession() as session:
             tasks = [_digest_one(session, cid, members, sem, new_results)
                      for cid, members, _sig in pending]
             await asyncio.gather(*tasks)

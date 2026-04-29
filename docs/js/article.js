@@ -1,4 +1,3 @@
-    const _CAT_WL = new Set(["新聞", "國際", "娛樂", "消閒", "科技", "網媒"]);
     const _SENT_WL = new Set(["positive", "negative", "neutral"]);
 
     // Sanitize scraped HTML: strip scripts, event handlers, javascript: URLs.
@@ -566,7 +565,7 @@
         const sentLabel = { positive: "正面", negative: "負面", neutral: "中性" }[sent];
         const sentHtml  = `<span class="art-sentiment sent-${sent}" role="img" aria-label="情緒：${sentLabel}"><span class="sent-icon" aria-hidden="true">${SENT_ICON[sent]}</span>${sentLabel}</span>`;
 
-        const cat = _CAT_WL.has(art.category) ? art.category : "";
+        const cat = CAT_WL.has(art.category) ? art.category : "";
         if (cat) document.body.classList.add(`cat-${cat}`);
         const srcUrl = safeUrl(art.url);
         currentSourceUrl = srcUrl !== "#" ? srcUrl : "";
