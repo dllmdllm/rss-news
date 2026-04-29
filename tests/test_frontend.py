@@ -1000,7 +1000,7 @@ def test_article_page_has_related_section():
     assert "body.fs-2 .related-ai-summary" in html
     assert "相關新聞" in html
     assert "AI 綜合摘要" in html
-    assert "renderRelatedArticles(art, data.articles);" in source
+    assert "renderRelatedArticles(art, data.articles," in source
     assert "relatedSummaryHtml([current, ...rows.map(row => row.article)])" in source
     assert "summary.classList.toggle(\"show\")" in source
     assert "toggle.setAttribute(\"aria-expanded\", \"false\")" in source

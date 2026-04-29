@@ -5,3 +5,5 @@ zhconv==1.4.3
 beautifulsoup4==4.14.3
 python-dotenv==1.2.2
 cloudscraper==1.2.71
+sentence-transformers==3.4.1
+numpy

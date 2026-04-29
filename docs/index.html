@@ -462,6 +462,58 @@
     body.theme-light .panel-consensus-label { background: #d6f4dd; color: #16653b; }
     body.theme-light .panel-tension-label   { background: #fde4f1; color: #ab2d72; }
     body.theme-light .panel-angle-detail { color: #555; }
+    .panel-section-label {
+      display: inline-block; font-size: .72em; font-weight: 700;
+      padding: 1px 6px; border-radius: 3px; margin-bottom: 6px;
+      letter-spacing: .04em;
+    }
+    .panel-contradiction-label { background: rgba(239,68,68,.18); color: #fca5a5; }
+    .panel-timeline-label      { background: rgba(56,189,248,.18); color: #7dd3fc; }
+    .panel-contradiction-list, .panel-timeline-list {
+      list-style: none; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .panel-contradiction-item {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 6px 8px; border-left: 2px solid rgba(239,68,68,.4);
+      font-size: .84em; line-height: 1.45;
+    }
+    .panel-contradiction-type {
+      font-size: .72em; font-weight: 700; color: #fca5a5;
+      background: rgba(239,68,68,.12); padding: 1px 5px; border-radius: 3px;
+      align-self: flex-start;
+    }
+    .panel-contradiction-claims { display: flex; flex-direction: column; gap: 3px; }
+    .panel-contradiction-source {
+      font-weight: 700; color: var(--accent); margin-right: 3px;
+    }
+    .panel-contradiction-vs {
+      font-size: .75em; color: var(--muted); font-weight: 700; text-align: center;
+    }
+    .panel-timeline-item {
+      display: flex; gap: 10px; align-items: baseline;
+      padding: 4px 8px; border-left: 2px solid rgba(56,189,248,.4);
+      font-size: .84em; line-height: 1.45;
+    }
+    .panel-timeline-date {
+      flex-shrink: 0; font-weight: 700; color: #7dd3fc; font-size: .88em;
+    }
+    .panel-timeline-event { color: var(--text); }
+    .contradiction-badge {
+      display: inline-block; font-size: .72em; font-weight: 700;
+      padding: 1px 6px; border-radius: 3px; margin-left: 4px;
+      background: rgba(239,68,68,.18); color: #fca5a5;
+      cursor: default; letter-spacing: .02em;
+    }
+    body.theme-light .panel-contradiction-label { background: #fee2e2; color: #b91c1c; }
+    body.theme-light .panel-timeline-label      { background: #e0f2fe; color: #0369a1; }
+    body.theme-light .panel-contradiction-item  { border-left-color: rgba(220,38,38,.35); }
+    body.theme-light .panel-contradiction-type  { background: #fee2e2; color: #b91c1c; }
+    body.theme-light .panel-contradiction-source { color: #2563eb; }
+    body.theme-light .panel-contradiction-vs    { color: #888; }
+    body.theme-light .panel-timeline-item       { border-left-color: rgba(2,132,199,.35); }
+    body.theme-light .panel-timeline-date       { color: #0369a1; }
+    body.theme-light .contradiction-badge       { background: #fee2e2; color: #b91c1c; }
     body.theme-light .card-summary {
       color: #555;
       background: linear-gradient(90deg, #e0f7fa66, transparent);
@@ -727,5 +779,66 @@
   <script src="vendor/fuse.min.js"></script>
   <script src="js/common.js"></script>
   <script src="js/index.js"></script>
+  <script type="module">
+    // Semantic search engine — loads transformers.js + article embeddings in the
+    // background.  When ready, dispatches 'semantic-ready' on document and exposes
+    // window._semanticSearch(query, allowedSet) → Promise<string[] | null>.
+    import { pipeline, env }
+      from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js";
+    env.allowLocalModels = false;
+
+    let embedMatrix = null;   // Float32Array, length = n * dim
+    let embedIds    = [];
+    let embedDim    = 384;
+    let extractor   = null;
+
+    async function init() {
+      try {
+        const ts = Date.now();
+        const [embRes, metaRes] = await Promise.all([
+          fetch("data/embeddings.bin?" + ts),
+          fetch("data/embeddings_meta.json?" + ts),
+        ]);
+        if (!embRes.ok || !metaRes.ok) return;
+        const meta = await metaRes.json();
+        embedIds   = meta.ids  || [];
+        embedDim   = meta.dim  || 384;
+        embedMatrix = new Float32Array(await embRes.arrayBuffer());
+
+        extractor = await pipeline(
+          "feature-extraction",
+          "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+          { progress_callback: null }
+        );
+
+        window._semanticReady = true;
+        document.dispatchEvent(new CustomEvent("semantic-ready"));
+        const inp = document.getElementById("search");
+        if (inp && !inp.value.trim())
+          inp.placeholder = "搜尋… 語意已就緒，可搜同義詞";
+      } catch(e) {
+        console.warn("[semantic]", e);
+      }
+    }
+
+    window._semanticSearch = async function(query, allowedSet) {
+      if (!extractor || !embedMatrix || !embedIds.length) return null;
+      const out = await extractor(query, { pooling: "mean", normalize: true });
+      const qvec = out.data;    // Float32Array (dim,)
+      const n    = embedIds.length;
+      const hits = [];
+      for (let i = 0; i < n; i++) {
+        const off = i * embedDim;
+        let dot = 0;
+        for (let d = 0; d < embedDim; d++) dot += qvec[d] * embedMatrix[off + d];
+        if (dot > 0.25 && (!allowedSet || allowedSet.has(embedIds[i])))
+          hits.push({ id: embedIds[i], s: dot });
+      }
+      hits.sort((a, b) => b.s - a.s);
+      return hits.slice(0, 100).map(x => x.id);
+    };
+
+    init();
+  </script>
 </body>
 </html>

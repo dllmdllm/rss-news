@@ -325,10 +325,32 @@ const CATS = ["全部", ...CATEGORIES];
 
     // ── Search ────────────────────────────────────────────────────
     let searchQuery = "";
+    let _semCache   = {};    // query text → ordered id array
+    let _semTimer   = null;
+    let _semPending = null;  // query being encoded right now
+
+    async function _runSemantic(q) {
+      if (!window._semanticSearch) return;
+      const idSet = new Set(all.map(a => a.id));
+      const ids = await window._semanticSearch(q, idSet);
+      if (ids && q === searchQuery) {
+        _semCache[q] = ids;
+        renderFiltered();
+      }
+    }
+
+    document.addEventListener("semantic-ready", () => {
+      if (searchQuery) _runSemantic(searchQuery);
+    });
+
     document.getElementById("search").addEventListener("input", e => {
       searchQuery = e.target.value.trim();
       buildTopPicks();
       renderFiltered();
+      clearTimeout(_semTimer);
+      if (searchQuery && window._semanticReady) {
+        _semTimer = setTimeout(() => _runSemantic(searchQuery), 300);
+      }
     });
 
     function parseSearchQuery(query) {
@@ -736,11 +758,33 @@ const CATS = ["全部", ...CATEGORIES];
       const tension = d.tension
         ? `<div class="panel-tension"><span class="panel-tension-label">分歧</span> ${esc(d.tension)}</div>`
         : "";
+      const contradictionItems = (d.contradictions || []).map(c => `
+        <li class="panel-contradiction-item">
+          <span class="panel-contradiction-type">${esc(c.type || "矛盾")}</span>
+          <div class="panel-contradiction-claims">
+            <div><span class="panel-contradiction-source">${esc(c.source_a)}</span> ${esc(c.claim_a)}</div>
+            <div class="panel-contradiction-vs">vs</div>
+            <div><span class="panel-contradiction-source">${esc(c.source_b)}</span> ${esc(c.claim_b)}</div>
+          </div>
+        </li>`).join("");
+      const contradictionsHtml = contradictionItems
+        ? `<div class="panel-contradictions"><span class="panel-section-label panel-contradiction-label">⚠ 事實矛盾</span><ul class="panel-contradiction-list">${contradictionItems}</ul></div>`
+        : "";
+      const timelineItems = (d.timeline || []).map(t => `
+        <li class="panel-timeline-item">
+          <span class="panel-timeline-date">${esc(t.date || "")}</span>
+          <span class="panel-timeline-event">${esc(t.event || "")}</span>
+        </li>`).join("");
+      const timelineHtml = timelineItems
+        ? `<div class="panel-timeline"><span class="panel-section-label panel-timeline-label">時間軸</span><ul class="panel-timeline-list">${timelineItems}</ul></div>`
+        : "";
       return `<div class="panel-digest">
         ${d.headline ? `<div class="panel-headline">${esc(d.headline)}</div>` : ""}
         ${d.consensus ? `<div class="panel-consensus"><span class="panel-consensus-label">共識</span> ${esc(d.consensus)}</div>` : ""}
         ${angles ? `<ul class="panel-angles">${angles}</ul>` : ""}
         ${tension}
+        ${contradictionsHtml}
+        ${timelineHtml}
       </div>`;
     }
 
@@ -771,9 +815,16 @@ const CATS = ["全部", ...CATEGORIES];
       if (onlyImportant) list = list.filter(a => (Number(a.score) || 0) >= IMPORTANT_SCORE_MIN);
       list = applySearchOperators(list, parsedSearch);
       // search takes priority — override category/tag if query present
-      if (searchQuery && fuse) {
-        if (parsedSearch.text) {
-          const allowed = new Set(list.map(a => a.id));
+      if (searchQuery && parsedSearch.text) {
+        const allowed = new Set(list.map(a => a.id));
+        const semIds = _semCache[parsedSearch.text];
+        if (semIds) {
+          // Semantic results: reorder by similarity then append any allowed articles not in result.
+          const semSet = new Set(semIds);
+          const inSem  = semIds.filter(id => allowed.has(id)).map(id => all.find(a => a.id === id)).filter(Boolean);
+          const notSem = list.filter(a => !semSet.has(a.id));
+          list = [...inSem, ...notSem];
+        } else if (fuse) {
           list = fuse.search(parsedSearch.text).map(r => r.item).filter(a => allowed.has(a.id));
         }
       } else {
@@ -825,6 +876,9 @@ const CATS = ["全部", ...CATEGORIES];
         const isClusterStack = isCluster && !isExpandedCluster;
         const clusterBadge = isCluster
           ? `<span class="cluster-badge" onclick="event.preventDefault();event.stopPropagation();${isExpandedCluster ? "collapseCluster()" : `filterCluster('${cid}')`}">${Number(a.cluster_size)} 來源 · ${isExpandedCluster ? "點擊收起" : "點擊展開"}</span>` : "";
+        const hasContradiction = isCluster && cid && (panelDigests[cid]?.contradictions || []).length > 0;
+        const contradictionBadge = hasContradiction
+          ? `<span class="contradiction-badge" title="各來源有事實矛盾">⚠ 矛盾</span>` : "";
         const clusterSummaryButton = isClusterStack
           ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要"}</span>`
           : "";
@@ -864,7 +918,7 @@ const CATS = ["全部", ...CATEGORIES];
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
-              ${scoreBadge}${sentDot}${clusterBadge}${actionBar}
+              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${actionBar}
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>

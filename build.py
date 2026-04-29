@@ -33,6 +33,7 @@ from src.analyse import (
     looks_like_prompt_schema_summary,
 )
 from src.panel_digest import generate_panel_digests
+from src.embed import compute_embeddings
 
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
@@ -784,6 +785,9 @@ async def main():
 
     t = time.monotonic();  await generate_panel_digests(articles)
     print(f"[time] digest  {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic();  compute_embeddings(articles)
+    print(f"[time] embed   {time.monotonic()-t:.1f}s")
 
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles, source_stats)

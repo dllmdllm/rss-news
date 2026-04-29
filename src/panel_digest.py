@@ -33,7 +33,7 @@ DIGEST_MIN_PEAK_SCORE = 8         # clusters with at least one score >= this qua
 DIGEST_PER_CLUSTER_MAX = 25       # cap clusters per build to bound LLM cost
 
 PANEL_PROMPT = (
-    "你係一個新聞編輯助手。輸入係幾個媒體就同一件事嘅分別報導摘要，"
+    "你係一個新聞編輯助手。輸入係幾個媒體就同一件事嘅分別報導，"
     "請對比佢哋嘅角度、共識同分歧。"
     "輸出一個 JSON object，唔好有任何其他文字、markdown 或思考過程。\n"
     "格式：\n"
@@ -42,7 +42,13 @@ PANEL_PROMPT = (
     '"angles":['
     '{"label":"焦點短描述（唔超過12字）","sources":["來源A","來源B"],"detail":"呢啲來源點寫法（唔超過40字）"}'
     "]（最多 4 個 angle，至少 2 個）,"
-    '"tension":"分歧、矛盾或缺口（如有，唔超過60字；冇就空字串 \\"\\"）"}'
+    '"tension":"分歧、矛盾或缺口（如有，唔超過60字；冇就空字串 \\"\\"）",'
+    '"contradictions":['
+    '{"claim_a":"來源A嘅具體說法","source_a":"來源名稱","claim_b":"來源B嘅具體說法","source_b":"來源名稱","type":"數字|時間|人物|地點"}'
+    "]（若有可核實嘅事實矛盾就列出，最多 3 個；冇就空陣列 []）,"
+    '"timeline":['
+    '{"date":"YYYY-MM-DD","event":"事件描述（唔超過20字）"}'
+    "]（若報導日期橫跨兩日或以上就列出事件發展時間軸，最多 6 個；單日或日期不明就空陣列 []）}"
 )
 
 DIGEST_VERSION = "d-" + hashlib.md5(PANEL_PROMPT.encode("utf-8")).hexdigest()[:8]
@@ -103,7 +109,9 @@ def _format_member(member: dict, idx: int) -> str:
     summary = (member.get("summary") or "").replace("\n", " ").strip()
     title = member.get("title", "").strip()
     source = member.get("source", "").strip()
-    return f"### 第 {idx} 篇\n來源：{source}\n標題：{title}\n摘要：{summary}"
+    date = (member.get("date") or "")[:10]
+    date_str = f"（{date}）" if date else ""
+    return f"### 第 {idx} 篇\n來源：{source}{date_str}\n標題：{title}\n摘要：{summary}"
 
 
 def _normalise_digest(data) -> dict | None:
@@ -129,14 +137,45 @@ def _normalise_digest(data) -> dict | None:
                 continue
             angles.append({"label": label, "sources": sources, "detail": detail})
 
+    contradictions_raw = data.get("contradictions") or []
+    contradictions = []
+    if isinstance(contradictions_raw, list):
+        for item in contradictions_raw[:3]:
+            if not isinstance(item, dict):
+                continue
+            claim_a  = re.sub(r"\s+", " ", str(item.get("claim_a")  or "")).strip()[:100]
+            source_a = re.sub(r"\s+", " ", str(item.get("source_a") or "")).strip()[:20]
+            claim_b  = re.sub(r"\s+", " ", str(item.get("claim_b")  or "")).strip()[:100]
+            source_b = re.sub(r"\s+", " ", str(item.get("source_b") or "")).strip()[:20]
+            ctype    = re.sub(r"\s+", " ", str(item.get("type")     or "")).strip()[:10]
+            if claim_a and source_a and claim_b and source_b:
+                contradictions.append({
+                    "claim_a": claim_a, "source_a": source_a,
+                    "claim_b": claim_b, "source_b": source_b,
+                    "type": ctype,
+                })
+
+    timeline_raw = data.get("timeline") or []
+    timeline = []
+    if isinstance(timeline_raw, list):
+        for item in timeline_raw[:6]:
+            if not isinstance(item, dict):
+                continue
+            date  = re.sub(r"\s+", "", str(item.get("date")  or ""))[:10]
+            event = re.sub(r"\s+", " ", str(item.get("event") or "")).strip()[:40]
+            if date and event:
+                timeline.append({"date": date, "event": event})
+
     if not headline or len(angles) < 2:
         return None
     return {
-        "headline": headline,
-        "consensus": consensus,
-        "angles": angles,
-        "tension": tension,
-        "version": DIGEST_VERSION,
+        "headline":       headline,
+        "consensus":      consensus,
+        "angles":         angles,
+        "tension":        tension,
+        "contradictions": contradictions,
+        "timeline":       timeline,
+        "version":        DIGEST_VERSION,
     }
 
 
@@ -178,7 +217,7 @@ async def _digest_one(
                     },
                     json={
                         "model":      MINIMAX_MODEL,
-                        "max_tokens": 800,
+                        "max_tokens": 1100,
                         "system":     PANEL_PROMPT,
                         "messages":   [{"role": "user", "content": user}],
                     },

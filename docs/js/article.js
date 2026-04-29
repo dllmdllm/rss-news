@@ -305,13 +305,30 @@
         <div class="related-source-list">${sourceRows}</div>`;
     }
 
-    function renderRelatedArticles(current, articles) {
+    function renderRelatedArticles(current, articles, similarIds = []) {
       const section = document.getElementById("related-section");
       const list = document.getElementById("related-list");
       const toggle = document.getElementById("related-toggle");
       const summary = document.getElementById("related-ai-summary");
       if (!section || !list || !toggle || !summary) return;
-      const rows = relatedArticles(current, articles);
+
+      // If we have pre-computed similar ids, boost them to the front.
+      let rows;
+      if (similarIds.length) {
+        const articleById = new Map(articles.map(a => [a.id, a]));
+        const simArts = similarIds
+          .map(id => articleById.get(id))
+          .filter(a => a && a.id !== current.id)
+          .slice(0, 4)
+          .map(a => ({ article: a, reasons: ["語意相似"], score: 10 }));
+        const simSet = new Set(simArts.map(r => r.article.id));
+        const other = relatedArticles(current, articles)
+          .filter(r => !simSet.has(r.article.id))
+          .slice(0, Math.max(0, 6 - simArts.length));
+        rows = [...simArts, ...other];
+      } else {
+        rows = relatedArticles(current, articles);
+      }
       if (!rows.length) {
         section.style.display = "none";
         list.innerHTML = "";
@@ -528,10 +545,16 @@
         // Fetch metadata + content in parallel. Content lives in a
         // per-article file (data/content/{id}.json) so the index payload
         // stays small.
-        const [metaRes, contentRes] = await Promise.all([
-          fetch("data/articles.json?" + Date.now()),
-          fetch("data/content/" + encodeURIComponent(id) + ".json?" + Date.now()),
+        const ts = Date.now();
+        const [metaRes, contentRes, simRes] = await Promise.all([
+          fetch("data/articles.json?" + ts),
+          fetch("data/content/" + encodeURIComponent(id) + ".json?" + ts),
+          fetch("data/similar.json?" + ts).catch(() => null),
         ]);
+        let similarMap = {};
+        if (simRes && simRes.ok) {
+          try { similarMap = await simRes.json(); } catch (_) {}
+        }
         const data = await metaRes.json();
         const art  = data.articles.find(a => a.id === id);
         if (!art) { location.href = "index.html"; return; }
@@ -634,7 +657,7 @@
 
         document.getElementById("loading").style.display = "none";
         document.getElementById("art-body").style.display = "block";
-        renderRelatedArticles(art, data.articles);
+        renderRelatedArticles(art, data.articles, similarMap[id] || []);
         setupReadProgress();
         setupSwipeNav();
         setupTts();
