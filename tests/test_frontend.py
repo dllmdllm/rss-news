@@ -60,6 +60,14 @@ def test_graph_container_does_not_use_transform_animation():
     assert "animation" not in body
 
 
+def test_graph_uses_saved_font_size_for_sidebar_and_nodes():
+    source = (ROOT / "docs" / "graph.html").read_text(encoding="utf-8")
+    assert 'localStorage.getItem("fontSize")' in source
+    assert 'document.body.classList.add("fs-" + fs)' in source
+    assert "body.fs-2 .sidebar-articles a" in source
+    assert "graphScale = [1, 1.18, 1.38][fsLevel]" in source
+
+
 def test_index_bootstrap_renders_articles_without_runtime_error():
     node = _require_node()
     js = textwrap.dedent(
