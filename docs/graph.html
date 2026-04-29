@@ -347,9 +347,17 @@
           },
         });
 
-        cy.on("tap", "node", evt => showNodeDetail(evt.target));
-        cy.on("tap", "edge", evt => showEdgeDetail(evt.target));
+        console.log("[graph] cytoscape ready, attaching tap handlers");
+        cy.on("tap", "node", evt => {
+          console.log("[graph] node tap:", evt.target.id());
+          showNodeDetail(evt.target);
+        });
+        cy.on("tap", "edge", evt => {
+          console.log("[graph] edge tap:", evt.target.id());
+          showEdgeDetail(evt.target);
+        });
         cy.on("tap", evt => {
+          console.log("[graph] tap on", evt.target === cy ? "cy/empty" : evt.target.id());
           if (evt.target === cy) {
             document.getElementById("sidebar").classList.remove("show");
           }
@@ -377,30 +385,30 @@
         });
 
         let driftPaused = false;
-        let cursorOver = false;
+        let wasHovering = false;
         document.addEventListener("visibilitychange", () => {
           driftPaused = document.hidden;
         });
-        // Desktop click 要 mousedown 同 mouseup 都落喺同一個 node。若飄動
-        // 喺 hit-test 嗰刻將 node 錯位幾 px，cytoscape 就會當你 click 咗
-        // 空白。最穩妥：cursor 一入 cy 範圍即時凍結所有 node，cursor 離開
-        // 先恢復飄動。手機冇 hover 概念，照舊飄。
+        // 之前用 mouseenter / mouseleave 追 cursor 位置。問題：頁面載入時
+        // cursor 可能已經喺 cy 範圍內（隨機 mouse 位置），mouseenter 唔會
+        // 補 fire，cursorOver 永遠係 false，drift 繼續跑令 click hit-test
+        // 失敗。改用每幀直接查 :hover pseudo-class — 100% 真實，冇 race。
         const cyEl = document.getElementById("cy");
-        cyEl.addEventListener("mouseenter", () => { cursorOver = true; });
-        cyEl.addEventListener("mouseleave", () => {
-          cursorOver = false;
-          // cursor 離開時 snap 返 home，避免下次入嚟見到 node 喺奇怪位。
-          if (!cy) return;
-          cy.batch(() => {
-            cy.nodes().forEach(n => {
-              const home = homes.get(n.id());
-              if (home) n.position({ x: home.x, y: home.y });
-            });
-          });
-        });
 
         function drift() {
-          if (cy && !driftPaused && !cursorOver) {
+          const isHovering = cyEl.matches(":hover");
+          // 由 hovering 變 not-hovering 嘅一刻 snap 返 home，避免見到節點停喺奇怪位。
+          if (wasHovering && !isHovering && cy) {
+            cy.batch(() => {
+              cy.nodes().forEach(n => {
+                const home = homes.get(n.id());
+                if (home) n.position({ x: home.x, y: home.y });
+              });
+            });
+          }
+          wasHovering = isHovering;
+
+          if (cy && !driftPaused && !isHovering) {
             const t = performance.now() / 1000;
             cy.batch(() => {
               cy.nodes().forEach(n => {
