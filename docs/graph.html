@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#7c6af7">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/categories.css">
   <title>News Pulse · 知識圖譜</title>
   <style>
     :root {
@@ -121,20 +122,11 @@
     .sidebar-articles a:hover {
       border-color: var(--border); background: var(--bg);
     }
-    /* dark theme — 相關文章底色跟分類 */
-    .sidebar-articles a[data-cat="新聞"] { background: rgba(232, 124, 124, 0.12); border-color: rgba(232, 124, 124, 0.35); }
-    .sidebar-articles a[data-cat="國際"] { background: rgba(124, 180, 232, 0.12); border-color: rgba(124, 180, 232, 0.35); }
-    .sidebar-articles a[data-cat="娛樂"] { background: rgba(232, 124, 200, 0.12); border-color: rgba(232, 124, 200, 0.35); }
-    .sidebar-articles a[data-cat="消閒"] { background: rgba(124, 232, 144, 0.12); border-color: rgba(124, 232, 144, 0.35); }
-    .sidebar-articles a[data-cat="科技"] { background: rgba(232, 184, 124, 0.12); border-color: rgba(232, 184, 124, 0.35); }
-    .sidebar-articles a[data-cat="網媒"] { background: rgba(184, 124, 232, 0.12); border-color: rgba(184, 124, 232, 0.35); }
-    /* light theme */
-    body.theme-light .sidebar-articles a[data-cat="新聞"] { background: rgba(185, 74, 74, 0.08); border-color: rgba(185, 74, 74, 0.28); }
-    body.theme-light .sidebar-articles a[data-cat="國際"] { background: rgba(47, 115, 168, 0.08); border-color: rgba(47, 115, 168, 0.28); }
-    body.theme-light .sidebar-articles a[data-cat="娛樂"] { background: rgba(182, 70, 134, 0.08); border-color: rgba(182, 70, 134, 0.28); }
-    body.theme-light .sidebar-articles a[data-cat="消閒"] { background: rgba(50, 135, 70, 0.08); border-color: rgba(50, 135, 70, 0.28); }
-    body.theme-light .sidebar-articles a[data-cat="科技"] { background: rgba(163, 106, 34, 0.08); border-color: rgba(163, 106, 34, 0.28); }
-    body.theme-light .sidebar-articles a[data-cat="網媒"] { background: rgba(125, 74, 176, 0.08); border-color: rgba(125, 74, 176, 0.28); }
+    /* 底色跟分類，--cat-rgb 由 [data-cat] 注入（見 css/categories.css）。 */
+    .sidebar-articles a[data-cat] {
+      background: rgb(var(--cat-rgb) / var(--cat-bg-alpha));
+      border-color: rgb(var(--cat-rgb) / var(--cat-border-alpha));
+    }
     body.fs-0 .sidebar-name { font-size: 1.05rem; }
     body.fs-0 .sidebar-stat { font-size: .82rem; }
     body.fs-0 .sidebar-articles a { font-size: .82rem; }

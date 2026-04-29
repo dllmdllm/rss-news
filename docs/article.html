@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#7c6af7">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/categories.css">
   <title>文章</title>
   <style>
     :root {
@@ -207,53 +208,20 @@
       padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
       color: var(--summary-text); line-height: 1.6; white-space: pre-line;
     }
-    /* AI-picked key sentences inside the article body — highlight 跟住分類顏色。 */
+    /* AI-picked key sentences — highlight 跟分類顏色（fallback 紫色 = --accent）。
+       --cat-rgb / --cat-key-alpha 由 css/categories.css 定義。 */
     mark.ai-key {
-      background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.34) 55%);
+      background: linear-gradient(180deg, transparent 55%,
+        rgb(var(--cat-rgb, 124 106 247) / var(--cat-key-alpha)) 55%);
       color: inherit; padding: 0 1px; border-radius: 2px;
     }
-    body.theme-light mark.ai-key {
-      background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.22) 55%);
+    /* 相關文章區塊底色亦跟分類顏色（只喺 body 有 cat-* class 時生效）。 */
+    :is(body.cat-新聞, body.cat-國際, body.cat-娛樂,
+        body.cat-消閒, body.cat-科技, body.cat-網媒)
+        :is(.related-card, .related-ai-summary) {
+      background: rgb(var(--cat-rgb) / var(--cat-bg-alpha));
+      border-color: rgb(var(--cat-rgb) / var(--cat-border-alpha));
     }
-    /* dark theme — 用對應分類 RGB + alpha */
-    body.cat-新聞 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 124, 124, 0.38) 55%); }
-    body.cat-國際 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(124, 180, 232, 0.38) 55%); }
-    body.cat-娛樂 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 124, 200, 0.38) 55%); }
-    body.cat-消閒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(124, 232, 144, 0.38) 55%); }
-    body.cat-科技 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 184, 124, 0.38) 55%); }
-    body.cat-網媒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(184, 124, 232, 0.38) 55%); }
-    /* light theme — 對應 .art-cat 嘅較深字色 */
-    body.theme-light.cat-新聞 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(185, 74, 74, 0.26) 55%); }
-    body.theme-light.cat-國際 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(47, 115, 168, 0.26) 55%); }
-    body.theme-light.cat-娛樂 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(182, 70, 134, 0.26) 55%); }
-    body.theme-light.cat-消閒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(50, 135, 70, 0.26) 55%); }
-    body.theme-light.cat-科技 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(163, 106, 34, 0.26) 55%); }
-    body.theme-light.cat-網媒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(125, 74, 176, 0.26) 55%); }
-    /* related news cards — 底色亦跟分類顏色 */
-    body.cat-新聞 .related-card { background: rgba(232, 124, 124, 0.12); border-color: rgba(232, 124, 124, 0.35); }
-    body.cat-國際 .related-card { background: rgba(124, 180, 232, 0.12); border-color: rgba(124, 180, 232, 0.35); }
-    body.cat-娛樂 .related-card { background: rgba(232, 124, 200, 0.12); border-color: rgba(232, 124, 200, 0.35); }
-    body.cat-消閒 .related-card { background: rgba(124, 232, 144, 0.12); border-color: rgba(124, 232, 144, 0.35); }
-    body.cat-科技 .related-card { background: rgba(232, 184, 124, 0.12); border-color: rgba(232, 184, 124, 0.35); }
-    body.cat-網媒 .related-card { background: rgba(184, 124, 232, 0.12); border-color: rgba(184, 124, 232, 0.35); }
-    body.theme-light.cat-新聞 .related-card { background: rgba(185, 74, 74, 0.08); border-color: rgba(185, 74, 74, 0.28); }
-    body.theme-light.cat-國際 .related-card { background: rgba(47, 115, 168, 0.08); border-color: rgba(47, 115, 168, 0.28); }
-    body.theme-light.cat-娛樂 .related-card { background: rgba(182, 70, 134, 0.08); border-color: rgba(182, 70, 134, 0.28); }
-    body.theme-light.cat-消閒 .related-card { background: rgba(50, 135, 70, 0.08); border-color: rgba(50, 135, 70, 0.28); }
-    body.theme-light.cat-科技 .related-card { background: rgba(163, 106, 34, 0.08); border-color: rgba(163, 106, 34, 0.28); }
-    body.theme-light.cat-網媒 .related-card { background: rgba(125, 74, 176, 0.08); border-color: rgba(125, 74, 176, 0.28); }
-    body.cat-新聞 .related-ai-summary { background: rgba(232, 124, 124, 0.12); border-color: rgba(232, 124, 124, 0.35); }
-    body.cat-國際 .related-ai-summary { background: rgba(124, 180, 232, 0.12); border-color: rgba(124, 180, 232, 0.35); }
-    body.cat-娛樂 .related-ai-summary { background: rgba(232, 124, 200, 0.12); border-color: rgba(232, 124, 200, 0.35); }
-    body.cat-消閒 .related-ai-summary { background: rgba(124, 232, 144, 0.12); border-color: rgba(124, 232, 144, 0.35); }
-    body.cat-科技 .related-ai-summary { background: rgba(232, 184, 124, 0.12); border-color: rgba(232, 184, 124, 0.35); }
-    body.cat-網媒 .related-ai-summary { background: rgba(184, 124, 232, 0.12); border-color: rgba(184, 124, 232, 0.35); }
-    body.theme-light.cat-新聞 .related-ai-summary { background: rgba(185, 74, 74, 0.08); border-color: rgba(185, 74, 74, 0.28); }
-    body.theme-light.cat-國際 .related-ai-summary { background: rgba(47, 115, 168, 0.08); border-color: rgba(47, 115, 168, 0.28); }
-    body.theme-light.cat-娛樂 .related-ai-summary { background: rgba(182, 70, 134, 0.08); border-color: rgba(182, 70, 134, 0.28); }
-    body.theme-light.cat-消閒 .related-ai-summary { background: rgba(50, 135, 70, 0.08); border-color: rgba(50, 135, 70, 0.28); }
-    body.theme-light.cat-科技 .related-ai-summary { background: rgba(163, 106, 34, 0.08); border-color: rgba(163, 106, 34, 0.28); }
-    body.theme-light.cat-網媒 .related-ai-summary { background: rgba(125, 74, 176, 0.08); border-color: rgba(125, 74, 176, 0.28); }
     .summary-label {
       display: block; font-size: .72rem; color: var(--accent);
       font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;

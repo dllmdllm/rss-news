@@ -1,0 +1,31 @@
+/* Centralised category-colour palette.
+   Opt-in selectors:
+     body.cat-<name>            — article view, whole page is one category
+     element[data-cat="<name>"] — lists where each item is a different category
+   Both set the same --cat-rgb custom property; consumers derive colours via
+   rgb(var(--cat-rgb) / var(--cat-*-alpha)). */
+
+:root {
+  --cat-bg-alpha: 0.12;
+  --cat-border-alpha: 0.35;
+  --cat-key-alpha: 0.38;
+}
+body.theme-light {
+  --cat-bg-alpha: 0.08;
+  --cat-border-alpha: 0.28;
+  --cat-key-alpha: 0.26;
+}
+
+body.cat-新聞, [data-cat="新聞"] { --cat-rgb: 232 124 124; }
+body.cat-國際, [data-cat="國際"] { --cat-rgb: 124 180 232; }
+body.cat-娛樂, [data-cat="娛樂"] { --cat-rgb: 232 124 200; }
+body.cat-消閒, [data-cat="消閒"] { --cat-rgb: 124 232 144; }
+body.cat-科技, [data-cat="科技"] { --cat-rgb: 232 184 124; }
+body.cat-網媒, [data-cat="網媒"] { --cat-rgb: 184 124 232; }
+
+body.theme-light.cat-新聞, body.theme-light [data-cat="新聞"] { --cat-rgb: 185 74 74; }
+body.theme-light.cat-國際, body.theme-light [data-cat="國際"] { --cat-rgb: 47 115 168; }
+body.theme-light.cat-娛樂, body.theme-light [data-cat="娛樂"] { --cat-rgb: 182 70 134; }
+body.theme-light.cat-消閒, body.theme-light [data-cat="消閒"] { --cat-rgb: 50 135 70; }
+body.theme-light.cat-科技, body.theme-light [data-cat="科技"] { --cat-rgb: 163 106 34; }
+body.theme-light.cat-網媒, body.theme-light [data-cat="網媒"] { --cat-rgb: 125 74 176; }
