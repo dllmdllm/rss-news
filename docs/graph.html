@@ -62,20 +62,32 @@
     #cy {
       flex: 1; background: var(--bg); min-height: 0;
       touch-action: none;
-      animation: graphFloat 14s ease-in-out infinite;
-      will-change: transform;
+      position: relative;
+      overflow: hidden;
     }
-    /* 整體輕微浮動 — CSS transform 經 getBoundingClientRect 同步畀 cytoscape 嘅
-       hit-test，click 唔受影響。比起 JS 改 node positions 安全得多。 */
-    @keyframes graphFloat {
-      0%   { transform: translate(0px, 0px); }
-      20%  { transform: translate(2.5px, -2px); }
-      40%  { transform: translate(-1px, 2.5px); }
-      60%  { transform: translate(-2.5px, -1.5px); }
-      80%  { transform: translate(1.5px, 2px); }
-      100% { transform: translate(0px, 0px); }
+    #cy::before {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 28%),
+        radial-gradient(circle at 80% 70%, color-mix(in srgb, #67e8f9 12%, transparent), transparent 26%);
+      animation: graphGlow 18s ease-in-out infinite;
+      opacity: .55;
+      z-index: 0;
     }
-    @media (prefers-reduced-motion: reduce) { #cy { animation: none; } }
+    #cy > canvas {
+      position: relative;
+      z-index: 1;
+    }
+    /* Keep transforms off #cy itself. Cytoscape uses the container rect for
+       mouse hit-testing, and animated transforms can desync desktop clicks. */
+    @keyframes graphGlow {
+      0%, 100% { opacity: .45; }
+      50%      { opacity: .7; }
+    }
+    @media (prefers-reduced-motion: reduce) { #cy::before { animation: none; } }
     .sidebar {
       width: 320px; max-width: 40vw;
       background: var(--surface); border-left: 1px solid var(--border);
@@ -227,6 +239,7 @@
       document.getElementById("sidebar-stat").textContent = `出現喺 ${data.count} 篇文章`;
       document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
       document.getElementById("sidebar").classList.add("show");
+      requestAnimationFrame(() => cy?.resize());
     }
 
     function showEdgeDetail(edge) {
@@ -238,6 +251,7 @@
       document.getElementById("sidebar-stat").textContent = `共出現喺 ${data.weight} 篇文章`;
       document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
       document.getElementById("sidebar").classList.add("show");
+      requestAnimationFrame(() => cy?.resize());
     }
 
     function applyFilter() {
@@ -373,6 +387,7 @@
           console.log("[graph] tap on", evt.target === cy ? "cy/empty" : evt.target.id());
           if (evt.target === cy) {
             document.getElementById("sidebar").classList.remove("show");
+            requestAnimationFrame(() => cy?.resize());
           }
         });
 
@@ -398,6 +413,7 @@
 
     document.getElementById("sidebar-close").addEventListener("click", () => {
       document.getElementById("sidebar").classList.remove("show");
+      requestAnimationFrame(() => cy?.resize());
     });
 
     load();

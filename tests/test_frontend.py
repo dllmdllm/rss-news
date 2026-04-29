@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import textwrap
@@ -48,6 +49,15 @@ def test_frontend_javascript_syntax(script):
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_graph_container_does_not_use_transform_animation():
+    source = (ROOT / "docs" / "graph.html").read_text(encoding="utf-8")
+    cy_rule = re.search(r"#cy\s*\{(?P<body>.*?)\n\s*\}", source, re.S)
+    assert cy_rule, "#cy rule missing"
+    body = cy_rule.group("body")
+    assert "transform" not in body
+    assert "animation" not in body
 
 
 def test_index_bootstrap_renders_articles_without_runtime_error():
