@@ -207,7 +207,7 @@
       padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
       color: var(--summary-text); line-height: 1.6; white-space: pre-line;
     }
-    /* AI-picked key sentences inside the article body. */
+    /* AI-picked key sentences inside the article body — highlight 跟住分類顏色。 */
     mark.ai-key {
       background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.34) 55%);
       color: inherit; padding: 0 1px; border-radius: 2px;
@@ -215,6 +215,20 @@
     body.theme-light mark.ai-key {
       background: linear-gradient(180deg, transparent 55%, rgba(124, 106, 247, 0.22) 55%);
     }
+    /* dark theme — 用對應分類 RGB + alpha */
+    body.cat-新聞 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 124, 124, 0.38) 55%); }
+    body.cat-國際 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(124, 180, 232, 0.38) 55%); }
+    body.cat-娛樂 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 124, 200, 0.38) 55%); }
+    body.cat-消閒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(124, 232, 144, 0.38) 55%); }
+    body.cat-科技 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(232, 184, 124, 0.38) 55%); }
+    body.cat-網媒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(184, 124, 232, 0.38) 55%); }
+    /* light theme — 對應 .art-cat 嘅較深字色 */
+    body.theme-light.cat-新聞 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(185, 74, 74, 0.26) 55%); }
+    body.theme-light.cat-國際 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(47, 115, 168, 0.26) 55%); }
+    body.theme-light.cat-娛樂 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(182, 70, 134, 0.26) 55%); }
+    body.theme-light.cat-消閒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(50, 135, 70, 0.26) 55%); }
+    body.theme-light.cat-科技 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(163, 106, 34, 0.26) 55%); }
+    body.theme-light.cat-網媒 mark.ai-key { background: linear-gradient(180deg, transparent 55%, rgba(125, 74, 176, 0.26) 55%); }
     .summary-label {
       display: block; font-size: .72rem; color: var(--accent);
       font-weight: 700; margin-bottom: 6px; letter-spacing: .05em;

@@ -229,6 +229,20 @@
       return articleIndex.get(id);
     }
 
+    function relativeTime(iso) {
+      if (!iso) return "";
+      const diff = Date.now() - new Date(iso).getTime();
+      if (!isFinite(diff) || diff < 0) return "";
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return "剛剛";
+      if (min < 60) return `${min} 分鐘前`;
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return `${hr} 小時前`;
+      const day = Math.floor(hr / 24);
+      if (day < 30) return `${day} 日前`;
+      return "";  // 超過一個月就唔顯示相對時間，只顯示絕對日期
+    }
+
     function renderArticleLinks(ids) {
       const items = ids.map(lookupArticle).filter(Boolean);
       if (!items.length) return '<div class="sidebar-stat">無相關文章</div>';
@@ -236,13 +250,15 @@
         const date = a.date
           ? new Date(a.date).toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" })
           : "";
+        const rel = relativeTime(a.date);
+        const dateStr = rel ? `${date} · ${rel}` : date;
         const safeTitle = String(a.title || "").replace(/[<>&"']/g, c =>
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
         const safeSource = String(a.source || "").replace(/[<>&"']/g, c =>
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
         return `<a href="article.html?id=${encodeURIComponent(a.id)}">
           <div>${safeTitle}</div>
-          <div class="sidebar-article-meta" style="color:var(--muted);margin-top:2px">${safeSource} · ${date}</div>
+          <div class="sidebar-article-meta" style="color:var(--muted);margin-top:2px">${safeSource} · ${dateStr}</div>
         </a>`;
       }).join("");
     }

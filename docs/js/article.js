@@ -567,6 +567,7 @@
         const sentHtml  = `<span class="art-sentiment sent-${sent}" role="img" aria-label="情緒：${sentLabel}"><span class="sent-icon" aria-hidden="true">${SENT_ICON[sent]}</span>${sentLabel}</span>`;
 
         const cat = _CAT_WL.has(art.category) ? art.category : "";
+        if (cat) document.body.classList.add(`cat-${cat}`);
         const srcUrl = safeUrl(art.url);
         currentSourceUrl = srcUrl !== "#" ? srcUrl : "";
         const readMin = estimateReadMinutes(art);
