@@ -377,20 +377,30 @@
         });
 
         let driftPaused = false;
-        let pointerDown = false;
+        let cursorOver = false;
         document.addEventListener("visibilitychange", () => {
           driftPaused = document.hidden;
         });
         // Desktop click 要 mousedown 同 mouseup 都落喺同一個 node。若飄動
-        // 喺呢兩個事件之間移走咗 node，cytoscape hit-test 會失敗 tap 唔觸發。
-        // tapstart→tapend 期間鎖住節點位置即可。
-        cy.on("tapstart", () => { pointerDown = true; });
-        cy.on("tapend", () => {
-          setTimeout(() => { pointerDown = false; }, 60);
+        // 喺 hit-test 嗰刻將 node 錯位幾 px，cytoscape 就會當你 click 咗
+        // 空白。最穩妥：cursor 一入 cy 範圍即時凍結所有 node，cursor 離開
+        // 先恢復飄動。手機冇 hover 概念，照舊飄。
+        const cyEl = document.getElementById("cy");
+        cyEl.addEventListener("mouseenter", () => { cursorOver = true; });
+        cyEl.addEventListener("mouseleave", () => {
+          cursorOver = false;
+          // cursor 離開時 snap 返 home，避免下次入嚟見到 node 喺奇怪位。
+          if (!cy) return;
+          cy.batch(() => {
+            cy.nodes().forEach(n => {
+              const home = homes.get(n.id());
+              if (home) n.position({ x: home.x, y: home.y });
+            });
+          });
         });
 
         function drift() {
-          if (cy && !driftPaused && !pointerDown) {
+          if (cy && !driftPaused && !cursorOver) {
             const t = performance.now() / 1000;
             cy.batch(() => {
               cy.nodes().forEach(n => {
