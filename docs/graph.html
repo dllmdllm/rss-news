@@ -377,12 +377,20 @@
         });
 
         let driftPaused = false;
+        let pointerDown = false;
         document.addEventListener("visibilitychange", () => {
           driftPaused = document.hidden;
         });
+        // Desktop click 要 mousedown 同 mouseup 都落喺同一個 node。若飄動
+        // 喺呢兩個事件之間移走咗 node，cytoscape hit-test 會失敗 tap 唔觸發。
+        // tapstart→tapend 期間鎖住節點位置即可。
+        cy.on("tapstart", () => { pointerDown = true; });
+        cy.on("tapend", () => {
+          setTimeout(() => { pointerDown = false; }, 60);
+        });
 
         function drift() {
-          if (cy && !driftPaused) {
+          if (cy && !driftPaused && !pointerDown) {
             const t = performance.now() / 1000;
             cy.batch(() => {
               cy.nodes().forEach(n => {
