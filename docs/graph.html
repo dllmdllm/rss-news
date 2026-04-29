@@ -121,6 +121,20 @@
     .sidebar-articles a:hover {
       border-color: var(--border); background: var(--bg);
     }
+    /* dark theme — 相關文章底色跟分類 */
+    .sidebar-articles a[data-cat="新聞"] { background: rgba(232, 124, 124, 0.12); border-color: rgba(232, 124, 124, 0.35); }
+    .sidebar-articles a[data-cat="國際"] { background: rgba(124, 180, 232, 0.12); border-color: rgba(124, 180, 232, 0.35); }
+    .sidebar-articles a[data-cat="娛樂"] { background: rgba(232, 124, 200, 0.12); border-color: rgba(232, 124, 200, 0.35); }
+    .sidebar-articles a[data-cat="消閒"] { background: rgba(124, 232, 144, 0.12); border-color: rgba(124, 232, 144, 0.35); }
+    .sidebar-articles a[data-cat="科技"] { background: rgba(232, 184, 124, 0.12); border-color: rgba(232, 184, 124, 0.35); }
+    .sidebar-articles a[data-cat="網媒"] { background: rgba(184, 124, 232, 0.12); border-color: rgba(184, 124, 232, 0.35); }
+    /* light theme */
+    body.theme-light .sidebar-articles a[data-cat="新聞"] { background: rgba(185, 74, 74, 0.08); border-color: rgba(185, 74, 74, 0.28); }
+    body.theme-light .sidebar-articles a[data-cat="國際"] { background: rgba(47, 115, 168, 0.08); border-color: rgba(47, 115, 168, 0.28); }
+    body.theme-light .sidebar-articles a[data-cat="娛樂"] { background: rgba(182, 70, 134, 0.08); border-color: rgba(182, 70, 134, 0.28); }
+    body.theme-light .sidebar-articles a[data-cat="消閒"] { background: rgba(50, 135, 70, 0.08); border-color: rgba(50, 135, 70, 0.28); }
+    body.theme-light .sidebar-articles a[data-cat="科技"] { background: rgba(163, 106, 34, 0.08); border-color: rgba(163, 106, 34, 0.28); }
+    body.theme-light .sidebar-articles a[data-cat="網媒"] { background: rgba(125, 74, 176, 0.08); border-color: rgba(125, 74, 176, 0.28); }
     body.fs-0 .sidebar-name { font-size: 1.05rem; }
     body.fs-0 .sidebar-stat { font-size: .82rem; }
     body.fs-0 .sidebar-articles a { font-size: .82rem; }
@@ -243,6 +257,7 @@
       return "";  // 超過一個月就唔顯示相對時間，只顯示絕對日期
     }
 
+    const _CAT_WL = new Set(["新聞","國際","娛樂","消閒","科技","網媒"]);
     function renderArticleLinks(ids) {
       const items = ids.map(lookupArticle).filter(Boolean);
       if (!items.length) return '<div class="sidebar-stat">無相關文章</div>';
@@ -256,7 +271,8 @@
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
         const safeSource = String(a.source || "").replace(/[<>&"']/g, c =>
           ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
-        return `<a href="article.html?id=${encodeURIComponent(a.id)}">
+        const catAttr = _CAT_WL.has(a.category) ? ` data-cat="${a.category}"` : "";
+        return `<a href="article.html?id=${encodeURIComponent(a.id)}"${catAttr}>
           <div>${safeTitle}</div>
           <div class="sidebar-article-meta" style="color:var(--muted);margin-top:2px">${safeSource} · ${dateStr}</div>
         </a>`;
@@ -313,6 +329,7 @@
         articleIndex = new Map(
           (articlesData.articles || []).map(a => [a.id, {
             id: a.id, title: a.title, source: a.source, date: a.date,
+            category: a.category,
           }])
         );
 
