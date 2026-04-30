@@ -89,11 +89,15 @@ async def _send_telegram(session: aiohttp.ClientSession, text: str) -> int:
 
 async def send_breaking_alerts(articles: list) -> None:
     """Alert Telegram for newly-detected breaking clusters."""
+    state = _load_state()
+
     if not TELEGRAM_BOT_TOKEN:
+        _save_state(state)   # ensure the file always exists
         return
 
     breaking = detect_breaking_clusters(articles)
     if not breaking:
+        _save_state(state)   # ensure the file always exists
         return
 
     state   = _load_state()
