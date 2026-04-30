@@ -844,6 +844,7 @@ const CATS = ["全部", ...CATEGORIES];
       kbIndex = -1;
       currentRenderArticles = articles;
       const grid  = document.getElementById("grid");
+      const savedScrollY = window.scrollY;
       const isMobileCard = window.matchMedia?.("(max-width: 640px)")?.matches;
       const reads = getRead();
       const bookmarks = getBookmarks();
@@ -928,6 +929,7 @@ const CATS = ["全部", ...CATEGORIES];
           </div>
         </a>`;
       }).join("");
+      if (typeof window.scrollTo === "function") window.scrollTo({ top: savedScrollY, behavior: "instant" });
     }
     registerServiceWorker();
 
