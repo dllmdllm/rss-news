@@ -34,6 +34,8 @@ from src.analyse import (
 )
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
+from src.breaking_alert import send_breaking_alerts
+from src.entity_digest import generate_entity_digests
 
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
@@ -788,6 +790,12 @@ async def main():
 
     t = time.monotonic();  compute_embeddings(articles)
     print(f"[time] embed   {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic();  await send_breaking_alerts(articles)
+    print(f"[time] breaking {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic();  await generate_entity_digests(articles)
+    print(f"[time] entities {time.monotonic()-t:.1f}s")
 
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     save_json(articles, source_stats)

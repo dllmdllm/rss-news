@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>實體追蹤 — News Pulse</title>
+  <style>
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a22;
+      --border:  #2e2e3e;
+      --accent:  #7c6af7;
+      --text:    #e0e0f0;
+      --muted:   #888;
+    }
+    body.theme-light {
+      --bg:      #fafaf8;
+      --surface: #ffffff;
+      --border:  #e6e6e0;
+      --accent:  #1a6b9a;
+      --text:    #141414;
+      --muted:   #777;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { overflow-x: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, "Noto Sans TC", sans-serif;
+      min-height: 100vh; transition: background .18s, color .18s;
+    }
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-size: 1.1rem; color: var(--accent); letter-spacing: .06em; flex: 1; }
+    .back-btn {
+      font-size: .8rem; color: var(--muted); text-decoration: none;
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 3px 12px; white-space: nowrap;
+      transition: color .15s, border-color .15s;
+    }
+    .back-btn:hover { color: var(--text); border-color: var(--accent); }
+    .theme-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--accent);
+      width: 36px; height: 36px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+    }
+    .theme-btn:hover { border-color: var(--accent); }
+    .theme-btn svg { width: 18px; height: 18px; }
+    .updated { font-size: .78rem; color: var(--muted); }
+
+    .controls {
+      padding: 8px 24px; background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    }
+    .search-input {
+      flex: 1; min-width: 160px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 14px; color: var(--text);
+      font-size: 15px; outline: none; transition: border-color .15s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--muted); }
+    .type-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 14px; border-radius: 999px; cursor: pointer; font-size: .8rem;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .type-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .type-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px; padding: 20px 24px; max-width: 1400px; margin: 0 auto;
+    }
+    .entity-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .entity-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .entity-name { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .entity-type {
+      font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .type-people   { background: #2a1a3d; color: #c084fc; }
+    .type-companies{ background: #1a2a3d; color: #60a5fa; }
+    .type-places   { background: #1a3d22; color: #4ade80; }
+    body.theme-light .type-people    { background: #f5edff; color: #7d4ab0; }
+    body.theme-light .type-companies { background: #edf6ff; color: #2f73a8; }
+    body.theme-light .type-places    { background: #effaf1; color: #328746; }
+    .entity-count { font-size: .72rem; color: var(--muted); margin-left: auto; }
+    .entity-summary { font-size: .85rem; color: #aaa; line-height: 1.55; }
+    body.theme-light .entity-summary { color: #555; }
+    .entity-articles { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+    .entity-article {
+      font-size: .75rem; color: var(--muted); text-decoration: none;
+      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.4;
+      transition: color .15s;
+    }
+    .entity-article:hover { color: var(--accent); }
+    .entity-article-source {
+      font-weight: 600; color: var(--accent); margin-right: 4px; font-size: .7rem;
+    }
+    .entity-more { font-size: .72rem; color: var(--muted); margin-top: 1px; }
+    .empty { text-align: center; padding: 60px; color: var(--muted); grid-column: 1 / -1; }
+    .section-head {
+      grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;
+      font-size: .78rem; color: var(--muted); padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-head-label { font-weight: 700; font-size: .88rem; color: var(--text); }
+
+    @media (max-width: 640px) {
+      header { padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); }
+      .controls, .grid { padding-left: 14px; padding-right: 14px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("rss_theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.body.classList.add("theme-" + t);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", t === "light" ? "#fafaf8" : "#0f0f13");
+      } catch (_) {}
+    })();
+  </script>
+
+  <header>
+    <h1>👤 實體追蹤</h1>
+    <a class="back-btn" href="index.html">← 返回</a>
+    <span id="updated" class="updated"></span>
+    <button class="theme-btn" id="theme-toggle" title="切換日夜模式" aria-label="切換日夜模式"></button>
+  </header>
+
+  <div class="controls">
+    <input class="search-input" id="search" type="search" placeholder="搜尋人物、機構或地點…" autocomplete="off">
+    <button class="type-btn active" data-type="">全部</button>
+    <button class="type-btn" data-type="people">👤 人物</button>
+    <button class="type-btn" data-type="companies">🏢 機構</button>
+    <button class="type-btn" data-type="places">📍 地點</button>
+  </div>
+
+  <div class="grid" id="grid">
+    <div class="empty">載入中…</div>
+  </div>
+
+  <script src="vendor/fuse.min.js"></script>
+  <script src="js/common.js"></script>
+  <script>
+    let all = [];
+    let articlesIndex = {};
+    let activeType = "";
+    let searchQuery = "";
+
+    const TYPE_LABEL = { people: "人物", companies: "機構", places: "地點" };
+
+    const updEl  = document.getElementById("updated");
+    const grid   = document.getElementById("grid");
+    const search = document.getElementById("search");
+
+    // ── Theme ──────────────────────────────────────────────────────
+    setupThemeMode();
+
+    // ── Controls ───────────────────────────────────────────────────
+    document.querySelector(".controls").addEventListener("click", e => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeType = btn.dataset.type || "";
+      render();
+    });
+
+    search.addEventListener("input", e => {
+      searchQuery = e.target.value.trim().toLowerCase();
+      render();
+    });
+
+    // ── Render ─────────────────────────────────────────────────────
+    function render() {
+      let list = all;
+      if (activeType) list = list.filter(e => e.type === activeType);
+      if (searchQuery) list = list.filter(e =>
+        e.name.toLowerCase().includes(searchQuery) ||
+        (e.summary || "").toLowerCase().includes(searchQuery)
+      );
+
+      if (!list.length) {
+        grid.innerHTML = '<div class="empty">沒有符合條件的實體</div>';
+        return;
+      }
+
+      // Group by type order: people → companies → places
+      const typeOrder = ["people", "companies", "places"];
+      const grouped = {};
+      for (const e of list) {
+        (grouped[e.type] = grouped[e.type] || []).push(e);
+      }
+
+      const sections = [];
+      for (const t of typeOrder) {
+        const items = grouped[t];
+        if (!items || !items.length) continue;
+        const typeIcon = t === "people" ? "👤" : t === "companies" ? "🏢" : "📍";
+        sections.push(`<div class="section-head"><span class="section-head-label">${typeIcon} ${esc(TYPE_LABEL[t] || t)}</span><span>${items.length} 個</span></div>`);
+        for (const e of items) {
+          sections.push(entityCardHtml(e));
+        }
+      }
+      grid.innerHTML = sections.join("");
+    }
+
+    function entityCardHtml(e) {
+      const typeCls = "type-" + e.type;
+      const typeLabel = TYPE_LABEL[e.type] || e.type;
+      const summary = e.summary
+        ? `<div class="entity-summary">${esc(e.summary)}</div>` : "";
+      const aids = (e.article_ids || []).slice(0, 5);
+      const articleLinks = aids.map(aid => {
+        const meta = articlesIndex[aid];
+        if (!meta) return "";
+        return `<a class="entity-article" href="article.html?id=${encodeURIComponent(aid)}">
+          <span class="entity-article-source">${esc(meta.source || "")}</span>${esc(meta.title || "")}
+        </a>`;
+      }).filter(Boolean).join("");
+      const more = (e.article_ids || []).length > 5
+        ? `<div class="entity-more">…還有 ${(e.article_ids.length - 5)} 篇</div>` : "";
+      return `<div class="entity-card">
+        <div class="entity-head">
+          <span class="entity-name">${esc(e.name)}</span>
+          <span class="entity-type ${typeCls}">${esc(typeLabel)}</span>
+          <span class="entity-count">${e.count} 篇</span>
+        </div>
+        ${summary}
+        ${articleLinks ? `<div class="entity-articles">${articleLinks}</div>` : ""}
+        ${more}
+      </div>`;
+    }
+
+    // ── Load ───────────────────────────────────────────────────────
+    async function load() {
+      try {
+        const ts = Date.now();
+        const [entRes, idxRes] = await Promise.all([
+          fetch("data/entities.json?" + ts),
+          fetch("data/articles_index.json?" + ts).catch(() => null),
+        ]);
+        if (idxRes && idxRes.ok) {
+          const idxData = await idxRes.json();
+          for (const a of (idxData.articles || [])) {
+            articlesIndex[a.id] = a;
+          }
+        }
+        if (!entRes.ok) throw new Error("entities.json not found");
+        const data = await entRes.json();
+        if (data.updated) updEl.textContent = "更新：" + data.updated;
+        all = data.entities || [];
+        render();
+      } catch (err) {
+        grid.innerHTML = `<div class="empty">載入失敗：${esc(String(err))}</div>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

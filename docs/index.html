@@ -249,6 +249,8 @@
     .card.bookmarked { border-color: #fbbf24aa; }
     .card.muted-source { opacity: .45; }
     .card.downranked-source { opacity: .72; }
+    .card.breaking { border-color: rgba(239,68,68,.4); }
+    .card.breaking:hover { border-color: #f87171; }
     .card.cluster-stack {
       position: relative;
       overflow: visible;
@@ -514,6 +516,57 @@
     body.theme-light .panel-timeline-item       { border-left-color: rgba(2,132,199,.35); }
     body.theme-light .panel-timeline-date       { color: #0369a1; }
     body.theme-light .contradiction-badge       { background: #fee2e2; color: #b91c1c; }
+
+    /* ── search wrapper + semantic badge ── */
+    .search-wrap {
+      position: relative; display: flex; align-items: center;
+    }
+    .search-wrap .search-input { flex: 1; padding-right: 80px; }
+    .sem-badge {
+      position: absolute; right: 10px;
+      font-size: .68rem; font-weight: 700; letter-spacing: .03em;
+      color: #c4b5fd; background: rgba(124,106,247,.15);
+      border: 1px solid rgba(124,106,247,.3);
+      padding: 2px 8px; border-radius: 999px;
+      pointer-events: none; white-space: nowrap;
+    }
+    body.theme-light .sem-badge { color: #4c3fbf; background: #f0ecff; border-color: #c4b5fd; }
+
+    /* ── breaking badge ── */
+    .breaking-badge {
+      font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+      background: rgba(239,68,68,.2); color: #fca5a5;
+      border: 1px solid rgba(239,68,68,.35);
+      animation: breaking-pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes breaking-pulse {
+      0%, 100% { border-color: rgba(239,68,68,.35); }
+      50%       { border-color: rgba(239,68,68,.8); }
+    }
+    body.theme-light .breaking-badge { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+
+    /* ── sentiment timeline in cluster panel ── */
+    .sent-timeline {
+      display: flex; gap: 5px; align-items: center; flex-wrap: wrap; padding: 3px 0;
+    }
+    .sent-tl-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+      opacity: .8; cursor: default; transition: opacity .15s, transform .15s;
+    }
+    .sent-tl-dot:hover { opacity: 1; transform: scale(1.4); }
+    .sent-tl-dot.sent-positive { background: #4ade80; }
+    .sent-tl-dot.sent-negative { background: #f87171; }
+    .sent-tl-dot.sent-neutral  { background: #888; }
+    .sent-tl-label {
+      font-size: .68rem; color: var(--muted); letter-spacing: .03em;
+    }
+
+    /* ── panel digest preview on AI button ── */
+    .digest-preview {
+      font-weight: 400; font-size: .82em; color: #7dd3fc; opacity: .85;
+      margin-left: 3px;
+    }
+
     body.theme-light .card-summary {
       color: #555;
       background: linear-gradient(90deg, #e0f7fa66, transparent);
@@ -695,6 +748,16 @@
       }
       body.text-only .card { display: flex; flex-direction: column; }
       body.text-only .card-body { grid-column: auto; grid-row: auto; }
+
+      /* ── mobile: consolidate card meta badges ── */
+      .contradiction-badge { font-size: 0; padding: 3px 5px; width: 22px; height: 22px;
+        display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; }
+      .contradiction-badge::after { content: "⚠"; font-size: .72rem; }
+      .breaking-badge { font-size: 0; padding: 2px 4px; width: 22px; height: 22px;
+        display: inline-flex; align-items: center; justify-content: center; }
+      .breaking-badge::after { content: "🔴"; font-size: .72rem; }
+      .cluster-badge { max-width: 66px; overflow: hidden; white-space: nowrap;
+        text-overflow: ellipsis; }
     }
   </style>
 </head>
@@ -734,6 +797,7 @@
         <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
         <a class="view-btn" href="graph.html" title="知識圖譜：人物/機構/地點關係網絡">🕸️ 圖譜</a>
         <a class="view-btn" href="upcoming.html" title="文章中提及嘅未來活動">📅 預告</a>
+        <a class="view-btn" href="entities.html" title="人物、機構、地點近況追蹤">👤 實體</a>
       </div>
       <div class="font-btns">
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
@@ -746,7 +810,10 @@
   </header>
 
   <div class="search-row">
-    <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
+    <div class="search-wrap">
+      <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
+      <span id="sem-badge" class="sem-badge" hidden>✦ 語意</span>
+    </div>
   </div>
 
   <div class="filters"        id="filters"></div>
@@ -813,6 +880,7 @@
 
         window._semanticReady = true;
         document.dispatchEvent(new CustomEvent("semantic-ready"));
+        document.getElementById("sem-badge")?.removeAttribute("hidden");
         const inp = document.getElementById("search");
         if (inp && !inp.value.trim())
           inp.placeholder = "搜尋… 語意已就緒，可搜同義詞";

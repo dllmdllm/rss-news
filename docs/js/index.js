@@ -9,6 +9,7 @@ const CATS = ["全部", ...CATEGORIES];
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let sourceStats = {};
     let panelDigests = {};       // {cluster_id: {headline, consensus, angles, tension}}
+    let breakingClusters = new Set();   // cluster_ids that qualify as "breaking"
     let fuse = null;
     // Map category to CSS class; returns "" for unknown values so class
     // splitting on accidental whitespace can't happen.
@@ -788,6 +789,41 @@ const CATS = ["全部", ...CATEGORIES];
       </div>`;
     }
 
+    function computeBreakingClusters() {
+      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+      const now = Date.now();
+      const byCluster = {};
+      for (const a of all) {
+        if (!a.cluster_id || a.duplicate_of) continue;
+        (byCluster[a.cluster_id] = byCluster[a.cluster_id] || []).push(a);
+      }
+      const result = new Set();
+      for (const [cid, members] of Object.entries(byCluster)) {
+        const recent = members.filter(a => {
+          const ts = Date.parse(a.date || "");
+          return !isNaN(ts) && (now - ts) <= TWO_HOURS_MS;
+        });
+        const sources = new Set(recent.map(a => a.source).filter(Boolean));
+        if (sources.size >= 3) result.add(cid);
+      }
+      return result;
+    }
+
+    function sentimentTimelineHtml(cid) {
+      const members = getSorted(all.filter(a => a.cluster_id === cid && !a.duplicate_of));
+      if (members.length < 2) return "";
+      const dots = members.map(a => {
+        const sent = ["positive", "negative", "neutral"].includes(a.sentiment) ? a.sentiment : "neutral";
+        const source = a.source || "";
+        const time = a.date
+          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "";
+        const tooltip = source + (time ? " · " + time : "");
+        return `<span class="sent-tl-dot sent-${sent}" title="${esc(tooltip)}"></span>`;
+      }).join("");
+      return `<div class="sent-timeline"><span class="sent-tl-label">情緒</span>${dots}</div>`;
+    }
+
     function clusterSummaryHtml(cid, suffix = "") {
       const articles = getSorted(all.filter(a => a.cluster_id === cid));
       if (!articles.length) return "";
@@ -795,6 +831,7 @@ const CATS = ["全部", ...CATEGORIES];
       const idSuffix = suffix ? `-${esc(suffix)}` : "";
       return `<div class="cluster-ai-summary" id="cluster-summary-${esc(cid)}${idSuffix}">
         <div class="cluster-ai-title">AI 綜合摘要</div>
+        ${sentimentTimelineHtml(cid)}
         ${panelDigestHtml(cid)}
         ${digestHtml}
         <div class="cluster-source-list">${sourceRows}</div>
@@ -832,7 +869,13 @@ const CATS = ["全部", ...CATEGORIES];
         if (activeSource) list = list.filter(a => a.source === activeSource);
         if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
       }
-      render(getSorted(compactClusters(list)));
+      breakingClusters = computeBreakingClusters();
+      let sorted = getSorted(compactClusters(list));
+      if (breakingClusters.size > 0 && !searchQuery) {
+        const isB = a => !!(a.cluster_id && breakingClusters.has(a.cluster_id));
+        sorted = [...sorted.filter(isB), ...sorted.filter(a => !isB(a))];
+      }
+      render(sorted);
     }
 
     function scoreClass(score) {
@@ -880,8 +923,16 @@ const CATS = ["全部", ...CATEGORIES];
         const hasContradiction = isCluster && cid && (panelDigests[cid]?.contradictions || []).length > 0;
         const contradictionBadge = hasContradiction
           ? `<span class="contradiction-badge" title="各來源有事實矛盾">⚠ 矛盾</span>` : "";
+        const isBreakingCluster = isCluster && cid && breakingClusters.has(cid);
+        const breakingBadge = isBreakingCluster
+          ? `<span class="breaking-badge" title="突發：多媒體 2 小時內同步報導">🔴 突發</span>` : "";
+        const digest = isClusterStack ? panelDigests[cid] : null;
+        const digestIndicators = digest ? [
+          (digest.timeline || []).length >= 2 ? "時間軸" : null,
+          (digest.contradictions || []).length > 0 ? "⚠矛盾" : null,
+        ].filter(Boolean).join(" · ") : null;
         const clusterSummaryButton = isClusterStack
-          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要"}</span>`
+          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要" + (digestIndicators ? ` <span class="digest-preview">${esc(digestIndicators)}</span>` : "")}</span>`
           : "";
         const tagChips = (a.tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join("");
         const tags = (tagChips || clusterSummaryButton)
@@ -895,7 +946,7 @@ const CATS = ["全部", ...CATEGORIES];
           ? `<div class="card-summary">${points.map(p => `<div class="card-summary-line">${esc(p)}</div>`).join("")}</div>`
           : "";
         const catCls = catClass(a.category);
-        const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}`;
+        const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}${isBreakingCluster ? " breaking" : ""}`;
         const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
         const cardClick = isClusterStack ? ` onclick="event.preventDefault();filterCluster('${cid}')"` : "";
         const sourceName = esc(a.source || "");
@@ -919,7 +970,7 @@ const CATS = ["全部", ...CATEGORIES];
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
-              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${actionBar}
+              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${breakingBadge}${actionBar}
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
