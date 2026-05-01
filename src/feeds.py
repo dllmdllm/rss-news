@@ -61,6 +61,8 @@ RSS_FEEDS = [
     {"name": "HK01 國際",          "url": "https://web-data.api.hk01.com/v2/feed/category/19",                     "category": "國際", "fetcher": "hk01"},
     {"name": "HK01 中國",          "url": "https://web-data.api.hk01.com/v2/feed/zone/5",                          "category": "國際", "fetcher": "hk01"},
     {"name": "HK01 娛樂",          "url": "https://web-data.api.hk01.com/v2/feed/zone/2",                          "category": "娛樂", "fetcher": "hk01"},
+    {"name": "HK01 熱話",          "url": "https://web-data.api.hk01.com/v2/feed/zone/7",                          "category": "消閒", "fetcher": "hk01"},
+    {"name": "HK01 深圳",          "url": "https://web-data.api.hk01.com/v2/feed/zone/25",                         "category": "消閒", "fetcher": "hk01"},
 ]
 
 MAX_ITEMS_PER_FEED = 20
