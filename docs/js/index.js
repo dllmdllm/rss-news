@@ -258,7 +258,7 @@ const CATS = ["全部", ...CATEGORIES];
           } else {
             meta = `<span class="health-meta">${effectiveCount} 篇${s.restored ? ` · 沿用 ${Number(s.restored) || 0}` : ""}</span>`;
           }
-          const lastSuccess = h.lastSuccess ? new Date(h.lastSuccess).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "未有紀錄";
+          const lastSuccess = h.lastSuccess ? new Date(h.lastSuccess).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "未有紀錄";
           const controls = `<span class="health-actions">
             <button class="health-action${muted.has(name) ? " active" : ""}" data-source-action="mute" data-source="${esc(name)}">靜音</button>
             <button class="health-action${downranked.has(name) ? " active" : ""}" data-source-action="downrank" data-source="${esc(name)}">降權</button>
@@ -1029,7 +1029,7 @@ const CATS = ["全部", ...CATEGORIES];
         const sent = ["positive", "negative", "neutral"].includes(a.sentiment) ? a.sentiment : "neutral";
         const source = a.source || "";
         const time = a.date
-          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
           : "";
         const tooltip = source + (time ? " · " + time : "");
         return `<span class="sent-tl-dot sent-${sent}" title="${esc(tooltip)}"></span>`;
@@ -1116,7 +1116,7 @@ const CATS = ["全部", ...CATEGORIES];
       }
       grid.innerHTML = articles.map(a => {
         const date = a.date
-          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
           : "";
         const thumbUrl = safeUrl(a.thumbnail);
         const thumb = (a.thumbnail && thumbUrl !== "#")

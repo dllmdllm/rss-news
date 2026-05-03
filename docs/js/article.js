@@ -338,7 +338,7 @@
       }
       list.innerHTML = rows.map(({ article, reasons }) => {
         const date = article.date
-          ? new Date(article.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          ? new Date(article.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
           : "";
         const reason = reasons.slice(0, 2).join(" · ");
         return `<a class="related-card" href="${esc(articleUrl(article.id))}">
@@ -575,7 +575,7 @@
         document.getElementById("topbar-source").textContent = art.source;
 
         const date = art.date
-          ? new Date(art.date).toLocaleString("zh-HK", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          ? new Date(art.date).toLocaleString("zh-HK", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
           : "";
 
         const scoreNum = typeof art.score === "number" ? art.score : null;
