@@ -405,7 +405,7 @@ const CATS = ["全部", ...CATEGORIES];
       buildSourceFilters();
       buildTagFilters();
       buildTopPicks();
-      renderFiltered();
+      renderFilteredFromUI();
       });
     }
 
@@ -457,7 +457,7 @@ const CATS = ["全部", ...CATEGORIES];
           btn.classList.add("active");
         }
         buildTopPicks();
-        renderFiltered();
+        renderFilteredFromUI();
       };
     }
 
@@ -498,7 +498,7 @@ const CATS = ["全部", ...CATEGORIES];
           btn.classList.add("active");
         }
         buildTopPicks();
-        renderFiltered();
+        renderFilteredFromUI();
       };
     }
 
@@ -875,19 +875,22 @@ const CATS = ["全部", ...CATEGORIES];
         const isB = a => !!(a.cluster_id && breakingClusters.has(a.cluster_id));
         sorted = [...sorted.filter(isB), ...sorted.filter(a => !isB(a))];
       }
-      render(sorted);
+      render(sorted, { scrollToTop: _renderFilteredScrollTop });
+      _renderFilteredScrollTop = false;
     }
+    let _renderFilteredScrollTop = false;
+    function renderFilteredFromUI() { _renderFilteredScrollTop = true; renderFiltered(); }
 
     function scoreClass(score) {
       if (!score) return "score-low";
       return score >= 8 ? "score-high" : score >= 5 ? "score-mid" : "score-low";
     }
 
-    function render(articles) {
+    function render(articles, { scrollToTop = false } = {}) {
       kbIndex = -1;
       currentRenderArticles = articles;
       const grid  = document.getElementById("grid");
-      const savedScrollY = window.scrollY;
+      const savedScrollY = scrollToTop ? 0 : window.scrollY;
       const isMobileCard = window.matchMedia?.("(max-width: 640px)")?.matches;
       const reads = getRead();
       const bookmarks = getBookmarks();
