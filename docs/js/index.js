@@ -1081,18 +1081,10 @@ const CATS = ["全部", ...CATEGORIES];
         els.searchRow   && (els.searchRow.hidden   = true);
         els.filtersEl   && (els.filtersEl.hidden   = true);
         els.chipFilters && (els.chipFilters.hidden  = true);
-        els.topPicksEl  && (els.topPicksEl.hidden  = true);
         activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = true;
-        render(
-          (() => {
-            const muted = getMutedSources();
-            const reads = getReadIds(), bookmarks = getSavedIds();
-            let list = all.filter(a => !muted.has(a.source) && !a.duplicate_of);
-            list = list.filter(a => (Number(a.score) || 0) >= IMPORTANT_SCORE_MIN);
-            return list.sort((a, b) => (Number(b.score)||0) - (Number(a.score)||0));
-          })(),
-          { scrollToTop: true }
-        );
+        buildTopPicks();
+        _renderFilteredScrollTop = true;
+        renderFiltered();
       } else if (tab === "settings") {
         els.searchRow   && (els.searchRow.hidden   = true);
         els.filtersEl   && (els.filtersEl.hidden   = true);
@@ -1100,6 +1092,7 @@ const CATS = ["全部", ...CATEGORIES];
         els.topPicksEl  && (els.topPicksEl.hidden  = true);
         els.gridEl      && (els.gridEl.hidden       = true);
         els.settingsEl  && (els.settingsEl.hidden   = false);
+        window.scrollTo(0, 0);
         _updateSettingsPanel();
       }
     }
