@@ -719,7 +719,7 @@
         grid-template-columns: 1fr;
         padding-left: max(14px, env(safe-area-inset-left));
         padding-right: max(14px, env(safe-area-inset-right));
-        padding-bottom: calc(14px + env(safe-area-inset-bottom));
+        padding-bottom: calc(14px + 56px + env(safe-area-inset-bottom));
       }
       .top-picks          {
         padding-left: max(14px, env(safe-area-inset-left));
@@ -760,7 +760,55 @@
       .breaking-badge::after { content: "🔴"; font-size: .72rem; }
       .cluster-badge { max-width: 66px; overflow: hidden; white-space: nowrap;
         text-overflow: ellipsis; }
+
+      /* ── mobile: hide header controls (moved to 設定 tab) ── */
+      .sort-toggle, .quick-toggle, .font-btns, #text-toggle { display: none !important; }
+
+      /* ── bottom tab bar ── */
+      .tab-bar {
+        display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+        height: calc(56px + env(safe-area-inset-bottom));
+        padding-bottom: env(safe-area-inset-bottom);
+        background: var(--surface); border-top: 1px solid var(--border);
+        z-index: 20; box-shadow: 0 -2px 12px #00000018;
+      }
+      .tab-btn {
+        flex: 1; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 2px; background: none; border: none;
+        color: var(--muted); font-size: .62rem; cursor: pointer; padding: 0;
+        transition: color .15s; -webkit-tap-highlight-color: transparent;
+      }
+      .tab-btn.active { color: var(--accent); }
+      .tab-icon { font-size: 1.25rem; line-height: 1; }
+
+      /* ── settings panel ── */
+      .settings-panel {
+        padding: 20px 16px calc(20px + 56px + env(safe-area-inset-bottom));
+        display: flex; flex-direction: column; gap: 22px;
+      }
+      .top-picks { padding-bottom: calc(10px + 56px + env(safe-area-inset-bottom)); }
     }
+
+    /* settings panel — hidden on desktop too until tab is active */
+    .tab-bar         { display: none; }
+    .settings-panel  { display: none; }
+    .settings-panel:not([hidden]) { display: flex; }
+    .settings-section { display: flex; flex-direction: column; gap: 8px; }
+    .settings-label {
+      font-size: .7rem; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .settings-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .settings-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 9px 18px; border-radius: 10px; cursor: pointer; font-size: .85rem;
+      transition: background .15s, border-color .15s, color .15s;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .settings-btn:hover  { border-color: var(--accent); color: var(--accent); }
+    .settings-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    body.theme-light .settings-btn.active { color: #fff; }
   </style>
 </head>
 <body>
@@ -834,6 +882,48 @@
     <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
   </div>
 
+  <!-- settings panel (mobile tab) -->
+  <div id="settings-panel" class="settings-panel" hidden>
+    <div class="settings-section">
+      <div class="settings-label">排序</div>
+      <div class="settings-row">
+        <button id="s-sort-date" class="settings-btn" onclick="document.querySelector('[data-sort=date]').click();updateSettingsPanel()">🕒 最新</button>
+        <button id="s-sort-ai"   class="settings-btn" onclick="document.querySelector('[data-sort=ai]').click();updateSettingsPanel()">✨ 推薦</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">篩選</div>
+      <div class="settings-row">
+        <button id="s-important" class="settings-btn" onclick="window.__toggleImportant?.();updateSettingsPanel()">🔥 精選</button>
+        <button id="s-unread"    class="settings-btn" onclick="window.__toggleUnread?.();updateSettingsPanel()">📬 未讀</button>
+        <button id="s-saved"     class="settings-btn" onclick="window.__toggleSaved?.();updateSettingsPanel()">🔖 收藏</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">顯示</div>
+      <div class="settings-row">
+        <button id="s-compact" class="settings-btn" onclick="document.getElementById('compact-toggle').click();updateSettingsPanel()">📋 精簡</button>
+        <button id="s-text"    class="settings-btn" onclick="document.getElementById('text-toggle').click();updateSettingsPanel()">文 純文字</button>
+        <button id="s-theme"   class="settings-btn" onclick="document.getElementById('theme-toggle').click()">🌙 日夜模式</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">字體</div>
+      <div class="settings-row">
+        <button class="settings-btn" onclick="document.getElementById('font-dec').click()">A－</button>
+        <button class="settings-btn" onclick="document.getElementById('font-inc').click()">A＋</button>
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-label">更多頁面</div>
+      <div class="settings-row">
+        <a href="graph.html"    class="settings-btn">🕸️ 圖譜</a>
+        <a href="upcoming.html" class="settings-btn">📅 預告</a>
+        <a href="entities.html" class="settings-btn">👤 實體</a>
+      </div>
+    </div>
+  </div>
+
   <!-- source health modal -->
   <div class="health-overlay" id="health-overlay">
     <div class="health-modal" role="dialog" aria-label="來源狀態">
@@ -844,6 +934,14 @@
       <div id="health-body"></div>
     </div>
   </div>
+
+  <!-- bottom tab bar (mobile only) -->
+  <nav class="tab-bar" id="tab-bar" aria-label="主要導航">
+    <button class="tab-btn active" data-tab="home"     onclick="switchTab('home')"><span class="tab-icon">🏠</span><span>首頁</span></button>
+    <button class="tab-btn"        data-tab="cats"     onclick="switchTab('cats')"><span class="tab-icon">🗂️</span><span>分類</span></button>
+    <button class="tab-btn"        data-tab="hot"      onclick="switchTab('hot')"><span class="tab-icon">🔥</span><span>熱門</span></button>
+    <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings')"><span class="tab-icon">⚙️</span><span>設定</span></button>
+  </nav>
 
   <script src="vendor/fuse.min.js"></script>
   <script src="js/common.js"></script>

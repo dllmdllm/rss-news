@@ -1039,3 +1039,82 @@ const CATS = ["全部", ...CATEGORIES];
         if (cards[kbIndex]) cards[kbIndex].click();
       }
     });
+
+    // ── Bottom tab bar (mobile only) ─────────────────────────────
+    let activeTab = "home";
+
+    function switchTab(tab) {
+      if (!window.matchMedia?.("(max-width: 640px)")?.matches) return;
+      activeTab = tab;
+      document.querySelectorAll(".tab-btn").forEach(b =>
+        b.classList.toggle("active", b.dataset.tab === tab)
+      );
+      const searchRow   = document.querySelector(".search-row");
+      const filtersEl   = document.getElementById("filters");
+      const chipFilters = document.getElementById("chip-filters");
+      const topPicksEl  = document.getElementById("top-picks");
+      const gridEl      = document.getElementById("grid");
+      const settingsEl  = document.getElementById("settings-panel");
+      // default: show all, hide settings
+      [searchRow, filtersEl, chipFilters, topPicksEl, gridEl].forEach(el => el && (el.hidden = false));
+      if (settingsEl) settingsEl.hidden = true;
+      switch (tab) {
+        case "home":
+          if (filtersEl)   filtersEl.hidden   = true;
+          if (chipFilters) chipFilters.hidden = true;
+          activeCat = "全部"; activeSource = ""; activeTag = "";
+          renderFilteredFromUI();
+          break;
+        case "cats":
+          if (searchRow)  searchRow.hidden  = true;
+          if (topPicksEl) topPicksEl.hidden = true;
+          renderFiltered();
+          break;
+        case "hot":
+          if (searchRow)   searchRow.hidden   = true;
+          if (filtersEl)   filtersEl.hidden   = true;
+          if (chipFilters) chipFilters.hidden = true;
+          if (topPicksEl)  topPicksEl.hidden  = true;
+          _renderHot();
+          break;
+        case "settings":
+          if (searchRow)   searchRow.hidden   = true;
+          if (filtersEl)   filtersEl.hidden   = true;
+          if (chipFilters) chipFilters.hidden = true;
+          if (topPicksEl)  topPicksEl.hidden  = true;
+          if (gridEl)      gridEl.hidden      = true;
+          if (settingsEl)  settingsEl.hidden  = false;
+          _updateSettingsPanel();
+          break;
+      }
+    }
+
+    function _renderHot() {
+      breakingClusters = computeBreakingClusters();
+      const muted = getMutedSources();
+      let list = all.filter(a => !muted.has(a.source) && !a.duplicate_of);
+      list = list.filter(a =>
+        (Number(a.score) || 0) >= 5 ||
+        (a.cluster_id && breakingClusters.has(a.cluster_id))
+      );
+      let sorted = getSorted(compactClusters(list));
+      if (breakingClusters.size > 0) {
+        const isB = a => !!(a.cluster_id && breakingClusters.has(a.cluster_id));
+        sorted = [...sorted.filter(isB), ...sorted.filter(x => !isB(x))];
+      }
+      render(sorted, { scrollToTop: true });
+    }
+
+    function _updateSettingsPanel() {
+      const isDateSort = document.querySelector('[data-sort="date"]')?.classList.contains("active");
+      document.getElementById("s-sort-date")?.classList.toggle("active", !!isDateSort);
+      document.getElementById("s-sort-ai")?.classList.toggle("active",   !isDateSort);
+      document.getElementById("s-important")?.classList.toggle("active", onlyImportant);
+      document.getElementById("s-unread")?.classList.toggle("active",    onlyUnread);
+      document.getElementById("s-saved")?.classList.toggle("active",     onlySaved);
+      document.getElementById("s-compact")?.classList.toggle("active",   compact);
+      document.getElementById("s-text")?.classList.toggle("active",      document.body.classList.contains("text-only"));
+    }
+
+    window.switchTab          = switchTab;
+    window.updateSettingsPanel = _updateSettingsPanel;
