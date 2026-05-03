@@ -391,9 +391,10 @@ def _build_tvb_content(html: str) -> str | None:
     return "<html><body>" + "".join(parts) + "</body></html>"
 
 
-_NOWSNEWS_JUNK_RE = re.compile(
-    r"抱歉，我們並不支援你正使用的瀏覽器。.*?查詢。",
-    re.DOTALL,
+_NOWSNEWS_JUNK_STRINGS = (
+    "抱歉，我們並不支援你正使用的瀏覽器",
+    "為達至最佳瀏覽效果，請更新至最新的瀏覽器版本",
+    "pccwmediaiapps@pccw.com",
 )
 
 _SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
@@ -852,7 +853,12 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
 
     # Strip Now News browser-compat notice injected before the article body
     if content and _is_nowsnews_url(url):
-        content = _NOWSNEWS_JUNK_RE.sub("", content)
+        soup = BeautifulSoup(content, "html.parser")
+        for p in soup.find_all("p"):
+            t = p.get_text(strip=True)
+            if any(j in t for j in _NOWSNEWS_JUNK_STRINGS) or t == "廣告":
+                p.decompose()
+        content = str(soup)
 
     og_image: str | None = None
     if need_og_image:
