@@ -34,7 +34,7 @@ SYSTEM_PROMPT = (
     '"topic":"標準化話題名稱，唔超過10字",'
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
-    '"key_sentences":["原文逐字摘錄最關鍵嘅 1 至 2 句句子（必須完全一致，唔好改寫，每句 10-50 字）"],'
+    '"key_sentences":["原文逐字摘錄最關鍵嘅 3 至 5 句句子（必須完全一致，唔好改寫，每句 10-80 字）"],'
     '"upcoming_events":[{"date":"YYYY-MM-DD（文中提及嘅未來日期）","title":"短描述，唔超過20字"}]（最多 2 個；若無未來事件就回傳空陣列 []）}'
 )
 
@@ -152,7 +152,7 @@ def _normalise_key_sentences(raw) -> list[str]:
     out, seen = [], set()
     for item in raw:
         text = re.sub(r"\s+", " ", str(item or "")).strip().strip('"\u201c\u201d「」『』')
-        if not (8 <= len(text) <= 80):
+        if not (8 <= len(text) <= 120):
             continue
         if text in seen:
             continue

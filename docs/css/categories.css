@@ -8,12 +8,12 @@
 :root {
   --cat-bg-alpha: 0.12;
   --cat-border-alpha: 0.35;
-  --cat-key-alpha: 0.38;
+  --cat-key-alpha: 0.62;
 }
 body.theme-light {
   --cat-bg-alpha: 0.08;
   --cat-border-alpha: 0.28;
-  --cat-key-alpha: 0.26;
+  --cat-key-alpha: 0.48;
 }
 
 body.cat-新聞, [data-cat="新聞"] { --cat-rgb: 232 124 124; }
