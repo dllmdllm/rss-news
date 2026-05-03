@@ -619,6 +619,154 @@ async def _fetch_am730(
     return articles, None, False
 
 
+def _parse_tvb_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> list[dict]:
+    try:
+        root = ET.fromstring(xml_text or "")
+    except ET.ParseError:
+        return []
+
+    SM    = "http://www.sitemaps.org/schemas/sitemap/0.9"
+    NEWS  = "http://www.google.com/schemas/sitemap-news/0.9"
+    IMAGE = "http://www.google.com/schemas/sitemap-image/1.1"
+
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    articles: list[dict] = []
+    seen: set[str] = set()
+
+    for url_node in root.findall(f"{{{SM}}}url"):
+        article_url = _clean_url((url_node.findtext(f"{{{SM}}}loc") or "").strip())
+        if not article_url or article_url in seen:
+            continue
+        if "/tc/" not in article_url:  # skip English and other locales
+            continue
+
+        date_raw = (url_node.findtext(f".//{{{NEWS}}}publication_date") or "").strip()
+        if not date_raw:
+            continue
+        try:
+            date = _as_utc(datetime.fromisoformat(date_raw.replace("Z", "+00:00")))
+        except Exception:
+            continue
+        if date < cutoff:
+            continue
+
+        title = (url_node.findtext(f".//{{{NEWS}}}title") or "").strip()
+        if not title:
+            continue
+
+        thumbnail = _clean_url((url_node.findtext(f".//{{{IMAGE}}}loc") or "").strip()) or None
+
+        seen.add(article_url)
+        articles.append({
+            "id":          _make_id(article_url),
+            "title":       title,
+            "url":         article_url,
+            "date":        date.isoformat(),
+            "source":      feed_info["name"],
+            "category":    feed_info["category"],
+            "content":     None,
+            "thumbnail":   thumbnail,
+            "rss_content": None,
+        })
+
+    articles.sort(key=lambda a: a["date"], reverse=True)
+    return articles[:max_items]
+
+
+async def _fetch_tvb(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """TVB News sitemap (Google News format) with title/date/image per entry."""
+    try:
+        async with session.get(
+            feed_info["url"],
+            timeout=aiohttp.ClientTimeout(total=25),
+            headers={"Accept": "application/xml,text/xml,*/*;q=0.8"},
+        ) as resp:
+            if resp.status >= 400:
+                return [], f"HTTP {resp.status}", False
+            raw = await resp.read()
+            charset = resp.charset or "utf-8"
+    except Exception as exc:
+        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+        return [], repr(exc), False
+
+    xml_text = raw.decode(charset, errors="replace")
+    articles = _parse_tvb_sitemap(xml_text, feed_info, cutoff)
+    return articles, None, False
+
+
+_NOWTV_CATEGORY_SLUG: dict[str, str] = {
+    "119": "local",
+    "120": "world",
+    "122": "china",
+}
+
+
+async def _fetch_nowtv(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """Now TV news JSON API."""
+    try:
+        async with session.get(
+            feed_info["url"],
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={"Accept": "application/json"},
+        ) as resp:
+            if resp.status >= 400:
+                return [], f"HTTP {resp.status}", False
+            data = await resp.json(content_type=None)
+    except Exception as exc:
+        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
+        return [], repr(exc), False
+
+    items = data if isinstance(data, list) else []
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    articles: list[dict] = []
+
+    for item in items:
+        news_id = str(item.get("newsId") or "").strip()
+        title   = (item.get("title") or "").strip()
+        if not news_id or not title:
+            continue
+        try:
+            date = datetime.fromtimestamp(int(item["publishDate"]) / 1000, timezone.utc)
+        except Exception:
+            continue
+        if date < cutoff:
+            continue
+
+        cat_id   = str(item.get("category") or "119")
+        slug     = _NOWTV_CATEGORY_SLUG.get(cat_id, "local")
+        article_url = f"https://news.now.com/home/{slug}/player?newsId={news_id}"
+
+        image_list = item.get("imageList") or []
+        thumbnail  = None
+        if image_list:
+            first     = image_list[0]
+            thumbnail = (first.get("imageUrl") or first.get("image2Url") or "").strip() or None
+
+        articles.append({
+            "id":          _make_id(article_url),
+            "title":       title,
+            "url":         article_url,
+            "date":        date.isoformat(),
+            "source":      feed_info["name"],
+            "category":    feed_info["category"],
+            "content":     None,
+            "thumbnail":   thumbnail,
+            "rss_content": None,
+        })
+        if len(articles) >= max_items:
+            break
+
+    return articles, None, False
+
+
 async def _fetch_oncc(
     session:   aiohttp.ClientSession,
     feed_info: dict,
@@ -683,6 +831,10 @@ async def _fetch_one(
         return await _fetch_oncc(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "skypost":
         return await _fetch_skypost(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "tvb":
+        return await _fetch_tvb(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "nowtv":
+        return await _fetch_nowtv(session, feed_info, cutoff)
     articles = []
     url = feed_info["url"]
     prev = http_cache.get(url) or {}
