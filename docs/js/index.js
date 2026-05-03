@@ -642,19 +642,25 @@ const CATS = ["全部", ...CATEGORIES];
         const posP = Math.round(pos / total * 100);
         const negP = Math.round(neg / total * 100);
         const neuP = 100 - posP - negP;
+        const neu = total - pos - neg;
         rows.push(`<div class="sent-row">
           <div class="sent-cat ${catClass(cat)}">${esc(cat)}</div>
           <div class="sent-bar">
             <div class="sent-pos" style="width:${posP}%" title="正面 ${pos}篇"></div>
-            <div class="sent-neu" style="width:${neuP}%" title="中性篇"></div>
+            <div class="sent-neu" style="width:${neuP}%" title="中性 ${neu}篇"></div>
             <div class="sent-neg" style="width:${negP}%" title="負面 ${neg}篇"></div>
           </div>
-          <div class="sent-nums"><span class="s-pos">▲${pos}</span><span class="s-neg">▼${neg}</span></div>
+          <div class="sent-nums">
+            <span class="s-pos">正 ${pos}</span>
+            <span class="s-neu">中 ${neu}</span>
+            <span class="s-neg">負 ${neg}</span>
+          </div>
         </div>`);
       }
       if (!rows.length) return "";
+      const legend = `<span class="sent-legend"><span class="s-pos">■ 正面</span> <span class="s-neu">■ 中性</span> <span class="s-neg">■ 負面</span></span>`;
       return `<div class="ai-section">
-        <div class="ai-section-hd">📊 情緒概覽</div>
+        <div class="ai-section-hd">📊 情緒概覽 ${legend}</div>
         <div class="sentiment-grid">${rows.join("")}</div>
       </div>`;
     }
@@ -675,12 +681,17 @@ const CATS = ["全部", ...CATEGORIES];
       const cards = entries.map(([, { articles: arts, digest }]) => {
         const top = [...arts].sort((a, b) => (b.score || 0) - (a.score || 0))[0];
         const href = top ? `article.html?id=${encodeURIComponent(top.id)}` : "#";
-        const anglesHtml = (digest.angles || []).map(ang => `
-          <div class="cd-angle">
+        const sourceSentMap = {};
+        for (const a of arts) if (a.source && a.sentiment) sourceSentMap[a.source] = a.sentiment;
+        const anglesHtml = (digest.angles || []).map(ang => {
+          const sent = (ang.sources || []).map(s => sourceSentMap[s]).find(Boolean) || "neutral";
+          return `
+          <div class="cd-angle" data-sent="${esc(sent)}">
             <div class="cd-angle-label">${esc(ang.label || "")}</div>
             <div class="cd-angle-sources">${(ang.sources || []).map(s => `<span>${esc(s)}</span>`).join(" · ")}</div>
             <div class="cd-angle-detail">${esc(ang.detail || "")}</div>
-          </div>`).join("");
+          </div>`;
+        }).join("");
         const tensionHtml = digest.tension ? `<div class="cd-tension">⚡ ${esc(digest.tension)}</div>` : "";
         return `<div class="cluster-digest">
           <a class="cd-headline" href="${esc(href)}">${esc(digest.headline)}</a>

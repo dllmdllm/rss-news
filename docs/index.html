@@ -217,6 +217,7 @@
     }
 
     /* Sentiment dashboard */
+    .sent-legend { font-size: .7rem; font-weight: 400; margin-left: 8px; text-transform: none; letter-spacing: 0; }
     .sentiment-grid { display: flex; flex-direction: column; gap: 7px; }
     .sent-row { display: flex; align-items: center; gap: 8px; }
     .sent-cat {
@@ -230,8 +231,9 @@
     .sent-pos { background: #4ade80; height: 100%; }
     .sent-neu { background: var(--muted); opacity: .4; height: 100%; }
     .sent-neg { background: #f87171; height: 100%; }
-    .sent-nums { font-size: .68rem; display: flex; gap: 5px; flex-shrink: 0; }
+    .sent-nums { font-size: .7rem; display: flex; gap: 6px; flex-shrink: 0; white-space: nowrap; }
     .s-pos { color: #4ade80; }
+    .s-neu { color: var(--muted); }
     .s-neg { color: #f87171; }
 
     /* Cluster digest */
@@ -251,6 +253,9 @@
       background: var(--bg); border-left: 3px solid var(--border);
       border-radius: 0 6px 6px 0; padding: 6px 10px; font-size: .8rem;
     }
+    .cd-angle[data-sent="positive"] { border-left-color: #4ade80; background: rgba(74,222,128,.06); }
+    .cd-angle[data-sent="negative"] { border-left-color: #f87171; background: rgba(248,113,113,.06); }
+    .cd-angle[data-sent="neutral"]  { border-left-color: var(--muted); }
     .cd-angle-label { font-weight: 700; color: var(--text); margin-bottom: 2px; }
     .cd-angle-sources { color: var(--accent); font-size: .7rem; margin-bottom: 3px; }
     .cd-angle-detail { color: var(--muted); line-height: 1.45; }
@@ -297,10 +302,10 @@
     }
     .ai-pick:last-child { margin-bottom: 0; }
     .ai-pick[data-cat] {
-      background: rgb(var(--cat-rgb) / var(--cat-bg-alpha));
+      background: var(--cat-active-bg, rgb(var(--cat-rgb) / var(--cat-bg-alpha)));
       border-color: rgb(var(--cat-rgb) / var(--cat-border-alpha));
     }
-    .ai-pick[data-cat]:hover { border-color: rgb(var(--cat-rgb) / 0.7); }
+    .ai-pick[data-cat]:hover { border-color: rgb(var(--cat-rgb) / 0.75); }
     .ai-pick-title {
       font-size: .95rem; font-weight: 600; line-height: 1.42; color: var(--text);
     }
