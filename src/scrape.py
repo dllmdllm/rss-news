@@ -17,8 +17,8 @@ from src.feeds import (
 
 # Per-request timeouts — fallbacks fire after the main aiohttp fetch fails or
 # is blocked, so pages that do not respond quickly are unlikely to recover.
-_MAIN_TIMEOUT     = 20
-_FALLBACK_TIMEOUT = 15
+_MAIN_TIMEOUT     = 15
+_FALLBACK_TIMEOUT = 10
 
 _BLOCK_PHRASES = [
     "cloudflare ray id",
@@ -784,7 +784,7 @@ async def _cloudscraper_fetch(url: str, extra_headers: dict | None = None) -> st
             scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
             r = scraper.get(url, timeout=_FALLBACK_TIMEOUT, headers=extra_headers or None)
             return r.text
-        return await loop.run_in_executor(None, _fetch)
+        return await asyncio.wait_for(loop.run_in_executor(None, _fetch), timeout=_FALLBACK_TIMEOUT + 5)
     except Exception as exc:
         print(f"[WARN] cloudscraper {url[:60]}: {exc!r}")
         return None
@@ -950,7 +950,15 @@ async def scrape_all(articles: list) -> list:
     connector = aiohttp.TCPConnector(limit=SCRAPE_CONCURRENCY)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_scrape_one(session, a, sem) for a in articles]
-        results = await asyncio.gather(*tasks)
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=240,  # 4-min budget; stuck threads keep running but we move on
+            )
+            results = [a if isinstance(a, dict) else articles[i] for i, a in enumerate(results)]
+        except asyncio.TimeoutError:
+            print("[scrape] timeout — using partial results")
+            results = articles
     scraped = sum(1 for a in results if a.get("content"))
     print(f"[scrape] {scraped}/{len(results)} articles with content")
     return results
