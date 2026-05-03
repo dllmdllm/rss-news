@@ -195,6 +195,18 @@
     .top-pick-meta { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: .7rem; margin-bottom: 5px; }
     .top-pick-title { color: var(--text); line-height: 1.45; font-weight: 650; }
 
+    /* ── AI tab: time filter strip ── */
+    .ai-time-strip {
+      display: flex; gap: 7px; padding: 10px 0 4px; flex-wrap: wrap;
+    }
+    .ai-time-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      padding: 5px 14px; border-radius: 999px; cursor: pointer; font-size: .78rem;
+      transition: background .15s, color .15s, border-color .15s; white-space: nowrap;
+    }
+    .ai-time-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .ai-time-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
     /* ── AI tab: by-category top picks ── */
     .ai-cat-section { margin-bottom: 24px; }
     .ai-cat-label {

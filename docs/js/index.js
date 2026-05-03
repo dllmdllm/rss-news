@@ -582,14 +582,32 @@ const CATS = ["全部", ...CATEGORIES];
       return picks;
     }
 
-    function topPicksByCategory(n = 10) {
+    // 0 = all, 2/4/8 = hours window
+    let aiTimeFilter = 0;
+
+    const AI_TIME_BTNS = [
+      { label: "最新", hours: 0 },
+      { label: "2小時", hours: 2 },
+      { label: "4小時", hours: 4 },
+      { label: "8小時", hours: 8 },
+    ];
+
+    function topPicksByCategory(n = 10, maxAgeHours = 0) {
       const muted = getMutedSources();
       const cats = CATS.filter(c => c !== "全部");
       const now = Date.now();
+      const cutoff = maxAgeHours > 0 ? now - maxAgeHours * 36e5 : 0;
       const result = [];
       for (const cat of cats) {
         const pool = all
-          .filter(a => a.category === cat && !muted.has(a.source) && !a.duplicate_of)
+          .filter(a => {
+            if (a.category !== cat || muted.has(a.source) || a.duplicate_of) return false;
+            if (cutoff > 0) {
+              const ts = Date.parse(a.date || "");
+              if (!Number.isFinite(ts) || ts < cutoff) return false;
+            }
+            return true;
+          })
           .map(a => ({ a, w: aiRankScore(a, now) }))
           .sort((x, y) => y.w - x.w);
         const seenCluster = new Set();
@@ -614,14 +632,18 @@ const CATS = ["全部", ...CATEGORIES];
         container.innerHTML = "";
         return;
       }
-      const groups = topPicksByCategory(10);
+      const groups = topPicksByCategory(10, aiTimeFilter);
+      container.classList.add("show");
+      const stripHtml = `<div class="ai-time-strip">${
+        AI_TIME_BTNS.map(b =>
+          `<button class="ai-time-btn${b.hours === aiTimeFilter ? " active" : ""}" data-hours="${b.hours}">${esc(b.label)}</button>`
+        ).join("")
+      }</div>`;
       if (!groups.length) {
-        container.classList.remove("show");
-        container.innerHTML = "";
+        container.innerHTML = stripHtml + `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
         return;
       }
-      container.classList.add("show");
-      container.innerHTML = groups.map(({ cat, picks }) => {
+      container.innerHTML = stripHtml + groups.map(({ cat, picks }) => {
         const rows = picks.map(a => {
           const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
           const ago = relativeTime(a.date);
@@ -640,6 +662,13 @@ const CATS = ["全部", ...CATEGORIES];
           ${rows}
         </div>`;
       }).join("");
+
+      container.querySelectorAll(".ai-time-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          aiTimeFilter = Number(btn.dataset.hours);
+          buildTopPicks();
+        });
+      });
     }
 
     // ── Sort toggle ───────────────────────────────────────────────
