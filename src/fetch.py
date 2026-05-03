@@ -322,7 +322,7 @@ def _skypost_parse_article(html: str, url: str, cutoff: datetime, feed_info: dic
     if section != _SKYPOST_NEWS_SECTION:
         return None
     date = _skypost_parse_date(soup)
-    if not date:
+    if not date or date < cutoff:
         return None
 
     title = _skypost_hidden_text(soup, "metaTitleHidden") or (
