@@ -634,21 +634,27 @@ const CATS = ["全部", ...CATEGORIES];
       }
       const groups = topPicksByCategory(10, aiTimeFilter);
       container.classList.add("show");
+      const navHtml = `<div class="ai-nav-strip">
+        <a class="ai-nav-btn" href="graph.html">🕸️ 圖譜</a>
+        <a class="ai-nav-btn" href="upcoming.html">📅 預告</a>
+        <a class="ai-nav-btn" href="entities.html">👤 實體</a>
+      </div>`;
       const stripHtml = `<div class="ai-time-strip">${
         AI_TIME_BTNS.map(b =>
           `<button class="ai-time-btn${b.hours === aiTimeFilter ? " active" : ""}" data-hours="${b.hours}">${esc(b.label)}</button>`
         ).join("")
       }</div>`;
       if (!groups.length) {
-        container.innerHTML = stripHtml + `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
+        container.innerHTML = navHtml + stripHtml + `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
         return;
       }
-      container.innerHTML = stripHtml + groups.map(({ cat, picks }) => {
+      container.innerHTML = navHtml + stripHtml + groups.map(({ cat, picks }) => {
+        const catAttr = CAT_WL.has(cat) ? ` data-cat="${esc(cat)}"` : "";
         const rows = picks.map(a => {
           const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
           const ago = relativeTime(a.date);
           const score = typeof a.score === "number" ? a.score : 5;
-          return `<a class="ai-pick" href="article.html?id=${encodeURIComponent(aid)}">
+          return `<a class="ai-pick" href="article.html?id=${encodeURIComponent(aid)}"${catAttr}>
             <div class="ai-pick-title">${esc(a.title || "")}</div>
             <div class="ai-pick-meta">
               <span class="ai-pick-source">${esc(a.source || "")}</span>
