@@ -207,6 +207,81 @@
     .ai-time-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .ai-time-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
 
+    /* ── AI tab: generic section wrapper ── */
+    .ai-section { margin-bottom: 22px; }
+    .ai-section-hd {
+      font-size: .78rem; font-weight: 700; color: var(--muted);
+      letter-spacing: .05em; text-transform: uppercase;
+      margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Sentiment dashboard */
+    .sentiment-grid { display: flex; flex-direction: column; gap: 7px; }
+    .sent-row { display: flex; align-items: center; gap: 8px; }
+    .sent-cat {
+      font-size: .72rem; font-weight: 700; width: 34px; flex-shrink: 0;
+      padding: 2px 6px; border-radius: 4px; text-align: center;
+    }
+    .sent-bar {
+      flex: 1; height: 8px; border-radius: 4px; overflow: hidden;
+      background: var(--border); display: flex;
+    }
+    .sent-pos { background: #4ade80; height: 100%; }
+    .sent-neu { background: var(--muted); opacity: .4; height: 100%; }
+    .sent-neg { background: #f87171; height: 100%; }
+    .sent-nums { font-size: .68rem; display: flex; gap: 5px; flex-shrink: 0; }
+    .s-pos { color: #4ade80; }
+    .s-neg { color: #f87171; }
+
+    /* Cluster digest */
+    .cluster-digest {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 14px; margin-bottom: 10px;
+    }
+    .cluster-digest:last-child { margin-bottom: 0; }
+    .cd-headline {
+      display: block; font-size: .95rem; font-weight: 700; color: var(--text);
+      text-decoration: none; margin-bottom: 5px; line-height: 1.4;
+    }
+    .cd-headline:hover { color: var(--accent); }
+    .cd-consensus { font-size: .8rem; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+    .cd-angles { display: flex; flex-direction: column; gap: 7px; margin-bottom: 8px; }
+    .cd-angle {
+      background: var(--bg); border-left: 3px solid var(--border);
+      border-radius: 0 6px 6px 0; padding: 6px 10px; font-size: .8rem;
+    }
+    .cd-angle-label { font-weight: 700; color: var(--text); margin-bottom: 2px; }
+    .cd-angle-sources { color: var(--accent); font-size: .7rem; margin-bottom: 3px; }
+    .cd-angle-detail { color: var(--muted); line-height: 1.45; }
+    .cd-tension {
+      font-size: .78rem; color: #fbbf24; background: rgba(251,191,36,.08);
+      border: 1px solid rgba(251,191,36,.25); border-radius: 6px;
+      padding: 5px 9px; margin-bottom: 7px;
+    }
+    .cd-meta { font-size: .68rem; color: var(--muted); }
+
+    /* Event type pills */
+    .event-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .event-pill {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 999px; padding: 4px 11px; font-size: .78rem; color: var(--text);
+      cursor: pointer; transition: border-color .15s;
+    }
+    .event-pill em { color: var(--muted); font-style: normal; font-size: .7rem; }
+    .event-pill:hover { border-color: var(--accent); }
+    .event-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .event-pill.active em { color: rgba(255,255,255,.7); }
+
+    /* Hot tags */
+    .hot-tags { display: flex; flex-wrap: wrap; gap: 7px; align-items: baseline; }
+    .hot-tag {
+      color: var(--link); cursor: pointer; transition: color .15s;
+      white-space: nowrap;
+    }
+    .hot-tag em { color: var(--muted); font-style: normal; font-size: .68rem; }
+    .hot-tag:hover { color: var(--accent); }
+
     /* ── AI tab: by-category top picks ── */
     .ai-cat-section { margin-bottom: 24px; }
     .ai-cat-label {

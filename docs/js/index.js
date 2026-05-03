@@ -584,6 +584,7 @@ const CATS = ["全部", ...CATEGORIES];
 
     // 0 = all, 2/4/8 = hours window
     let aiTimeFilter = 0;
+    let aiEventFilter = "";  // filter by event_type, "" = all
 
     const AI_TIME_BTNS = [
       { label: "最新", hours: 0 },
@@ -592,27 +593,32 @@ const CATS = ["全部", ...CATEGORIES];
       { label: "8小時", hours: 8 },
     ];
 
-    function topPicksByCategory(n = 10, maxAgeHours = 0) {
+    function aiPool(maxAgeHours = 0) {
       const muted = getMutedSources();
-      const cats = CATS.filter(c => c !== "全部");
       const now = Date.now();
       const cutoff = maxAgeHours > 0 ? now - maxAgeHours * 36e5 : 0;
+      return all.filter(a => {
+        if (muted.has(a.source) || a.duplicate_of) return false;
+        if (cutoff > 0) {
+          const ts = Date.parse(a.date || "");
+          if (!Number.isFinite(ts) || ts < cutoff) return false;
+        }
+        return true;
+      });
+    }
+
+    function topPicksByCategory(n = 10, pool) {
+      const cats = CATS.filter(c => c !== "全部");
+      const now = Date.now();
       const result = [];
       for (const cat of cats) {
-        const pool = all
-          .filter(a => {
-            if (a.category !== cat || muted.has(a.source) || a.duplicate_of) return false;
-            if (cutoff > 0) {
-              const ts = Date.parse(a.date || "");
-              if (!Number.isFinite(ts) || ts < cutoff) return false;
-            }
-            return true;
-          })
+        const ranked = pool
+          .filter(a => a.category === cat)
           .map(a => ({ a, w: aiRankScore(a, now) }))
           .sort((x, y) => y.w - x.w);
         const seenCluster = new Set();
         const picks = [];
-        for (const { a } of pool) {
+        for (const { a } of ranked) {
           if (picks.length >= n) break;
           const cid = String(a.cluster_id || "");
           if (cid && seenCluster.has(cid)) continue;
@@ -624,6 +630,109 @@ const CATS = ["全部", ...CATEGORIES];
       return result;
     }
 
+    function _aiSentimentSection(pool) {
+      const cats = CATS.filter(c => c !== "全部");
+      const rows = [];
+      for (const cat of cats) {
+        const articles = pool.filter(a => a.category === cat);
+        if (!articles.length) continue;
+        const pos = articles.filter(a => a.sentiment === "positive").length;
+        const neg = articles.filter(a => a.sentiment === "negative").length;
+        const total = articles.length;
+        const posP = Math.round(pos / total * 100);
+        const negP = Math.round(neg / total * 100);
+        const neuP = 100 - posP - negP;
+        rows.push(`<div class="sent-row">
+          <div class="sent-cat ${catClass(cat)}">${esc(cat)}</div>
+          <div class="sent-bar">
+            <div class="sent-pos" style="width:${posP}%" title="正面 ${pos}篇"></div>
+            <div class="sent-neu" style="width:${neuP}%" title="中性篇"></div>
+            <div class="sent-neg" style="width:${negP}%" title="負面 ${neg}篇"></div>
+          </div>
+          <div class="sent-nums"><span class="s-pos">▲${pos}</span><span class="s-neg">▼${neg}</span></div>
+        </div>`);
+      }
+      if (!rows.length) return "";
+      return `<div class="ai-section">
+        <div class="ai-section-hd">📊 情緒概覽</div>
+        <div class="sentiment-grid">${rows.join("")}</div>
+      </div>`;
+    }
+
+    function _aiClusterSection(pool) {
+      const clusterMap = {};
+      for (const a of pool) {
+        const cid = String(a.cluster_id || "");
+        if (!cid) continue;
+        if (!clusterMap[cid]) clusterMap[cid] = { articles: [], digest: panelDigests[cid] };
+        clusterMap[cid].articles.push(a);
+      }
+      const entries = Object.entries(clusterMap)
+        .filter(([, v]) => v.digest && v.digest.headline)
+        .sort(([, a], [, b]) => b.articles.length - a.articles.length)
+        .slice(0, 5);
+      if (!entries.length) return "";
+      const cards = entries.map(([, { articles: arts, digest }]) => {
+        const top = [...arts].sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+        const href = top ? `article.html?id=${encodeURIComponent(top.id)}` : "#";
+        const anglesHtml = (digest.angles || []).map(ang => `
+          <div class="cd-angle">
+            <div class="cd-angle-label">${esc(ang.label || "")}</div>
+            <div class="cd-angle-sources">${(ang.sources || []).map(s => `<span>${esc(s)}</span>`).join(" · ")}</div>
+            <div class="cd-angle-detail">${esc(ang.detail || "")}</div>
+          </div>`).join("");
+        const tensionHtml = digest.tension ? `<div class="cd-tension">⚡ ${esc(digest.tension)}</div>` : "";
+        return `<div class="cluster-digest">
+          <a class="cd-headline" href="${esc(href)}">${esc(digest.headline)}</a>
+          <div class="cd-consensus">${esc(digest.consensus || "")}</div>
+          <div class="cd-angles">${anglesHtml}</div>
+          ${tensionHtml}
+          <div class="cd-meta">${arts.length} 篇報道</div>
+        </div>`;
+      }).join("");
+      return `<div class="ai-section">
+        <div class="ai-section-hd">🗞️ 話題聚焦</div>
+        ${cards}
+      </div>`;
+    }
+
+    function _aiEventSection(pool) {
+      const counts = {};
+      for (const a of pool) {
+        const t = (a.event_type || "").trim();
+        if (t) counts[t] = (counts[t] || 0) + 1;
+      }
+      const sorted = Object.entries(counts).sort(([, a], [, b]) => b - a).slice(0, 14);
+      if (!sorted.length) return "";
+      const pills = sorted.map(([t, n]) =>
+        `<span class="event-pill${aiEventFilter === t ? " active" : ""}" data-event="${esc(t)}">${esc(t)} <em>${n}</em></span>`
+      ).join("");
+      return `<div class="ai-section">
+        <div class="ai-section-hd">📋 今日事件</div>
+        <div class="event-pills">${pills}</div>
+      </div>`;
+    }
+
+    function _aiTagSection(pool) {
+      const counts = {};
+      for (const a of pool) {
+        for (const t of (a.tags || [])) {
+          if (t) counts[t] = (counts[t] || 0) + 1;
+        }
+      }
+      const sorted = Object.entries(counts).sort(([, a], [, b]) => b - a).slice(0, 24);
+      if (!sorted.length) return "";
+      const max = sorted[0][1];
+      const tags = sorted.map(([t, n]) => {
+        const sz = (0.78 + (n / max) * 0.38).toFixed(2);
+        return `<span class="hot-tag" style="font-size:${sz}rem" data-tag="${esc(t)}">${esc(t)} <em>${n}</em></span>`;
+      }).join("");
+      return `<div class="ai-section">
+        <div class="ai-section-hd">🏷️ 熱門標籤</div>
+        <div class="hot-tags">${tags}</div>
+      </div>`;
+    }
+
     function buildTopPicks() {
       const container = document.getElementById("top-picks");
       if (!container) return;
@@ -632,8 +741,13 @@ const CATS = ["全部", ...CATEGORIES];
         container.innerHTML = "";
         return;
       }
-      const groups = topPicksByCategory(10, aiTimeFilter);
+
+      let pool = aiPool(aiTimeFilter);
+      if (aiEventFilter) pool = pool.filter(a => (a.event_type || "").trim() === aiEventFilter);
+
+      const groups = topPicksByCategory(10, pool);
       container.classList.add("show");
+
       const navHtml = `<div class="ai-nav-strip">
         <a class="ai-nav-btn" href="graph.html">🕸️ 圖譜</a>
         <a class="ai-nav-btn" href="upcoming.html">📅 預告</a>
@@ -644,35 +758,59 @@ const CATS = ["全部", ...CATEGORIES];
           `<button class="ai-time-btn${b.hours === aiTimeFilter ? " active" : ""}" data-hours="${b.hours}">${esc(b.label)}</button>`
         ).join("")
       }</div>`;
-      if (!groups.length) {
-        container.innerHTML = navHtml + stripHtml + `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
-        return;
-      }
-      container.innerHTML = navHtml + stripHtml + groups.map(({ cat, picks }) => {
-        const catAttr = CAT_WL.has(cat) ? ` data-cat="${esc(cat)}"` : "";
-        const rows = picks.map(a => {
-          const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
-          const ago = relativeTime(a.date);
-          const score = typeof a.score === "number" ? a.score : 5;
-          return `<a class="ai-pick" href="article.html?id=${encodeURIComponent(aid)}"${catAttr}>
-            <div class="ai-pick-title">${esc(a.title || "")}</div>
-            <div class="ai-pick-meta">
-              <span class="ai-pick-source">${esc(a.source || "")}</span>
-              <span>重要度 ${score}</span>
-              ${ago ? `<span>${esc(ago)}</span>` : ""}
-            </div>
-          </a>`;
-        }).join("");
-        return `<div class="ai-cat-section">
-          <div class="ai-cat-label ${catClass(cat)}">${esc(cat)}</div>
-          ${rows}
-        </div>`;
-      }).join("");
+
+      const rawPool = aiPool(aiTimeFilter);
+      const sentHtml    = _aiSentimentSection(rawPool);
+      const clusterHtml = _aiClusterSection(rawPool);
+      const eventHtml   = _aiEventSection(rawPool);
+      const tagHtml     = _aiTagSection(rawPool);
+
+      const catHtml = groups.length
+        ? groups.map(({ cat, picks }) => {
+            const catAttr = CAT_WL.has(cat) ? ` data-cat="${esc(cat)}"` : "";
+            const rows = picks.map(a => {
+              const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
+              const ago = relativeTime(a.date);
+              const score = typeof a.score === "number" ? a.score : 5;
+              return `<a class="ai-pick" href="article.html?id=${encodeURIComponent(aid)}"${catAttr}>
+                <div class="ai-pick-title">${esc(a.title || "")}</div>
+                <div class="ai-pick-meta">
+                  <span class="ai-pick-source">${esc(a.source || "")}</span>
+                  <span>重要度 ${score}</span>
+                  ${ago ? `<span>${esc(ago)}</span>` : ""}
+                </div>
+              </a>`;
+            }).join("");
+            const heading = aiEventFilter ? `${esc(aiEventFilter)} — ${esc(cat)}` : esc(cat);
+            return `<div class="ai-cat-section">
+              <div class="ai-cat-label ${catClass(cat)}">${heading}</div>
+              ${rows}
+            </div>`;
+          }).join("")
+        : `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
+
+      container.innerHTML = navHtml + stripHtml + sentHtml + clusterHtml + eventHtml + tagHtml
+        + `<div class="ai-section-hd" style="margin-top:8px">📰 今日重點</div>` + catHtml;
 
       container.querySelectorAll(".ai-time-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           aiTimeFilter = Number(btn.dataset.hours);
+          aiEventFilter = "";
           buildTopPicks();
+        });
+      });
+      container.querySelectorAll(".event-pill").forEach(pill => {
+        pill.addEventListener("click", () => {
+          const t = pill.dataset.event || "";
+          aiEventFilter = aiEventFilter === t ? "" : t;
+          buildTopPicks();
+        });
+      });
+      container.querySelectorAll(".hot-tag").forEach(tag => {
+        tag.addEventListener("click", () => {
+          const t = tag.dataset.tag || "";
+          activeTag = activeTag === t ? "" : t;
+          switchTab("home");
         });
       });
     }
