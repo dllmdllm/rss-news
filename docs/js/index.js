@@ -1040,52 +1040,56 @@ const CATS = ["全部", ...CATEGORIES];
       }
     });
 
-    // ── Bottom tab bar (mobile only) ─────────────────────────────
+    // ── Bottom tab bar ────────────────────────────────────────────
     let activeTab = "home";
 
+    function _tabEls() {
+      return {
+        searchRow:   document.querySelector(".search-row"),
+        filtersEl:   document.getElementById("filters"),
+        chipFilters: document.getElementById("chip-filters"),
+        topPicksEl:  document.getElementById("top-picks"),
+        gridEl:      document.getElementById("grid"),
+        settingsEl:  document.getElementById("settings-panel"),
+      };
+    }
+
+    function _showAll(els) {
+      Object.values(els).forEach(el => { if (el) el.hidden = false; });
+    }
+
     function switchTab(tab) {
-      if (!window.matchMedia?.("(max-width: 640px)")?.matches) return;
       activeTab = tab;
       document.querySelectorAll(".tab-btn").forEach(b =>
         b.classList.toggle("active", b.dataset.tab === tab)
       );
-      const searchRow   = document.querySelector(".search-row");
-      const filtersEl   = document.getElementById("filters");
-      const chipFilters = document.getElementById("chip-filters");
-      const topPicksEl  = document.getElementById("top-picks");
-      const gridEl      = document.getElementById("grid");
-      const settingsEl  = document.getElementById("settings-panel");
-      // default: show all, hide settings
-      [searchRow, filtersEl, chipFilters, topPicksEl, gridEl].forEach(el => el && (el.hidden = false));
-      if (settingsEl) settingsEl.hidden = true;
-      switch (tab) {
-        case "home":
-          if (filtersEl)   filtersEl.hidden   = true;
-          if (chipFilters) chipFilters.hidden = true;
-          activeCat = "全部"; activeSource = ""; activeTag = "";
-          renderFilteredFromUI();
-          break;
-        case "cats":
-          if (searchRow)  searchRow.hidden  = true;
-          if (topPicksEl) topPicksEl.hidden = true;
-          renderFiltered();
-          break;
-        case "hot":
-          if (searchRow)   searchRow.hidden   = true;
-          if (filtersEl)   filtersEl.hidden   = true;
-          if (chipFilters) chipFilters.hidden = true;
-          if (topPicksEl)  topPicksEl.hidden  = true;
-          _renderHot();
-          break;
-        case "settings":
-          if (searchRow)   searchRow.hidden   = true;
-          if (filtersEl)   filtersEl.hidden   = true;
-          if (chipFilters) chipFilters.hidden = true;
-          if (topPicksEl)  topPicksEl.hidden  = true;
-          if (gridEl)      gridEl.hidden      = true;
-          if (settingsEl)  settingsEl.hidden  = false;
-          _updateSettingsPanel();
-          break;
+      const els = _tabEls();
+      _showAll(els);
+      els.settingsEl && (els.settingsEl.hidden = true);
+
+      if (tab === "home") {
+        els.filtersEl   && (els.filtersEl.hidden   = true);
+        els.chipFilters && (els.chipFilters.hidden  = true);
+        activeCat = "全部"; activeSource = ""; activeTag = "";
+        renderFilteredFromUI();
+      } else if (tab === "cats") {
+        els.searchRow  && (els.searchRow.hidden  = true);
+        els.topPicksEl && (els.topPicksEl.hidden = true);
+        renderFiltered();
+      } else if (tab === "hot") {
+        els.searchRow   && (els.searchRow.hidden   = true);
+        els.filtersEl   && (els.filtersEl.hidden   = true);
+        els.chipFilters && (els.chipFilters.hidden  = true);
+        els.topPicksEl  && (els.topPicksEl.hidden  = true);
+        _renderHot();
+      } else if (tab === "settings") {
+        els.searchRow   && (els.searchRow.hidden   = true);
+        els.filtersEl   && (els.filtersEl.hidden   = true);
+        els.chipFilters && (els.chipFilters.hidden  = true);
+        els.topPicksEl  && (els.topPicksEl.hidden  = true);
+        els.gridEl      && (els.gridEl.hidden       = true);
+        els.settingsEl  && (els.settingsEl.hidden   = false);
+        _updateSettingsPanel();
       }
     }
 
@@ -1112,9 +1116,14 @@ const CATS = ["全部", ...CATEGORIES];
       document.getElementById("s-important")?.classList.toggle("active", onlyImportant);
       document.getElementById("s-unread")?.classList.toggle("active",    onlyUnread);
       document.getElementById("s-saved")?.classList.toggle("active",     onlySaved);
-      document.getElementById("s-compact")?.classList.toggle("active",   compact);
       document.getElementById("s-text")?.classList.toggle("active",      document.body.classList.contains("text-only"));
     }
 
-    window.switchTab          = switchTab;
+    // Bind tab clicks via event delegation (more reliable than inline onclick)
+    document.getElementById("tab-bar")?.addEventListener("click", e => {
+      const btn = e.target.closest("[data-tab]");
+      if (btn) switchTab(btn.dataset.tab);
+    });
+
+    window.switchTab           = switchTab;
     window.updateSettingsPanel = _updateSettingsPanel;
