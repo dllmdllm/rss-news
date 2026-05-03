@@ -651,7 +651,7 @@ def _parse_tvb_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> list
             continue
 
         title = (url_node.findtext(f".//{{{NEWS}}}title") or "").strip()
-        if not title:
+        if not title or not _CJK_RE.search(title):
             continue
 
         thumbnail = _clean_url((url_node.findtext(f".//{{{IMAGE}}}loc") or "").strip()) or None
