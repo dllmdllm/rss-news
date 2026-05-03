@@ -790,11 +790,32 @@
         display: flex; flex-direction: column; gap: 22px;
       }
       .top-picks { padding-bottom: calc(10px + 56px + env(safe-area-inset-bottom)); }
+
+      /* ── tab-driven visibility ── */
+      #settings-panel { display: none !important; }
+
+      body[data-tab="home"] #filters,
+      body[data-tab="home"] #chip-filters,
+      body[data-tab="home"] #top-picks { display: none !important; }
+
+      body[data-tab="ai"] .search-row { display: none !important; }
+
+      body[data-tab="hot"] .search-row,
+      body[data-tab="hot"] #filters,
+      body[data-tab="hot"] #chip-filters,
+      body[data-tab="hot"] #top-picks { display: none !important; }
+
+      body[data-tab="settings"] .search-row,
+      body[data-tab="settings"] #filters,
+      body[data-tab="settings"] #chip-filters,
+      body[data-tab="settings"] #top-picks,
+      body[data-tab="settings"] #grid { display: none !important; }
+
+      body[data-tab="settings"] #settings-panel { display: flex !important; }
     }
 
-    /* settings panel — hidden until tab is active */
+    /* settings panel — desktop fallback (mobile controlled by body[data-tab] above) */
     .settings-panel  { display: none; }
-    .settings-panel:not([hidden]) { display: flex; }
     .settings-section { display: flex; flex-direction: column; gap: 8px; }
     .settings-label {
       font-size: .7rem; color: var(--muted); font-weight: 600;

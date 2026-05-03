@@ -1042,57 +1042,29 @@ const CATS = ["全部", ...CATEGORIES];
 
     // ── Bottom tab bar ────────────────────────────────────────────
     let activeTab = "home";
-
-    function _tabEls() {
-      return {
-        searchRow:   document.querySelector(".search-row"),
-        filtersEl:   document.getElementById("filters"),
-        chipFilters: document.getElementById("chip-filters"),
-        topPicksEl:  document.getElementById("top-picks"),
-        gridEl:      document.getElementById("grid"),
-        settingsEl:  document.getElementById("settings-panel"),
-      };
-    }
-
-    function _showAll(els) {
-      Object.values(els).forEach(el => { if (el) el.hidden = false; });
-    }
+    document.body.dataset.tab = "home";
 
     function switchTab(tab) {
       activeTab = tab;
+      document.body.dataset.tab = tab;
       document.querySelectorAll(".tab-btn").forEach(b =>
         b.classList.toggle("active", b.dataset.tab === tab)
       );
-      const els = _tabEls();
-      _showAll(els);
-      els.settingsEl && (els.settingsEl.hidden = true);
 
       if (tab === "home") {
-        els.filtersEl   && (els.filtersEl.hidden   = true);
-        els.chipFilters && (els.chipFilters.hidden  = true);
         activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = false;
         buildTopPicks();
         renderFilteredFromUI();
         pollForNew().catch(() => null);
       } else if (tab === "ai") {
-        els.searchRow  && (els.searchRow.hidden  = true);
         buildTopPicks();
         renderFiltered();
       } else if (tab === "hot") {
-        els.searchRow   && (els.searchRow.hidden   = true);
-        els.filtersEl   && (els.filtersEl.hidden   = true);
-        els.chipFilters && (els.chipFilters.hidden  = true);
         activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = true;
         buildTopPicks();
         _renderFilteredScrollTop = true;
         renderFiltered();
       } else if (tab === "settings") {
-        els.searchRow   && (els.searchRow.hidden   = true);
-        els.filtersEl   && (els.filtersEl.hidden   = true);
-        els.chipFilters && (els.chipFilters.hidden  = true);
-        els.topPicksEl  && (els.topPicksEl.hidden  = true);
-        els.gridEl      && (els.gridEl.hidden       = true);
-        els.settingsEl  && (els.settingsEl.hidden   = false);
         _updateSettingsPanel();
       }
     }
