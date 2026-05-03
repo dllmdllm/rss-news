@@ -44,10 +44,14 @@ ANALYSIS_VERSION = "p-" + hashlib.md5(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
 
 _BAD_SUMMARY_PHRASES = (
     "單一字串",
+    "單字串",        # abbreviated variant
     "非array",
     "每點用",
     "每點之間用換行符",
     "唔超過10個字",
+    "唔超過10字",    # abbreviated variant
+    "至8重點",       # "5至8重點" fragment
+    "5至8個重點",
 )
 
 
