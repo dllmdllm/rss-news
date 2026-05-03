@@ -697,6 +697,9 @@
     }
     .health-legend-item { display: inline-flex; align-items: center; gap: 5px; }
 
+    /* tab bar hidden on desktop; media query below enables it on mobile */
+    .tab-bar { display: none; }
+
     /* ── mobile ── */
     @media (max-width: 640px) {
       header {
@@ -789,8 +792,7 @@
       .top-picks { padding-bottom: calc(10px + 56px + env(safe-area-inset-bottom)); }
     }
 
-    /* settings panel — hidden on desktop too until tab is active */
-    .tab-bar         { display: none; }
+    /* settings panel — hidden until tab is active */
     .settings-panel  { display: none; }
     .settings-panel:not([hidden]) { display: flex; }
     .settings-section { display: flex; flex-direction: column; gap: 8px; }
