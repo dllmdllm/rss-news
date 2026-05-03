@@ -582,6 +582,30 @@ const CATS = ["全部", ...CATEGORIES];
       return picks;
     }
 
+    function topPicksByCategory(n = 10) {
+      const muted = getMutedSources();
+      const cats = CATS.filter(c => c !== "全部");
+      const now = Date.now();
+      const result = [];
+      for (const cat of cats) {
+        const pool = all
+          .filter(a => a.category === cat && !muted.has(a.source) && !a.duplicate_of)
+          .map(a => ({ a, w: aiRankScore(a, now) }))
+          .sort((x, y) => y.w - x.w);
+        const seenCluster = new Set();
+        const picks = [];
+        for (const { a } of pool) {
+          if (picks.length >= n) break;
+          const cid = String(a.cluster_id || "");
+          if (cid && seenCluster.has(cid)) continue;
+          if (cid) seenCluster.add(cid);
+          picks.push(a);
+        }
+        if (picks.length) result.push({ cat, picks });
+      }
+      return result;
+    }
+
     function buildTopPicks() {
       const container = document.getElementById("top-picks");
       if (!container) return;
@@ -590,27 +614,32 @@ const CATS = ["全部", ...CATEGORIES];
         container.innerHTML = "";
         return;
       }
-      const picks = topPicks(all);
-      if (!picks.length) {
+      const groups = topPicksByCategory(10);
+      if (!groups.length) {
         container.classList.remove("show");
         container.innerHTML = "";
         return;
       }
       container.classList.add("show");
-      container.innerHTML = `<div class="top-picks-head">
-        <div class="top-picks-title">今日重點</div>
-        <div class="top-picks-sub">每個分類各一條，按重要度挑選</div>
-      </div>
-      <div class="top-picks-list">${picks.map(a => {
-        const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
-        const score = typeof a.score === "number" ? a.score : 5;
-        const ago = relativeTime(a.date);
-        const agoHtml = ago ? `<span>${esc(ago)}</span>` : "";
-        return `<a class="top-pick" href="article.html?id=${encodeURIComponent(aid)}">
-          <div class="top-pick-meta"><span>${esc(a.source || "")}</span><span>重要度 ${score}</span>${agoHtml}</div>
-          <div class="top-pick-title">${esc(a.title || "")}</div>
-        </a>`;
-      }).join("")}</div>`;
+      container.innerHTML = groups.map(({ cat, picks }) => {
+        const rows = picks.map(a => {
+          const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
+          const ago = relativeTime(a.date);
+          const score = typeof a.score === "number" ? a.score : 5;
+          return `<a class="ai-pick" href="article.html?id=${encodeURIComponent(aid)}">
+            <div class="ai-pick-title">${esc(a.title || "")}</div>
+            <div class="ai-pick-meta">
+              <span class="ai-pick-source">${esc(a.source || "")}</span>
+              <span>重要度 ${score}</span>
+              ${ago ? `<span>${esc(ago)}</span>` : ""}
+            </div>
+          </a>`;
+        }).join("");
+        return `<div class="ai-cat-section">
+          <div class="ai-cat-label ${catClass(cat)}">${esc(cat)}</div>
+          ${rows}
+        </div>`;
+      }).join("");
     }
 
     // ── Sort toggle ───────────────────────────────────────────────
@@ -1058,7 +1087,6 @@ const CATS = ["全部", ...CATEGORIES];
         pollForNew().catch(() => null);
       } else if (tab === "ai") {
         buildTopPicks();
-        renderFiltered();
       } else if (tab === "hot") {
         activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = true;
         buildTopPicks();
