@@ -57,6 +57,14 @@ def _is_skypost_url(url: str) -> bool:
     return "skypost.hk" in (url or "").lower()
 
 
+def _is_tvb_url(url: str) -> bool:
+    return "news.tvb.com" in (url or "").lower()
+
+
+def _is_nowsnews_url(url: str) -> bool:
+    return "news.now.com" in (url or "").lower()
+
+
 def _hk01_tokens_to_text(tokens: list) -> str:
     """Flatten HK01 htmlTokens paragraphs into plain text.
     Only 'text' tokens observed in practice; unknown types fall back to content."""
@@ -90,10 +98,13 @@ def _build_hk01_content(html: str) -> str | None:
         .get("article")
     ) or {}
     blocks = article.get("blocks") or []
-    if not blocks:
+    description = (article.get("description") or "").strip()
+    if not blocks and not description:
         return None
 
     parts: list[str] = []
+    if description:
+        parts.append(f"<p>{_html_escape(description)}</p>")
     def _emit_image(img: dict):
         url = (img or {}).get("cdnUrl")
         if not url:
@@ -326,6 +337,64 @@ def _build_oncc_content(html: str, url: str) -> str | None:
         return None
     return "<html><body>" + "".join(parts) + "</body></html>"
 
+
+def _build_tvb_content(html: str) -> str | None:
+    """Extract TVB News article from __NEXT_DATA__ JSON.
+
+    TVB News is a Next.js app; the article text lives in
+    pageProps.newsItems.desc (plain text, newline-separated paragraphs).
+    Images are in pageProps.newsItems.media.image list.
+    trafilatura sees almost nothing because the body is hydrated client-side.
+    """
+    m = re.search(
+        r'<script id="__NEXT_DATA__"[^>]*>(.+?)</script>',
+        html,
+        re.DOTALL,
+    )
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except Exception:
+        return None
+
+    ni = data.get("props", {}).get("pageProps", {}).get("newsItems") or {}
+    if not isinstance(ni, dict):
+        return None
+
+    desc = (ni.get("desc") or "").strip()
+    if not desc:
+        return None
+
+    parts: list[str] = []
+
+    # Pick best cover image: first with default=True, else first item
+    images = ni.get("media", {}).get("image") or []
+    cover_url = ""
+    for img in images:
+        if img.get("default"):
+            cover_url = img.get("big") or img.get("medium") or img.get("thumbnail") or ""
+            break
+    if not cover_url and images:
+        cover_url = images[0].get("big") or images[0].get("medium") or images[0].get("thumbnail") or ""
+    if cover_url:
+        parts.append(f'<img src="{_html_escape(cover_url, quote=True)}">')
+
+    # Paragraph text
+    for para in re.split(r'\n+', desc):
+        para = para.strip()
+        if para:
+            parts.append(f"<p>{_html_escape(para)}</p>")
+
+    if not parts:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
+
+
+_NOWSNEWS_JUNK_RE = re.compile(
+    r"抱歉，我們並不支援你正使用的瀏覽器。.*?查詢。",
+    re.DOTALL,
+)
 
 _SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
 
@@ -759,17 +828,18 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     html = _fix_picture_elements(html)
     html = _fix_lazy_images(html)
 
-    # HK01 ships an empty article body and hydrates from __NEXT_DATA__, so
-    # trafilatura never sees the inline images. Build content from the JSON
-    # blocks instead to preserve the original image/text order; fall back to
-    # trafilatura if the page shape is unexpected.
+    # HK01/TVB ship empty article bodies hydrated client-side; build from
+    # __NEXT_DATA__ JSON to preserve image order and get full text.
     content: str | None = None
     if _is_hk01_url(url):
         content = _build_hk01_content(html)
+    elif _is_tvb_url(url):
+        content = _build_tvb_content(html)
     elif _is_oncc_url(url):
         content = _build_oncc_content(html, url)
     elif _is_skypost_url(url):
         content = _build_skypost_content(html, url)
+
     if content is None:
         content = trafilatura.extract(
             html,
@@ -779,6 +849,10 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
             favor_precision=True,
             no_fallback=False,
         )
+
+    # Strip Now News browser-compat notice injected before the article body
+    if content and _is_nowsnews_url(url):
+        content = _NOWSNEWS_JUNK_RE.sub("", content)
 
     og_image: str | None = None
     if need_og_image:
