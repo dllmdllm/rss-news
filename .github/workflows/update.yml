@@ -24,6 +24,7 @@ permissions:
 jobs:
   build:
     runs-on: self-hosted
+    timeout-minutes: 15
     defaults:
       run:
         shell: powershell
