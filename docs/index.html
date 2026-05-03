@@ -30,7 +30,7 @@
       --link:    #1a6b9a;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { overflow-x: hidden; }
+    html, body { overflow-x: hidden; touch-action: manipulation; }
     body {
       background: var(--bg); color: var(--text); font-family: system-ui, "Noto Sans TC", sans-serif;
       min-height: 100vh; transition: background .18s, color .18s; overscroll-behavior-x: none;
@@ -765,7 +765,7 @@
         text-overflow: ellipsis; }
 
       /* ── mobile: hide header controls (moved to 設定 tab) ── */
-      .sort-toggle, .quick-toggle, .font-btns, #text-toggle { display: none !important; }
+      .sort-toggle, .quick-toggle, .font-btns, #text-toggle, #theme-toggle { display: none !important; }
 
       /* ── bottom tab bar ── */
       .tab-bar {
@@ -940,7 +940,7 @@
   <!-- bottom tab bar (mobile only) -->
   <nav class="tab-bar" id="tab-bar" aria-label="主要導航">
     <button class="tab-btn active" data-tab="home"><span class="tab-icon">🏠</span><span>首頁</span></button>
-    <button class="tab-btn"        data-tab="cats"><span class="tab-icon">🗂️</span><span>分類</span></button>
+    <button class="tab-btn"        data-tab="ai"><span class="tab-icon">🤖</span><span>AI</span></button>
     <button class="tab-btn"        data-tab="hot"><span class="tab-icon">🔥</span><span>熱門</span></button>
     <button class="tab-btn"        data-tab="settings"><span class="tab-icon">⚙️</span><span>設定</span></button>
   </nav>

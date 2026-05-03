@@ -1072,7 +1072,7 @@ const CATS = ["全部", ...CATEGORIES];
         els.chipFilters && (els.chipFilters.hidden  = true);
         activeCat = "全部"; activeSource = ""; activeTag = "";
         renderFilteredFromUI();
-      } else if (tab === "cats") {
+      } else if (tab === "ai") {
         els.searchRow  && (els.searchRow.hidden  = true);
         els.topPicksEl && (els.topPicksEl.hidden = true);
         renderFiltered();
