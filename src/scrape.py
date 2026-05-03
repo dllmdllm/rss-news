@@ -550,6 +550,19 @@ def _is_blocked(html: str) -> bool:
     return any(phrase in sample for phrase in _BLOCK_PHRASES)
 
 
+def _remove_relative_images(content: str) -> str:
+    """Remove <img> tags whose src is a relative path — they resolve to the
+    article origin, not our GitHub Pages, so they always 404 on our site."""
+    soup = BeautifulSoup(content, "html.parser")
+    changed = False
+    for img in soup.find_all("img"):
+        src = (img.get("src") or "").strip()
+        if src and not src.startswith(("http://", "https://", "data:")):
+            img.decompose()
+            changed = True
+    return str(soup) if changed else content
+
+
 def _fix_graphic_tags(html: str) -> str:
     """Convert trafilatura's <graphic> TEI elements to standard <img>."""
     def _to_img(m):
@@ -923,6 +936,7 @@ async def _scrape_one(
 
                 if content:
                     content = _fix_graphic_tags(content)
+                    content = _remove_relative_images(content)
                     content = _restore_intro_from_description(html, content, article.get("title", ""), article.get("source", ""))
                     content = _remove_leading_title(content, article.get("title", ""))
                     content = _add_featured_image(content, article.get("thumbnail") or "")
