@@ -68,7 +68,7 @@
 
     /* reading progress bar */
     .read-progress {
-      position: fixed; top: 0; left: 0; height: 2px;
+      position: fixed; top: 0; left: 0; height: 4px;
       width: 0; background: var(--accent); z-index: 20;
       transition: width .08s linear;
     }
@@ -347,12 +347,15 @@
 
     @media (max-width: 640px) {
       .topbar {
-        padding: 10px 14px; gap: 8px;
+        padding: 10px 14px; gap: 6px; flex-wrap: wrap;
         padding-top: max(10px, env(safe-area-inset-top));
         padding-left: max(14px, env(safe-area-inset-left));
         padding-right: max(14px, env(safe-area-inset-right));
       }
-      .topbar-right { gap: 6px; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+      .topbar-right {
+        width: 100%; margin-left: 0; flex-shrink: 1;
+        gap: 6px; flex-wrap: wrap; justify-content: flex-start; row-gap: 6px;
+      }
       .topbar-source { display: none; }
       main {
         padding: 22px 16px 64px;
