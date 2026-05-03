@@ -794,7 +794,11 @@ async def main():
     t = time.monotonic();  await send_breaking_alerts(articles)
     print(f"[time] breaking {time.monotonic()-t:.1f}s")
 
-    t = time.monotonic();  await generate_entity_digests(articles)
+    t = time.monotonic()
+    try:
+        await generate_entity_digests(articles)
+    except Exception as exc:
+        print(f"[WARN] generate_entity_digests failed: {exc!r}")
     print(f"[time] entities {time.monotonic()-t:.1f}s")
 
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)

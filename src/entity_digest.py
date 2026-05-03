@@ -196,15 +196,25 @@ async def generate_entity_digests(articles: list) -> None:
     print(f"[entities] {len(result)} cached, {len(pending)} to summarise")
 
     if pending and MINIMAX_API_KEY:
-        sem = asyncio.Semaphore(ENTITY_CONCURRENCY)
-        async with aiohttp.ClientSession() as session:
-            summaries = await asyncio.gather(*[
-                _summarise_entity(session, e, articles_map, sem)
-                for e in pending
-            ])
-        for e, summary in zip(pending, summaries):
-            e["summary"] = summary or ""
-            result.append(e)
+        try:
+            sem = asyncio.Semaphore(ENTITY_CONCURRENCY)
+            async with aiohttp.ClientSession() as session:
+                summaries = await asyncio.gather(*[
+                    _summarise_entity(session, e, articles_map, sem)
+                    for e in pending
+                ], return_exceptions=True)
+            for e, summary in zip(pending, summaries):
+                if isinstance(summary, BaseException):
+                    print(f"[entities] {e['name']}: unexpected {summary!r}")
+                    summary = None
+                e["summary"] = summary or ""
+                result.append(e)
+        except Exception as exc:
+            print(f"[entities] summarise failed: {exc!r} — writing entities without summaries")
+            for e in pending:
+                if e not in result:
+                    e["summary"] = ""
+                    result.append(e)
     else:
         for e in pending:
             e["summary"] = ""
