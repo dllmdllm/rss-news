@@ -492,6 +492,7 @@ def test_index_text_only_mode_applies_body_class():
         const bodyClasses = new Set();
         const body = {
           className: "",
+          dataset: {},
           classList: {
             add: (...names) => { names.forEach(n => bodyClasses.add(n)); body.className = [...bodyClasses].join(" "); },
             remove: (...names) => { names.forEach(n => bodyClasses.delete(n)); body.className = [...bodyClasses].join(" "); },
@@ -793,6 +794,7 @@ def test_article_text_only_mode_applies_body_class():
         const bodyClasses = new Set();
         const body = {
           className: "",
+          dataset: {},
           classList: {
             add: (...names) => { names.forEach(n => bodyClasses.add(n)); body.className = [...bodyClasses].join(" "); },
             remove: (...names) => { names.forEach(n => bodyClasses.delete(n)); body.className = [...bodyClasses].join(" "); },
