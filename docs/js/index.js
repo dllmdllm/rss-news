@@ -1070,8 +1070,9 @@ const CATS = ["全部", ...CATEGORIES];
       if (tab === "home") {
         els.filtersEl   && (els.filtersEl.hidden   = true);
         els.chipFilters && (els.chipFilters.hidden  = true);
-        activeCat = "全部"; activeSource = ""; activeTag = "";
+        activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = false;
         renderFilteredFromUI();
+        pollForNew().catch(() => null);
       } else if (tab === "ai") {
         els.searchRow  && (els.searchRow.hidden  = true);
         els.topPicksEl && (els.topPicksEl.hidden = true);
@@ -1081,7 +1082,17 @@ const CATS = ["全部", ...CATEGORIES];
         els.filtersEl   && (els.filtersEl.hidden   = true);
         els.chipFilters && (els.chipFilters.hidden  = true);
         els.topPicksEl  && (els.topPicksEl.hidden  = true);
-        _renderHot();
+        activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = true;
+        render(
+          (() => {
+            const muted = getMutedSources();
+            const reads = getReadIds(), bookmarks = getSavedIds();
+            let list = all.filter(a => !muted.has(a.source) && !a.duplicate_of);
+            list = list.filter(a => (Number(a.score) || 0) >= IMPORTANT_SCORE_MIN);
+            return list.sort((a, b) => (Number(b.score)||0) - (Number(a.score)||0));
+          })(),
+          { scrollToTop: true }
+        );
       } else if (tab === "settings") {
         els.searchRow   && (els.searchRow.hidden   = true);
         els.filtersEl   && (els.filtersEl.hidden   = true);
