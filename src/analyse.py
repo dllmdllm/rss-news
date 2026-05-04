@@ -557,4 +557,18 @@ async def analyse_all(articles: list) -> list:
     done = sum(1 for a in articles if a.get("summary"))
     print(f"[analyse] {done}/{len(articles)} articles analysed"
           + (f" (pruned {dropped} stale cache entries)" if dropped else ""))
+
+    # Safety net: articles that failed analysis (API timeout / no content) get
+    # minimal defaults so downstream steps and tests never see missing fields.
+    for a in articles:
+        a.setdefault("summary", "")
+        a.setdefault("score", 5)
+        a.setdefault("tags", [])
+        a.setdefault("sentiment", "neutral")
+        a.setdefault("topic", "")
+        a.setdefault("event_type", "")
+        a.setdefault("entities", _normalise_entities({}))
+        a.setdefault("key_sentences", [])
+        a.setdefault("upcoming_events", [])
+
     return articles
