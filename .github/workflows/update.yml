@@ -44,6 +44,7 @@ jobs:
 
       - name: Fetch RSS, scrape & analyse
         run: python build.py
+        continue-on-error: true
         env:
           MINIMAX_API_KEY:      ${{ secrets.MINIMAX_API_KEY }}
           TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}

@@ -870,9 +870,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(asyncio.wait_for(main(), timeout=780))  # 13-min hard cap
     except (asyncio.TimeoutError, TimeoutError):
-        if _core_saved:
-            print("[WARN] Build timed out after core save — exiting 0 so commit runs")
-            sys.exit(0)
-        else:
-            print("[ERROR] Build timed out before core data was saved")
-            sys.exit(1)
+        saved = "after" if _core_saved else "BEFORE"
+        print(f"[WARN] Build timed out {saved} core save")
+        sys.exit(0 if _core_saved else 1)
+        # Note: workflow uses continue-on-error:true on this step, so the
+        # commit step runs regardless — even exit 1 still gets committed.
