@@ -761,7 +761,11 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
     return articles
 
 
+_core_saved = False   # sentinel: True once save_json() completes
+
+
 async def main():
+    global _core_saved
     print("=== rss-news build start ===")
     t0 = time.monotonic()
 
@@ -785,26 +789,50 @@ async def main():
     articles = detect_duplicates(articles)
     articles = cluster_articles(articles)
 
-    t = time.monotonic();  await generate_panel_digests(articles)
+    # Save core data *before* optional heavy steps so a timeout still commits.
+    articles.sort(key=lambda x: x.get("date", ""), reverse=True)
+    save_json(articles, source_stats)
+    _core_saved = True
+    print(f"[time] total-core {time.monotonic()-t0:.1f}s — core data saved")
+
+    t = time.monotonic()
+    try:
+        await asyncio.wait_for(generate_panel_digests(articles), timeout=200)
+    except Exception as exc:
+        print(f"[WARN] panel_digest: {exc!r}")
     print(f"[time] digest  {time.monotonic()-t:.1f}s")
 
-    t = time.monotonic();  compute_embeddings(articles)
+    t = time.monotonic()
+    try:
+        compute_embeddings(articles)
+    except Exception as exc:
+        print(f"[WARN] embed: {exc!r}")
     print(f"[time] embed   {time.monotonic()-t:.1f}s")
 
-    t = time.monotonic();  await send_breaking_alerts(articles)
+    t = time.monotonic()
+    try:
+        await asyncio.wait_for(send_breaking_alerts(articles), timeout=60)
+    except Exception as exc:
+        print(f"[WARN] breaking_alert: {exc!r}")
     print(f"[time] breaking {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     try:
-        await generate_entity_digests(articles)
+        await asyncio.wait_for(generate_entity_digests(articles), timeout=120)
     except Exception as exc:
         print(f"[WARN] generate_entity_digests failed: {exc!r}")
     print(f"[time] entities {time.monotonic()-t:.1f}s")
 
-    articles.sort(key=lambda x: x.get("date", ""), reverse=True)
-    save_json(articles, source_stats)
     print(f"=== done in {time.monotonic()-t0:.1f}s ===")
 
 
 if __name__ == "__main__":
-    asyncio.run(asyncio.wait_for(main(), timeout=780))  # 13-min hard cap
+    try:
+        asyncio.run(asyncio.wait_for(main(), timeout=780))  # 13-min hard cap
+    except (asyncio.TimeoutError, TimeoutError):
+        if _core_saved:
+            print("[WARN] Build timed out after core save — exiting 0 so commit runs")
+            sys.exit(0)
+        else:
+            print("[ERROR] Build timed out before core data was saved")
+            sys.exit(1)
