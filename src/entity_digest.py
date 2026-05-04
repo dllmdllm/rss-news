@@ -53,20 +53,28 @@ def aggregate_entities(articles: list) -> list[dict]:
 
     entity_articles: dict[tuple, list[str]] = {}
 
+    n_dup = n_date_err = n_old = n_no_ent = n_ok = 0
     for a in articles:
         if a.get("duplicate_of"):
+            n_dup += 1
             continue
         try:
             dt = datetime.fromisoformat(a.get("date", ""))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             if dt < cutoff:
+                n_old += 1
                 continue
         except Exception:
+            n_date_err += 1
             continue
+
+        if not a.get("entities"):
+            n_no_ent += 1
 
         aid      = a.get("id", "")
         entities = a.get("entities") or {}
+        n_ok += 1
         for etype in ENTITY_TYPES:
             for raw in (entities.get(etype) or []):
                 name = str(raw or "").strip()
@@ -75,6 +83,8 @@ def aggregate_entities(articles: list) -> list[dict]:
                 key = (etype, name)
                 if aid and aid not in entity_articles.get(key, []):
                     entity_articles.setdefault(key, []).append(aid)
+
+    print(f"[entities] aggregate: {n_ok} ok, {n_dup} dup, {n_date_err} date-err, {n_old} old, {n_no_ent} no-entities")
 
     result = []
     for (etype, name), aids in entity_articles.items():
