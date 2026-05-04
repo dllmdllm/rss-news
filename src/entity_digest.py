@@ -174,12 +174,14 @@ async def _summarise_entity(
 async def generate_entity_digests(articles: list) -> None:
     """Aggregate entities, generate AI summaries, write entities.json."""
     entities = aggregate_entities(articles)
+    cached        = _load_cache()
     if not entities:
+        if cached.get("entities"):
+            print("[entities] 0 qualifying entities this run — keeping existing cache")
+            return
         print("[entities] No qualifying entities")
         _write_output([], articles)
         return
-
-    cached        = _load_cache()
     cached_by_name = {e["name"]: e for e in (cached.get("entities") or [])}
     articles_map   = {a["id"]: a for a in articles}
 
