@@ -762,68 +762,108 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
 
 
 _core_saved = False   # sentinel: True once save_json() completes
+_TLOG = ROOT / "build_timing.log"
+
+
+def _tlog(msg: str) -> None:
+    line = f"{datetime.now(timezone.utc).strftime('%H:%M:%S')} {msg}"
+    print(line)
+    try:
+        with _TLOG.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 async def main():
     global _core_saved
-    print("=== rss-news build start ===")
+    _tlog("=== build start ===")
     t0 = time.monotonic()
 
     old_articles = _load_old_articles()
 
+    # --- fetch (hard cap 150s) ---
     t = time.monotonic()
-    articles, source_stats = await fetch_all()
-    print(f"[time] fetch   {time.monotonic()-t:.1f}s")
+    _tlog("fetch start")
+    try:
+        articles, source_stats = await asyncio.wait_for(fetch_all(), timeout=150)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("fetch timed out — falling back to old articles")
+        articles, source_stats = [], {}
+    _tlog(f"fetch done {time.monotonic()-t:.1f}s ({len(articles)} articles)")
 
     articles = _merge_missing_sources(articles, old_articles, source_stats)
-    await retranslate_english_titles(articles)
 
-    t = time.monotonic();  articles = await scrape_all(articles)
-    print(f"[time] scrape  {time.monotonic()-t:.1f}s")
+    # --- retranslate (hard cap 45s) ---
+    _tlog(f"retranslate start ({len(articles)} articles after merge)")
+    try:
+        await asyncio.wait_for(retranslate_english_titles(articles), timeout=45)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("retranslate timed out — skipping")
+    except Exception as exc:
+        _tlog(f"retranslate error: {exc!r}")
+    _tlog("retranslate done")
 
-    t = time.monotonic();  articles = await analyse_all(articles)
-    print(f"[time] analyse {time.monotonic()-t:.1f}s")
+    # --- scrape (internal 240s cap; outer cap 255s) ---
+    t = time.monotonic()
+    _tlog("scrape start")
+    try:
+        articles = await asyncio.wait_for(scrape_all(articles), timeout=255)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("scrape outer timeout — using partial")
+    _tlog(f"scrape done {time.monotonic()-t:.1f}s")
+
+    # --- analyse (hard cap 180s) ---
+    t = time.monotonic()
+    _tlog("analyse start")
+    try:
+        articles = await asyncio.wait_for(analyse_all(articles), timeout=180)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("analyse timed out — using partial")
+    _tlog(f"analyse done {time.monotonic()-t:.1f}s")
 
     articles = _apply_fallback_summaries(articles, old_articles)
-    # Dedup first so clusters count only distinct reports.
     articles = detect_duplicates(articles)
     articles = cluster_articles(articles)
 
     # Save core data *before* optional heavy steps so a timeout still commits.
+    # Total budget for steps above: 150+45+255+180 = 630s max → save_json always runs by t=640s.
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
+    _tlog("save_json start")
     save_json(articles, source_stats)
     _core_saved = True
-    print(f"[time] total-core {time.monotonic()-t0:.1f}s — core data saved")
+    _tlog(f"save_json done — total-core {time.monotonic()-t0:.1f}s")
 
     t = time.monotonic()
+    _tlog("panel_digest start")
     try:
         await asyncio.wait_for(generate_panel_digests(articles), timeout=200)
     except Exception as exc:
-        print(f"[WARN] panel_digest: {exc!r}")
-    print(f"[time] digest  {time.monotonic()-t:.1f}s")
+        _tlog(f"panel_digest: {exc!r}")
+    _tlog(f"panel_digest done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
+    _tlog("embed start")
     try:
         compute_embeddings(articles)
     except Exception as exc:
-        print(f"[WARN] embed: {exc!r}")
-    print(f"[time] embed   {time.monotonic()-t:.1f}s")
+        _tlog(f"embed: {exc!r}")
+    _tlog(f"embed done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     try:
         await asyncio.wait_for(send_breaking_alerts(articles), timeout=60)
     except Exception as exc:
-        print(f"[WARN] breaking_alert: {exc!r}")
-    print(f"[time] breaking {time.monotonic()-t:.1f}s")
+        _tlog(f"breaking_alert: {exc!r}")
+    _tlog(f"breaking done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
+    _tlog("entity_digest start")
     try:
         await asyncio.wait_for(generate_entity_digests(articles), timeout=120)
     except Exception as exc:
-        print(f"[WARN] generate_entity_digests failed: {exc!r}")
-    print(f"[time] entities {time.monotonic()-t:.1f}s")
-
-    print(f"=== done in {time.monotonic()-t0:.1f}s ===")
+        _tlog(f"entity_digest: {exc!r}")
+    _tlog(f"entity_digest done {time.monotonic()-t:.1f}s — total {time.monotonic()-t0:.1f}s")
 
 
 if __name__ == "__main__":
