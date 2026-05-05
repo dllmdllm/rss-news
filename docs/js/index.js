@@ -800,8 +800,10 @@ const CATS = ["全部", ...CATEGORIES];
           }).join("")
         : `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
 
-      container.innerHTML = navHtml + stripHtml + sentHtml + clusterHtml + eventHtml + tagHtml
-        + `<div class="ai-section-hd" style="margin-top:8px">📰 今日重點</div>` + catHtml;
+      container.innerHTML = navHtml + stripHtml
+        + `<div class="ai-columns"><div class="ai-col-left">${sentHtml}${clusterHtml}</div><div class="ai-col-right">${eventHtml}${tagHtml}</div></div>`
+        + `<div class="ai-section-hd" style="margin-top:8px">📰 今日重點</div>`
+        + `<div class="ai-picks-grid">${catHtml}</div>`;
 
       container.querySelectorAll(".ai-time-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -1310,6 +1312,12 @@ const CATS = ["全部", ...CATEGORIES];
     // Bind tab clicks via event delegation (more reliable than inline onclick)
     document.getElementById("tab-bar")?.addEventListener("click", e => {
       const btn = e.target.closest("[data-tab]");
+      if (btn) switchTab(btn.dataset.tab);
+    });
+
+    // Desktop tab navigation
+    document.getElementById("desktop-nav")?.addEventListener("click", e => {
+      const btn = e.target.closest(".d-tab[data-tab]");
       if (btn) switchTab(btn.dataset.tab);
     });
 

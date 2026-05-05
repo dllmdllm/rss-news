@@ -833,6 +833,29 @@
     /* tab bar hidden on desktop; media query below enables it on mobile */
     .tab-bar { display: none; }
 
+    /* ── desktop tab navigation ── */
+    .desktop-nav {
+      flex: 0 0 100%;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid var(--border);
+      padding: 6px 0 0; margin-top: 4px; gap: 16px;
+    }
+    .desktop-tabs { display: flex; gap: 0; }
+    .d-tab {
+      background: transparent; border: none; border-bottom: 3px solid transparent;
+      color: var(--muted); padding: 6px 18px 9px; cursor: pointer;
+      font-size: .88rem; font-weight: 600; border-radius: 4px 4px 0 0;
+      transition: color .15s, border-color .15s;
+      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .d-tab:hover { color: var(--text); }
+    .d-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .desktop-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* AI tab layout wrappers (stacked on mobile, 2-col on desktop) */
+    .ai-columns { margin-bottom: 20px; }
+    .ai-picks-grid { display: flex; flex-direction: column; }
+
     /* ── mobile ── */
     @media (max-width: 640px) {
       header {
@@ -899,8 +922,9 @@
       .mini-action { width: 28px; height: 28px; }
       .card-meta  { gap: 6px; }
 
-      /* ── mobile: hide header controls (moved to 設定 tab) ── */
-      .sort-toggle, .quick-toggle, .font-btns, #text-toggle, #theme-toggle { display: none !important; }
+      /* ── mobile: hide desktop-nav and header controls (moved to 設定 tab) ── */
+      .desktop-nav { display: none; }
+      .font-btns, #text-toggle, #theme-toggle { display: none !important; }
 
       /* ── bottom tab bar ── */
       .tab-bar {
@@ -950,6 +974,28 @@
       body[data-tab="settings"] #settings-panel { display: flex !important; }
     }
 
+    /* ── desktop tab-driven visibility ── */
+    @media (min-width: 641px) {
+      body[data-tab="ai"] .search-row,
+      body[data-tab="ai"] #filters,
+      body[data-tab="ai"] #chip-filters,
+      body[data-tab="ai"] #grid { display: none !important; }
+      body[data-tab="ai"] .desktop-controls { display: none !important; }
+      body[data-tab="hot"] .search-row,
+      body[data-tab="hot"] #filters,
+      body[data-tab="hot"] #chip-filters { display: none !important; }
+      /* AI tab: 2-col content layout */
+      .ai-columns {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 24px; align-items: start;
+      }
+      .ai-picks-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 14px;
+      }
+    }
+
     /* settings panel — desktop fallback (mobile controlled by body[data-tab] above) */
     .settings-panel  { display: none; }
     .settings-section { display: flex; flex-direction: column; gap: 8px; }
@@ -996,19 +1042,6 @@
   <header>
     <h1>News Pulse</h1>
     <div class="header-right">
-      <div class="sort-toggle" id="sort-toggle">
-        <button class="sort-btn active" data-sort="date">🕒 最新</button>
-        <button class="sort-btn" data-sort="ai">✨ 推薦</button>
-      </div>
-      <div class="quick-toggle" id="quick-toggle">
-        <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>
-        <button class="view-btn" id="unread-toggle" type="button">📬 未讀</button>
-        <button class="view-btn" id="saved-toggle" type="button">🔖 收藏</button>
-        <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
-        <a class="view-btn" href="graph.html" title="知識圖譜：人物/機構/地點關係網絡">🕸️ 圖譜</a>
-        <a class="view-btn" href="upcoming.html" title="文章中提及嘅未來活動">📅 預告</a>
-        <a class="view-btn" href="entities.html" title="人物、機構、地點近況追蹤">👤 實體</a>
-      </div>
       <div class="font-btns">
         <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
         <button class="font-btn" id="font-inc" title="放大字體">A＋</button>
@@ -1017,6 +1050,29 @@
       <button class="theme-btn" id="theme-toggle" title="切換日夜模式" aria-label="切換日夜模式"></button>
       <span id="updated" class="updated"></span>
     </div>
+    <!-- desktop second-row nav (hidden on mobile) -->
+    <nav class="desktop-nav" id="desktop-nav">
+      <div class="desktop-tabs">
+        <button class="tab-btn d-tab active" data-tab="home">📰 新聞</button>
+        <button class="tab-btn d-tab" data-tab="ai">🤖 AI</button>
+        <button class="tab-btn d-tab" data-tab="hot">🔥 熱門</button>
+      </div>
+      <div class="desktop-controls">
+        <div class="sort-toggle" id="sort-toggle">
+          <button class="sort-btn active" data-sort="date">🕒 最新</button>
+          <button class="sort-btn" data-sort="ai">✨ 推薦</button>
+        </div>
+        <div class="quick-toggle" id="quick-toggle">
+          <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>
+          <button class="view-btn" id="unread-toggle" type="button">📬 未讀</button>
+          <button class="view-btn" id="saved-toggle" type="button">🔖 收藏</button>
+          <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
+          <a class="view-btn" href="graph.html" title="知識圖譜：人物/機構/地點關係網絡">🕸️ 圖譜</a>
+          <a class="view-btn" href="upcoming.html" title="文章中提及嘅未來活動">📅 預告</a>
+          <a class="view-btn" href="entities.html" title="人物、機構、地點近況追蹤">👤 實體</a>
+        </div>
+      </div>
+    </nav>
   </header>
 
   <div class="search-row">
