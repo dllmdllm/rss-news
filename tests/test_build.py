@@ -93,6 +93,39 @@ def test_cluster_articles_clears_stale_cluster_fields():
     assert "cluster_size" not in clustered[0]
 
 
+def test_annotate_ai_features_marks_uncertainty_flags():
+    articles = [
+        {
+            "id": "a",
+            "title": "消息指大型事故仍未證實",
+            "summary": "據悉事件仍有變數",
+            "score": 8,
+            "content_quality": {"score": 1, "fallback": "minimal"},
+        },
+        {
+            "id": "b",
+            "title": "多來源確認消息",
+            "summary": "已有多間傳媒報道",
+            "score": 6,
+            "cluster_id": "c1",
+            "source": "A",
+            "content_quality": {"score": 3, "fallback": "scraped"},
+        },
+        {
+            "id": "c",
+            "title": "多來源確認消息",
+            "summary": "另一來源跟進",
+            "score": 6,
+            "cluster_id": "c1",
+            "source": "B",
+            "content_quality": {"score": 3, "fallback": "scraped"},
+        },
+    ]
+    out = build.annotate_ai_features(articles)
+    assert out[0]["uncertainty_flags"][:3] == ["消息未證實", "仍有變數", "全文不足"]
+    assert "uncertainty_flags" not in out[1]
+
+
 def test_detect_duplicates_marks_near_duplicate_titles():
     a = _article("aaa")
     a.update({"title": "港股今日收市升300點，恆指突破兩萬五", "score": 7, "date": "2026-04-21T12:00:00+00:00"})

@@ -460,6 +460,20 @@ def test_index_has_reading_controls_and_top_picks():
     assert "score([<>]=?)" in source
 
 
+def test_index_has_personalised_ai_alerts_and_uncertainty_badges():
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert 'id="ai-alerts"' in html
+    assert ".ai-alerts" in html
+    assert ".uncertainty-badge" in html
+    assert "function buildPersonalProfile()" in source
+    assert "function personalBoost(article, profile)" in source
+    assert "function buildAiAlerts()" in source
+    assert "uncertainty_flags" in source
+    assert "risk:uncertain" not in source or "f.risk === \"uncertain\"" in source
+    assert "AI 角度/時間線" in source
+
+
 def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")

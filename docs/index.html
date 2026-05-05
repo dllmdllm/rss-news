@@ -196,6 +196,38 @@
     .top-pick-meta { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: .7rem; margin-bottom: 5px; }
     .top-pick-title { color: var(--text); line-height: 1.45; font-weight: 650; }
 
+    .ai-alerts {
+      max-width: 1600px; margin: 12px auto 0; padding: 0 24px;
+      display: none;
+    }
+    .ai-alerts.show { display: block; }
+    .ai-alerts-inner {
+      border: 1px solid rgba(239,68,68,.28);
+      background: linear-gradient(135deg, rgba(127,29,29,.24), rgba(26,26,34,.92));
+      border-radius: 12px; padding: 11px 12px;
+      display: flex; gap: 10px; align-items: stretch; overflow-x: auto;
+    }
+    body.theme-light .ai-alerts-inner {
+      background: linear-gradient(135deg, #fff1f2, #fff);
+      border-color: #fecdd3;
+    }
+    .ai-alerts-title {
+      flex: 0 0 auto; color: #fca5a5; font-size: .78rem; font-weight: 900;
+      letter-spacing: .04em; padding-top: 3px;
+    }
+    body.theme-light .ai-alerts-title { color: #be123c; }
+    .ai-alert-card {
+      flex: 0 0 min(330px, 78vw); color: inherit; text-decoration: none;
+      border-left: 2px solid #f87171; padding: 2px 10px 2px 9px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ai-alert-card:hover .ai-alert-title { color: #fca5a5; }
+    body.theme-light .ai-alert-card:hover .ai-alert-title { color: #be123c; }
+    .ai-alert-reason { color: #fca5a5; font-size: .72rem; font-weight: 800; }
+    body.theme-light .ai-alert-reason { color: #be123c; }
+    .ai-alert-title { color: var(--text); font-size: .88rem; line-height: 1.4; font-weight: 700; }
+    .ai-alert-meta { color: var(--muted); font-size: .72rem; }
+
     /* ── AI tab: time filter strip ── */
     .ai-time-strip {
       display: flex; gap: 7px; padding: 10px 0 4px; flex-wrap: wrap;
@@ -653,6 +685,12 @@
       background: rgba(239,68,68,.18); color: #fca5a5;
       cursor: default; letter-spacing: .02em;
     }
+    .uncertainty-badge {
+      display: inline-block; font-size: .72em; font-weight: 700;
+      padding: 1px 6px; border-radius: 3px;
+      background: rgba(251,191,36,.16); color: #fbbf24;
+      border: 1px solid rgba(251,191,36,.24); cursor: default;
+    }
     body.theme-light .panel-contradiction-label { background: #fee2e2; color: #b91c1c; }
     body.theme-light .panel-timeline-label      { background: #e0f2fe; color: #0369a1; }
     body.theme-light .panel-contradiction-item  { border-left-color: rgba(220,38,38,.35); }
@@ -662,6 +700,7 @@
     body.theme-light .panel-timeline-item       { border-left-color: rgba(2,132,199,.35); }
     body.theme-light .panel-timeline-date       { color: #0369a1; }
     body.theme-light .contradiction-badge       { background: #fee2e2; color: #b91c1c; }
+    body.theme-light .uncertainty-badge         { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 
     /* ── search wrapper + semantic badge ── */
     .search-wrap {
@@ -937,6 +976,11 @@
         padding-right: max(14px, env(safe-area-inset-right));
         margin-top: 10px;
       }
+      .ai-alerts {
+        padding-left: max(14px, env(safe-area-inset-left));
+        padding-right: max(14px, env(safe-area-inset-right));
+      }
+      .ai-alerts-inner { padding-bottom: 10px; }
       .top-picks-list     { grid-template-columns: 1fr; }
       .card               { display: grid; grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
       .card-media         { grid-column: 1; grid-row: 1; }
@@ -1011,6 +1055,7 @@
       body[data-tab="ai"] #filters,
       body[data-tab="ai"] #chip-filters,
       body[data-tab="ai"] #filter-backdrop,
+      body[data-tab="ai"] #ai-alerts,
       body[data-tab="ai"] #grid { display: none !important; }
 
       body[data-tab="hot"] .search-row,
@@ -1023,6 +1068,7 @@
       body[data-tab="settings"] #filters,
       body[data-tab="settings"] #chip-filters,
       body[data-tab="settings"] #filter-backdrop,
+      body[data-tab="settings"] #ai-alerts,
       body[data-tab="settings"] #top-picks,
       body[data-tab="settings"] #grid { display: none !important; }
 
@@ -1145,6 +1191,7 @@
     <span class="chip-divider" id="chip-divider" aria-hidden="true"></span>
     <div class="tag-filters" id="tag-filters"></div>
   </div>
+  <section class="ai-alerts" id="ai-alerts" aria-label="AI 重要提示"></section>
   <section class="top-picks" id="top-picks" aria-label="今日重點"></section>
 
   <!-- settings panel (mobile tab) — placed before grid so it appears at top of viewport -->

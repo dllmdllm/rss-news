@@ -64,6 +64,11 @@ TOPIC_ALIASES = [
 # the metadata payload. Full content lives at data/content/{id}.json.
 _CONTENT_FIELDS = ("content", "rss_content")
 
+_UNCERTAINTY_PATTERNS = (
+    (re.compile(r"據悉|消息指|消息人士|有傳|傳出|網傳|未證實|暫未證實|據報"), "消息未證實"),
+    (re.compile(r"或|可能|料|預計|估計|相信|未知|暫未|變數"), "仍有變數"),
+)
+
 def _title_bigrams(title: str) -> set[str]:
     """Character bigrams of normalized title — for Jaccard similarity."""
     norm = "".join(
@@ -192,6 +197,56 @@ def cluster_articles(articles: list) -> list:
 
     clusters_found = len({v[0] for v in id_to_cluster.values()})
     print(f"[cluster] {clusters_found} topic clusters found")
+    return articles
+
+
+def annotate_ai_features(articles: list) -> list:
+    """Add deterministic AI-assist metadata used by the static frontend.
+
+    These flags deliberately stay heuristic. They should help the reader spot
+    risk, not pretend to be a fact-check verdict.
+    """
+    by_cluster: dict[str, set[str]] = defaultdict(set)
+    for article in articles:
+        cid = article.get("cluster_id")
+        if cid and not article.get("duplicate_of"):
+            by_cluster[cid].add(article.get("source", ""))
+
+    for article in articles:
+        flags: list[str] = []
+        text = " ".join(
+            str(article.get(field) or "")
+            for field in ("title", "summary", "topic", "event_type")
+        )
+        for pattern, label in _UNCERTAINTY_PATTERNS:
+            if pattern.search(text) and label not in flags:
+                flags.append(label)
+
+        quality = article.get("content_quality") or {}
+        if quality.get("score") in (0, 1) or quality.get("fallback") == "minimal":
+            flags.append("全文不足")
+
+        score = article.get("score") or 0
+        cid = article.get("cluster_id")
+        source_count = len(by_cluster.get(cid, set())) if cid else 1
+        if score >= 7 and source_count < 2:
+            flags.append("單一來源")
+
+        if not article.get("summary"):
+            flags.append("AI摘要缺失")
+
+        deduped = []
+        seen = set()
+        for flag in flags:
+            if flag and flag not in seen:
+                deduped.append(flag)
+                seen.add(flag)
+            if len(deduped) >= 3:
+                break
+        if deduped:
+            article["uncertainty_flags"] = deduped
+        else:
+            article.pop("uncertainty_flags", None)
     return articles
 
 
@@ -847,6 +902,7 @@ async def main():
     articles = _apply_fallback_summaries(articles, old_articles)
     articles = detect_duplicates(articles)
     articles = cluster_articles(articles)
+    articles = annotate_ai_features(articles)
 
     # Save core data *before* optional heavy steps so a timeout still commits.
     # Total budget for steps above: 150+45+255+180 = 630s max → save_json always runs by t=640s.

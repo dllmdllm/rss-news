@@ -381,7 +381,7 @@ const CATS = ["全部", ...CATEGORIES];
       const filters = {};
       const terms = [];
       for (const part of String(query || "").split(/\s+/).filter(Boolean)) {
-        const m = part.match(/^(source|tag|cat|topic):(.+)$/i);
+        const m = part.match(/^(source|tag|cat|topic|risk):(.+)$/i);
         const score = part.match(/^score([<>]=?)(\d+)$/i);
         if (m) filters[m[1].toLowerCase()] = m[2];
         else if (score) filters.score = { op: score[1], value: Number(score[2]) };
@@ -407,6 +407,14 @@ const CATS = ["全部", ...CATEGORIES];
         if (f.tag && !(a.tags || []).some(t => String(t).includes(f.tag))) return false;
         if (f.cat && !String(a.category || "").includes(f.cat)) return false;
         if (f.topic && !String(a.topic || "").includes(f.topic)) return false;
+        if (f.risk) {
+          const flags = (a.uncertainty_flags || []).join(" ");
+          if (f.risk === "uncertain") {
+            if (!flags) return false;
+          } else if (!flags.includes(f.risk)) {
+            return false;
+          }
+        }
         return passScoreFilter(a, f.score);
       });
     }
@@ -923,7 +931,38 @@ const CATS = ["全部", ...CATEGORIES];
       return articleTime(b) - articleTime(a);
     }
 
-    function aiRankScore(article, now = Date.now()) {
+    function buildPersonalProfile() {
+      const ids = new Map();
+      getRead().forEach(id => ids.set(id, Math.max(ids.get(id) || 0, 1)));
+      getBookmarks().forEach(id => ids.set(id, Math.max(ids.get(id) || 0, 3)));
+      const byId = new Map(all.map(a => [a.id, a]));
+      const profile = { total: 0, sources: {}, categories: {}, tags: {} };
+      ids.forEach((weight, id) => {
+        const article = byId.get(id);
+        if (!article) return;
+        profile.total += weight;
+        if (article.source) profile.sources[article.source] = (profile.sources[article.source] || 0) + weight;
+        if (article.category) profile.categories[article.category] = (profile.categories[article.category] || 0) + weight;
+        for (const tag of (article.tags || [])) {
+          profile.tags[tag] = (profile.tags[tag] || 0) + weight;
+        }
+      });
+      return profile;
+    }
+
+    function personalBoost(article, profile) {
+      if (!profile || profile.total < 3) return 0;
+      const total = Math.max(1, profile.total);
+      let boost = 0;
+      boost += ((profile.sources[article.source] || 0) / total) * 14;
+      boost += ((profile.categories[article.category] || 0) / total) * 8;
+      for (const tag of (article.tags || [])) {
+        boost += ((profile.tags[tag] || 0) / total) * 4;
+      }
+      return Math.min(18, boost);
+    }
+
+    function aiRankScore(article, now = Date.now(), profile = null) {
       const score = typeof article.score === "number" ? article.score : 5;
       const clusterSize = Math.max(1, Number(article.cluster_size) || 1);
       const clusterBonus = Math.min(clusterSize - 1, 4) * 3;
@@ -932,14 +971,16 @@ const CATS = ["全部", ...CATEGORIES];
       const recencyBonus = Number.isFinite(ageHours)
         ? Math.max(0, 6 - Math.min(Math.max(ageHours, 0), 48) / 8)
         : 0;
-      return score * 10 + clusterBonus + recencyBonus - sourcePenalty;
+      const boost = (typeof personalBoost === "function") ? personalBoost(article, profile) : 0;
+      return score * 10 + clusterBonus + recencyBonus + boost - sourcePenalty;
     }
 
     function getSorted(articles) {
       if (sortMode === "ai") {
         const now = Date.now();
+        const profile = buildPersonalProfile();
         return [...articles].sort((a, b) => {
-          const delta = aiRankScore(b, now) - aiRankScore(a, now);
+          const delta = aiRankScore(b, now, profile) - aiRankScore(a, now, profile);
           return delta || compareByDate(a, b);
         });
       }
@@ -1140,6 +1181,59 @@ const CATS = ["全部", ...CATEGORIES];
       return result;
     }
 
+    function alertReason(article) {
+      if (article.cluster_id && breakingClusters.has(article.cluster_id)) return "突發多來源";
+      if ((Number(article.score) || 0) >= 8) return "高重要度";
+      if ((article.uncertainty_flags || []).length) return "需留意：" + article.uncertainty_flags[0];
+      return "";
+    }
+
+    function buildAiAlerts() {
+      const container = document.getElementById("ai-alerts");
+      if (!container) return;
+      if (activeTab === "ai" || activeTab === "settings") {
+        container.classList.remove("show");
+        container.innerHTML = "";
+        return;
+      }
+      const muted = getMutedSources();
+      const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+      const seenClusters = new Set();
+      const candidates = getSorted(all.filter(a => {
+        if (muted.has(a.source) || a.duplicate_of) return false;
+        const ts = Date.parse(a.date || "");
+        const recent = Number.isFinite(ts) && ts >= cutoff;
+        const important = (Number(a.score) || 0) >= 8;
+        const breaking = a.cluster_id && breakingClusters.has(a.cluster_id);
+        const uncertain = (a.uncertainty_flags || []).length && (Number(a.score) || 0) >= 7;
+        return breaking || important || (recent && uncertain);
+      })).filter(a => {
+        const cid = a.cluster_id || "";
+        if (!cid) return true;
+        if (seenClusters.has(cid)) return false;
+        seenClusters.add(cid);
+        return true;
+      }).slice(0, 3);
+
+      if (!candidates.length) {
+        container.classList.remove("show");
+        container.innerHTML = "";
+        return;
+      }
+      const cards = candidates.map(a => {
+        const reason = alertReason(a);
+        const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
+        const date = a.date ? relativeTime(a.date) : "";
+        return `<a class="ai-alert-card" href="article.html?id=${encodeURIComponent(aid)}">
+          <span class="ai-alert-reason">${esc(reason)}</span>
+          <span class="ai-alert-title">${esc(a.title || "")}</span>
+          <span class="ai-alert-meta">${esc(a.source || "")}${date ? " · " + esc(date) : ""}</span>
+        </a>`;
+      }).join("");
+      container.classList.add("show");
+      container.innerHTML = `<div class="ai-alerts-inner"><div class="ai-alerts-title">AI 提示</div>${cards}</div>`;
+    }
+
     function sentimentTimelineHtml(cid) {
       const members = getSorted(all.filter(a => a.cluster_id === cid && !a.duplicate_of));
       if (members.length < 2) return "";
@@ -1201,6 +1295,7 @@ const CATS = ["全部", ...CATEGORIES];
         if (activeTag) list = list.filter(a => (a.tags || []).includes(activeTag));
       }
       breakingClusters = computeBreakingClusters();
+      buildAiAlerts();
       let sorted = getSorted(compactClusters(list));
       if (breakingClusters.size > 0 && !searchQuery) {
         const isB = a => !!(a.cluster_id && breakingClusters.has(a.cluster_id));
@@ -1276,6 +1371,9 @@ const CATS = ["全部", ...CATEGORIES];
         const hasContradiction = isCluster && cid && (panelDigests[cid]?.contradictions || []).length > 0;
         const contradictionBadge = hasContradiction
           ? `<span class="contradiction-badge" title="各來源有事實矛盾">⚠ 矛盾</span>` : "";
+        const uncertaintyFlags = (a.uncertainty_flags || []).filter(Boolean);
+        const uncertaintyBadge = uncertaintyFlags.length
+          ? `<span class="uncertainty-badge" title="${esc(uncertaintyFlags.join(" · "))}">⚑ ${esc(uncertaintyFlags[0])}</span>` : "";
         const isBreakingCluster = isCluster && cid && breakingClusters.has(cid);
         const breakingBadge = isBreakingCluster
           ? `<span class="breaking-badge" title="突發：多媒體 2 小時內同步報導">🔴 突發</span>` : "";
@@ -1285,7 +1383,7 @@ const CATS = ["全部", ...CATEGORIES];
           (digest.contradictions || []).length > 0 ? "⚠矛盾" : null,
         ].filter(Boolean).join(" · ") : null;
         const clusterSummaryButton = isClusterStack
-          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" data-card-action="toggle-summary" data-cluster-id="${esc(cid)}">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要" + (digestIndicators ? ` <span class="digest-preview">${esc(digestIndicators)}</span>` : "")}</span>`
+          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" data-card-action="toggle-summary" data-cluster-id="${esc(cid)}">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 角度/時間線" + (digestIndicators ? ` <span class="digest-preview">${esc(digestIndicators)}</span>` : "")}</span>`
           : "";
         const tagChips = (a.tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join("");
         const tags = (tagChips || clusterSummaryButton)
@@ -1323,7 +1421,7 @@ const CATS = ["全部", ...CATEGORIES];
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
-              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${breakingBadge}${actionBar}
+              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${uncertaintyBadge}${breakingBadge}${actionBar}
               <span class="date">${esc(date)}</span>
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
@@ -1436,6 +1534,7 @@ const CATS = ["全部", ...CATEGORIES];
       } else if (tab === "settings") {
         _updateSettingsPanel();
       }
+      buildAiAlerts();
     }
 
     function _renderHot() {
