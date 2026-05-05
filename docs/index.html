@@ -666,8 +666,15 @@
     /* ── search wrapper + semantic badge ── */
     .search-wrap {
       position: relative; display: flex; align-items: center;
+      gap: 8px;
     }
     .search-wrap .search-input { flex: 1; padding-right: 80px; }
+    .mobile-filter-toggle {
+      display: none; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 0 13px;
+      min-height: 36px; font-size: .82rem; white-space: nowrap; cursor: pointer;
+    }
+    .filter-backdrop { display: none; }
     .sem-badge {
       position: absolute; right: 10px;
       font-size: .72rem; font-weight: 700; letter-spacing: .03em;
@@ -886,6 +893,38 @@
       }
       .filters            { gap: 4px; }
       .filter-btn         { padding: 4px 9px; font-size: .75rem; }
+      .mobile-filter-toggle { display: inline-flex; align-items: center; justify-content: center; }
+      .search-wrap .search-input { min-width: 0; padding-right: 58px; }
+      .filter-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,.42);
+        z-index: 31; opacity: 0; pointer-events: none; transition: opacity .16s;
+      }
+      body.filter-sheet-open .filter-backdrop { display: block; opacity: 1; pointer-events: auto; }
+      body.filter-sheet-open { overflow: hidden; }
+      .filters,
+      .chip-filters {
+        display: none;
+      }
+      body.filter-sheet-open .filters {
+        display: flex !important; position: fixed;
+        left: max(12px, env(safe-area-inset-left));
+        right: max(12px, env(safe-area-inset-right));
+        bottom: calc(126px + env(safe-area-inset-bottom));
+        z-index: 32; max-height: 34vh; overflow: auto;
+        padding: 14px; border: 1px solid var(--border);
+        border-bottom: 0; border-radius: 18px 18px 0 0;
+        background: var(--surface); box-shadow: 0 -14px 34px #00000055;
+      }
+      body.filter-sheet-open .chip-filters.has-any {
+        display: flex !important; position: fixed;
+        left: max(12px, env(safe-area-inset-left));
+        right: max(12px, env(safe-area-inset-right));
+        bottom: calc(56px + env(safe-area-inset-bottom));
+        z-index: 32; max-height: 70px; overflow: auto;
+        padding: 10px 14px; border: 1px solid var(--border);
+        border-radius: 0 0 18px 18px; background: var(--surface);
+        box-shadow: 0 -6px 18px #00000033;
+      }
       .grid               {
         padding: 14px; gap: 12px;
         grid-template-columns: 1fr;
@@ -971,16 +1010,19 @@
       body[data-tab="ai"] .search-row,
       body[data-tab="ai"] #filters,
       body[data-tab="ai"] #chip-filters,
+      body[data-tab="ai"] #filter-backdrop,
       body[data-tab="ai"] #grid { display: none !important; }
 
       body[data-tab="hot"] .search-row,
       body[data-tab="hot"] #filters,
       body[data-tab="hot"] #chip-filters,
+      body[data-tab="hot"] #filter-backdrop,
       body[data-tab="hot"] #top-picks { display: none !important; }
 
       body[data-tab="settings"] .search-row,
       body[data-tab="settings"] #filters,
       body[data-tab="settings"] #chip-filters,
+      body[data-tab="settings"] #filter-backdrop,
       body[data-tab="settings"] #top-picks,
       body[data-tab="settings"] #grid { display: none !important; }
 
@@ -1092,9 +1134,11 @@
     <div class="search-wrap">
       <input class="search-input" id="search" type="search" placeholder="搜尋… 可用 source:明報 tag:港股 cat:科技 score>=7" autocomplete="off">
       <span id="sem-badge" class="sem-badge" hidden>✦ 語意</span>
+      <button class="mobile-filter-toggle" id="mobile-filter-toggle" type="button" aria-expanded="false" aria-controls="filters chip-filters">篩選</button>
     </div>
   </div>
 
+  <div class="filter-backdrop" id="filter-backdrop" hidden></div>
   <div class="filters"        id="filters"></div>
   <div class="chip-filters" id="chip-filters">
     <div class="source-filters" id="source-filters"></div>
@@ -1108,31 +1152,31 @@
     <div class="settings-section">
       <div class="settings-label">排序</div>
       <div class="settings-row">
-        <button id="s-sort-date" class="settings-btn" onclick="document.querySelector('[data-sort=date]').click();updateSettingsPanel()">🕒 最新</button>
-        <button id="s-sort-ai"   class="settings-btn" onclick="document.querySelector('[data-sort=ai]').click();updateSettingsPanel()">✨ 推薦</button>
+        <button id="s-sort-date" class="settings-btn" data-setting-action="sort-date">🕒 最新</button>
+        <button id="s-sort-ai"   class="settings-btn" data-setting-action="sort-ai">✨ 推薦</button>
       </div>
     </div>
     <div class="settings-section">
       <div class="settings-label">篩選</div>
       <div class="settings-row">
-        <button id="s-important" class="settings-btn" onclick="window.__toggleImportant?.();updateSettingsPanel()">🔥 精選</button>
-        <button id="s-unread"    class="settings-btn" onclick="window.__toggleUnread?.();updateSettingsPanel()">📬 未讀</button>
-        <button id="s-saved"     class="settings-btn" onclick="window.__toggleSaved?.();updateSettingsPanel()">🔖 收藏</button>
+        <button id="s-important" class="settings-btn" data-setting-action="important">🔥 精選</button>
+        <button id="s-unread"    class="settings-btn" data-setting-action="unread">📬 未讀</button>
+        <button id="s-saved"     class="settings-btn" data-setting-action="saved">🔖 收藏</button>
       </div>
     </div>
     <div class="settings-section">
       <div class="settings-label">顯示</div>
       <div class="settings-row">
-        <button id="s-compact" class="settings-btn" onclick="document.getElementById('compact-toggle').click();updateSettingsPanel()">📋 精簡</button>
-        <button id="s-text"    class="settings-btn" onclick="document.getElementById('text-toggle').click();updateSettingsPanel()">文 純文字</button>
-        <button id="s-theme"   class="settings-btn" onclick="document.getElementById('theme-toggle').click()">🌙 日夜模式</button>
+        <button id="s-compact" class="settings-btn" data-setting-action="compact">📋 精簡</button>
+        <button id="s-text"    class="settings-btn" data-setting-action="text">文 純文字</button>
+        <button id="s-theme"   class="settings-btn" data-setting-action="theme">🌙 日夜模式</button>
       </div>
     </div>
     <div class="settings-section">
       <div class="settings-label">字體</div>
       <div class="settings-row">
-        <button class="settings-btn" onclick="document.getElementById('font-dec').click()">A－</button>
-        <button class="settings-btn" onclick="document.getElementById('font-inc').click()">A＋</button>
+        <button class="settings-btn" data-setting-action="font-dec">A－</button>
+        <button class="settings-btn" data-setting-action="font-inc">A＋</button>
       </div>
     </div>
     <div class="settings-section">

@@ -56,6 +56,13 @@
     }
     .filter-btn:hover { border-color: var(--accent); color: var(--text); }
     .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .topbar-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .control-select {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      min-height: 32px; border-radius: 999px; padding: 5px 10px; font-size: .78rem;
+      outline: none;
+    }
+    .control-select:focus { border-color: var(--accent); color: var(--text); }
 
     main {
       flex: 1; display: flex; min-height: 0;
@@ -162,6 +169,9 @@
 
     @media (max-width: 640px) {
       .topbar { padding: 10px 14px; gap: 6px; }
+      .topbar-right { width: 100%; margin-left: 0; }
+      .topbar-group { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+      .filter-btn, .control-select { flex-shrink: 0; }
       .sidebar {
         position: fixed; top: 0; right: 0; bottom: 0;
         width: 88vw; max-width: 360px;
@@ -193,10 +203,25 @@
     <span class="title">知識圖譜</span>
     <span class="subtitle" id="subtitle">載入中…</span>
     <div class="topbar-right">
-      <button class="filter-btn active" data-type="all">全部</button>
-      <button class="filter-btn" data-type="people">人物</button>
-      <button class="filter-btn" data-type="companies">機構</button>
-      <button class="filter-btn" data-type="places">地點</button>
+      <div class="topbar-group" aria-label="時間範圍">
+        <button class="filter-btn range-btn" data-hours="24">24h</button>
+        <button class="filter-btn range-btn" data-hours="72">3日</button>
+        <button class="filter-btn range-btn active" data-hours="168">7日</button>
+      </div>
+      <div class="topbar-group" aria-label="圖譜顯示">
+        <select class="control-select" id="node-limit" aria-label="節點數量">
+          <option value="30">30 nodes</option>
+          <option value="60">60 nodes</option>
+          <option value="120">120 nodes</option>
+          <option value="all">全部</option>
+        </select>
+      </div>
+      <div class="topbar-group" aria-label="實體類型">
+        <button class="filter-btn type-btn active" data-type="all">全部</button>
+        <button class="filter-btn type-btn" data-type="people">人物</button>
+        <button class="filter-btn type-btn" data-type="companies">機構</button>
+        <button class="filter-btn type-btn" data-type="places">地點</button>
+      </div>
     </div>
   </div>
   <main>
@@ -230,6 +255,9 @@
     let cy = null;
     let articleIndex = new Map();   // id -> { title, source, date }
     let activeType = "all";
+    let activeHours = 168;
+    let nodeLimit = window.matchMedia("(max-width: 640px)").matches ? 30 : 60;
+    let graphWindowHours = 168;
 
     function lookupArticle(id) {
       return articleIndex.get(id);
@@ -293,19 +321,58 @@
       requestAnimationFrame(() => cy?.resize());
     }
 
+    function articleIsInWindow(id) {
+      if (!activeHours) return true;
+      const article = lookupArticle(id);
+      const ts = Date.parse(article?.date || "");
+      return Number.isFinite(ts) && ts >= Date.now() - activeHours * 3600 * 1000;
+    }
+
+    function recentArticleIds(ids) {
+      return (ids || []).filter(articleIsInWindow);
+    }
+
+    function nodeRecentCount(node) {
+      return recentArticleIds(node.data("articles")).length;
+    }
+
+    function edgeRecentCount(edge) {
+      return recentArticleIds(edge.data("articles")).length;
+    }
+
+    function updateSubtitle(visibleNodes, visibleEdges) {
+      const windowDays = Math.max(1, Math.round((activeHours || graphWindowHours) / 24));
+      document.getElementById("subtitle").textContent =
+        `${visibleNodes} 個實體 · ${visibleEdges} 個連結 · 過去 ${windowDays} 日`;
+    }
+
     function applyFilter() {
       if (!cy) return;
       const visibleNodes = new Set();
+      const limit = nodeLimit === "all" ? Infinity : Number(nodeLimit);
+      const ranked = cy.nodes()
+        .filter(n => activeType === "all" || n.data("etype") === activeType)
+        .map(n => ({ node: n, recent: nodeRecentCount(n), total: n.data("count") || 0 }))
+        .filter(item => item.recent > 0)
+        .sort((a, b) => b.recent - a.recent || b.total - a.total)
+        .slice(0, Number.isFinite(limit) ? limit : undefined);
+      ranked.forEach(item => visibleNodes.add(item.node.id()));
+      let visibleEdges = 0;
       cy.batch(() => {
         cy.nodes().forEach(n => {
-          const visible = activeType === "all" || n.data("etype") === activeType;
+          const visible = visibleNodes.has(n.id());
           n.style("display", visible ? "element" : "none");
-          if (visible) visibleNodes.add(n.id());
         });
         cy.edges().forEach(e => {
-          const visible = visibleNodes.has(e.data("source")) && visibleNodes.has(e.data("target"));
+          const visible = visibleNodes.has(e.data("source")) && visibleNodes.has(e.data("target")) && edgeRecentCount(e) > 0;
           e.style("display", visible ? "element" : "none");
+          if (visible) visibleEdges += 1;
         });
+      });
+      updateSubtitle(visibleNodes.size, visibleEdges);
+      requestAnimationFrame(() => {
+        const visible = cy.elements().filter(ele => ele.style("display") !== "none");
+        if (visible.length) cy.fit(visible, 40);
       });
     }
 
@@ -317,13 +384,12 @@
         ]);
         const graph = await graphRes.json();
         const articlesData = await articlesRes.json();
+        graphWindowHours = graph.window_hours || 168;
+        activeHours = Math.min(activeHours, graphWindowHours);
 
         articleIndex = new Map(
           (articlesData.articles || []).map(a => [a.id, a])
         );
-
-        document.getElementById("subtitle").textContent =
-          `${graph.nodes.length} 個實體 · ${graph.edges.length} 個連結 · 過去 ${Math.round(graph.window_hours / 24)} 日`;
 
         if (!graph.nodes.length) {
           document.getElementById("cy").innerHTML =
@@ -432,6 +498,7 @@
 
         // Do not animate or transform #cy itself. Cytoscape hit-testing is
         // coordinate-sensitive on desktop mouse events.
+        applyFilter();
       } catch (err) {
         document.getElementById("subtitle").textContent = "載入失敗";
         document.getElementById("cy").innerHTML =
@@ -439,13 +506,30 @@
       }
     }
 
-    document.querySelectorAll(".filter-btn").forEach(btn => {
+    const nodeLimitSelect = document.getElementById("node-limit");
+    if (nodeLimitSelect) nodeLimitSelect.value = String(nodeLimit);
+
+    document.querySelectorAll(".type-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         activeType = btn.dataset.type;
         applyFilter();
       });
+    });
+
+    document.querySelectorAll(".range-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeHours = Number(btn.dataset.hours) || graphWindowHours;
+        applyFilter();
+      });
+    });
+
+    nodeLimitSelect?.addEventListener("change", () => {
+      nodeLimit = nodeLimitSelect.value === "all" ? "all" : Number(nodeLimitSelect.value);
+      applyFilter();
     });
 
     document.getElementById("sidebar-close").addEventListener("click", () => {

@@ -94,6 +94,24 @@
       return "article.html?id=" + encodeURIComponent(id);
     }
 
+    function setupSafeBackLinks() {
+      document.querySelectorAll("[data-safe-back]").forEach(link => {
+        link.addEventListener("click", event => {
+          let canUseHistory = false;
+          try {
+            const ref = document.referrer ? new URL(document.referrer) : null;
+            canUseHistory = !!ref && ref.origin === location.origin && history.length > 1;
+          } catch (_) {
+            canUseHistory = false;
+          }
+          if (!canUseHistory) return;
+          event.preventDefault();
+          history.back();
+        });
+      });
+    }
+    setupSafeBackLinks();
+
     function readNavContext(currentId, articles) {
       try {
         const raw = sessionStorage.getItem(NAV_CONTEXT_KEY);

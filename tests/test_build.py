@@ -289,11 +289,17 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
         })
         return articles
 
+    embed_call = {}
+
+    def fake_compute_embeddings(articles, data_dir=None):
+        embed_call["data_dir"] = data_dir
+
     monkeypatch.setattr(build, "DATA_DIR", data_dir)
     monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
     monkeypatch.setattr(build, "fetch_all", fake_fetch_all)
     monkeypatch.setattr(build, "scrape_all", fake_scrape_all)
     monkeypatch.setattr(build, "analyse_all", fake_analyse_all)
+    monkeypatch.setattr(build, "compute_embeddings", fake_compute_embeddings)
 
     asyncio.run(build.main())
 
@@ -306,3 +312,5 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     assert content["version"] == build.CONTENT_SCHEMA_VERSION
     assert content["quality"]["fallback"] == "none"
     assert "<guid isPermaLink=\"false\">dryrun</guid>" in feed
+    assert embed_call["data_dir"] == data_dir
+    assert (data_dir / "build_status.json").exists()

@@ -396,7 +396,7 @@
   </script>
   <div class="read-progress" id="read-progress"></div>
   <div class="topbar">
-    <a href="index.html" class="back" onclick="if(history.length>1){history.back();return false}">← 返回</a>
+    <a href="index.html" class="back" data-safe-back="1">← 返回</a>
     <span id="topbar-source" class="topbar-source"></span>
     <div class="topbar-right">
       <button class="font-btn" id="font-dec" title="縮小字體">A－</button>
@@ -428,7 +428,7 @@
       </section>
       <nav class="article-nav" id="article-nav" aria-label="文章導航">
         <a class="nav-link nav-prev disabled" id="nav-prev" rel="prev" aria-label="上一篇"><span class="nav-label">← 上一篇</span></a>
-        <a class="nav-link nav-back" id="nav-back" href="index.html" aria-label="返回列表" onclick="if(history.length>1){history.back();return false}"><span class="nav-label">返回</span></a>
+        <a class="nav-link nav-back" id="nav-back" href="index.html" aria-label="返回列表" data-safe-back="1"><span class="nav-label">返回</span></a>
         <a class="nav-link nav-next disabled" id="nav-next" rel="next" aria-label="下一篇"><span class="nav-label">下一篇 →</span></a>
       </nav>
     </div>

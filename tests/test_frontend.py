@@ -68,6 +68,15 @@ def test_graph_uses_saved_font_size_for_sidebar_and_nodes():
     assert "graphScale = [1, 1.18, 1.38][fsLevel]" in source
 
 
+def test_graph_has_time_and_node_limit_controls():
+    source = (ROOT / "docs" / "graph.html").read_text(encoding="utf-8")
+    assert 'class="filter-btn range-btn"' in source
+    assert 'id="node-limit"' in source
+    assert 'class="filter-btn type-btn active"' in source
+    assert "nodeRecentCount" in source
+    assert "edgeRecentCount" in source
+
+
 def test_index_bootstrap_renders_articles_without_runtime_error():
     node = _require_node()
     js = textwrap.dedent(
@@ -451,6 +460,37 @@ def test_index_has_reading_controls_and_top_picks():
     assert "score([<>]=?)" in source
 
 
+def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert 'id="mobile-filter-toggle"' in html
+    assert 'id="filter-backdrop"' in html
+    assert "filter-sheet-open" in html
+    assert "function setupMobileFilterSheet()" in source
+    assert "let aiPicksOpen = true" in source
+    assert "container.innerHTML = navHtml + stripHtml\n        + picksSection" in source
+
+
+def test_frontend_avoids_inline_click_handlers():
+    paths = [
+        ROOT / "docs" / "index.html",
+        ROOT / "docs" / "article.html",
+        ROOT / "docs" / "graph.html",
+        ROOT / "docs" / "upcoming.html",
+        ROOT / "docs" / "entities.html",
+    ]
+    for path in paths:
+        assert "onclick=" not in path.read_text(encoding="utf-8")
+
+
+def test_index_ai_tab_clears_list_only_filters():
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert "function clearListFiltersForPanel()" in source
+    assert 'tab === "ai"' in source
+    assert "clearListFiltersForPanel();" in source
+    assert "syncQuickToggleButtons();" in source
+
+
 def test_index_text_only_mode_applies_body_class():
     node = _require_node()
     js = textwrap.dedent(
@@ -636,7 +676,9 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     assert "body.fs-1 .cluster-ai-summary" in html
     assert "body.fs-2 .cluster-ai-summary" in html
     assert 'isClusterStack ? `#cluster-${cid}`' in source
-    assert 'isClusterStack ? ` onclick="event.preventDefault();filterCluster' in source
+    assert 'data-card-action="filter-cluster"' in source
+    assert 'data-card-action="toggle-summary"' in source
+    assert 'function handleCardAction(action, el, event)' in source
     assert "點擊展開" in source
     assert "點擊收起" in source
     assert "function collapseCluster" in source
@@ -750,6 +792,15 @@ def test_article_has_text_only_toggle():
     assert 'id="text-toggle"' in html
     assert "TEXT_ONLY_KEY" in common_source
     assert "body.text-only .content img" in html
+
+
+def test_article_back_uses_same_origin_history_only():
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert 'data-safe-back="1"' in html
+    assert "function setupSafeBackLinks()" in source
+    assert "ref.origin === location.origin" in source
+    assert "history.back();" in source
 
 
 def test_article_text_only_mode_applies_body_class():

@@ -9,6 +9,7 @@ const CATS = ["全部", ...CATEGORIES];
     let loadedIds = new Set(), pendingNew = new Set(), pendingData = null;
     let sourceStats = {};
     let panelDigests = {};       // {cluster_id: {headline, consensus, angles, tension}}
+    let buildStatus = null;
     let breakingClusters = new Set();   // cluster_ids that qualify as "breaking"
     let fuse = null;
     // Map category to CSS class; returns "" for unknown values so class
@@ -18,44 +19,44 @@ const CATS = ["全部", ...CATEGORIES];
     setupThemeMode();
     setupTextOnlyMode();
 
+    function syncQuickToggleButtons() {
+      document.getElementById("unread-toggle")?.classList.toggle("active", onlyUnread);
+      document.getElementById("saved-toggle")?.classList.toggle("active", onlySaved);
+      document.getElementById("important-toggle")?.classList.toggle("active", onlyImportant);
+      const compact = localStorage.getItem(COMPACT_KEY) === "1";
+      document.getElementById("compact-toggle")?.classList.toggle("active", compact);
+      document.body.classList.toggle("view-compact", compact);
+    }
+
     function setupQuickToggles() {
       const unreadBtn = document.getElementById("unread-toggle");
       const savedBtn = document.getElementById("saved-toggle");
       const compactBtn = document.getElementById("compact-toggle");
       const importantBtn = document.getElementById("important-toggle");
 
-      function syncButtons() {
-        unreadBtn?.classList.toggle("active", onlyUnread);
-        savedBtn?.classList.toggle("active", onlySaved);
-        importantBtn?.classList.toggle("active", onlyImportant);
-        const compact = localStorage.getItem(COMPACT_KEY) === "1";
-        compactBtn?.classList.toggle("active", compact);
-        document.body.classList.toggle("view-compact", compact);
-      }
-
       importantBtn?.addEventListener("click", () => {
         onlyImportant = !onlyImportant;
-        syncButtons();
+        syncQuickToggleButtons();
         renderFiltered();
       });
       unreadBtn?.addEventListener("click", () => {
         onlyUnread = !onlyUnread;
         if (onlyUnread) onlySaved = false;
-        syncButtons();
+        syncQuickToggleButtons();
         renderFiltered();
       });
       savedBtn?.addEventListener("click", () => {
         onlySaved = !onlySaved;
         if (onlySaved) onlyUnread = false;
-        syncButtons();
+        syncQuickToggleButtons();
         renderFiltered();
       });
       compactBtn?.addEventListener("click", () => {
         const next = localStorage.getItem(COMPACT_KEY) === "1" ? "0" : "1";
         localStorage.setItem(COMPACT_KEY, next);
-        syncButtons();
+        syncQuickToggleButtons();
       });
-      syncButtons();
+      syncQuickToggleButtons();
       // Expose so keyboard shortcuts can use the same code path.
       window.__toggleImportant = () => importantBtn?.click();
       window.__toggleUnread = () => unreadBtn?.click();
@@ -143,9 +144,10 @@ const CATS = ["全部", ...CATEGORIES];
     // ── Load ──────────────────────────────────────────────────────
     async function load() {
       try {
-        const [res, digestRes] = await Promise.all([
+        const [res, digestRes, statusRes] = await Promise.all([
           fetch("data/articles.json?" + Date.now()),
           fetch("data/panel_digests.json?" + Date.now()).catch(() => null),
+          fetch("data/build_status.json?" + Date.now()).catch(() => null),
         ]);
         const data = await res.json();
         if (digestRes && digestRes.ok) {
@@ -159,6 +161,10 @@ const CATS = ["全部", ...CATEGORIES];
                 .map(([k, v]) => [k, v.digest])
             );
           } catch (_) { panelDigests = {}; }
+        }
+        if (statusRes && statusRes.ok) {
+          try { buildStatus = await statusRes.json(); }
+          catch (_) { buildStatus = null; }
         }
         updateHeader(data);
         all = data.articles;
@@ -184,7 +190,10 @@ const CATS = ["全部", ...CATEGORIES];
       const updEl = document.getElementById("updated");
       const stats = data.sources || {};
       const failed = Object.values(stats).filter(s => s.error).length;
-      const dot = failed ? ` <span title="${esc(failed + " 個來源失敗")}" style="color:#fbbf24">●</span>` : "";
+      const stepFailed = Object.values(buildStatus?.steps || {}).filter(s => s && s.ok === false).length;
+      const dot = (failed || stepFailed)
+        ? ` <span title="${esc([failed ? failed + " 個來源失敗" : "", stepFailed ? stepFailed + " 個後置步驟失敗" : ""].filter(Boolean).join("；"))}" style="color:#fbbf24">●</span>`
+        : "";
       updEl.innerHTML = "更新：" + esc(data.updated) + dot;
     }
 
@@ -219,8 +228,22 @@ const CATS = ["全部", ...CATEGORIES];
     function openHealthModal() {
       const body = document.getElementById("health-body");
       const entries = Object.entries(sourceStats);
+      const stepEntries = Object.entries(buildStatus?.steps || {});
+      const stepHtml = stepEntries.length
+        ? `<div class="health-legend"><strong>後置步驟</strong> · ${esc(buildStatus.updated || "")}</div>` + stepEntries.map(([name, s]) => {
+            const ok = s && s.ok !== false;
+            const cls = ok ? "health-ok" : "health-bad";
+            const seconds = typeof s.seconds === "number" ? ` · ${s.seconds}s` : "";
+            const err = s.error ? `<span class="health-err">${esc(String(s.error).slice(0, 80))}</span>` : `<span class="health-meta">OK${esc(seconds)}</span>`;
+            return `<div class="health-row">
+              <span class="health-dot ${cls}"></span>
+              <span class="health-name">${esc(name)}</span>
+              ${err}
+            </div>`;
+          }).join("")
+        : "";
       if (!entries.length) {
-        body.innerHTML = '<div class="health-err">未載入來源資料</div>';
+        body.innerHTML = stepHtml + '<div class="health-err">未載入來源資料</div>';
       } else {
         const history = sourceHealthHistory();
         const muted = getMutedSources();
@@ -233,7 +256,7 @@ const CATS = ["全部", ...CATEGORIES];
           <span class="health-legend-item"><span class="health-dot health-warn"></span>空 · 無 cache</span>
           <span class="health-legend-item"><span class="health-dot health-bad"></span>抓取失敗</span>
         </div>`;
-        body.innerHTML = legend + entries.map(([name, s]) => {
+        body.innerHTML = stepHtml + legend + entries.map(([name, s]) => {
           const h = history[name] || {};
           const effectiveCount = Number(s.effective_count ?? s.count) || 0;
           let cls, tip;
@@ -502,6 +525,29 @@ const CATS = ["全部", ...CATEGORIES];
       };
     }
 
+    function setupMobileFilterSheet() {
+      const toggle = document.getElementById("mobile-filter-toggle");
+      const backdrop = document.getElementById("filter-backdrop");
+      if (!toggle || !backdrop) return;
+
+      const setOpen = open => {
+        document.body.classList.toggle("filter-sheet-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        backdrop.hidden = !open;
+      };
+
+      toggle.addEventListener("click", () => {
+        setOpen(!document.body.classList.contains("filter-sheet-open"));
+      });
+      backdrop.addEventListener("click", () => setOpen(false));
+      window.addEventListener("keydown", event => {
+        if (event.key === "Escape") setOpen(false);
+      });
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => setOpen(false));
+      });
+    }
+
     const TOP_PICKS_RECENT_KEY = "topPicks.recent";
     const TOP_PICKS_RECENT_TTL_MS = 24 * 3600 * 1000;
     let _topPicksSnapshot = null;
@@ -586,7 +632,7 @@ const CATS = ["全部", ...CATEGORIES];
     let aiTimeFilter = 0;
     let aiEventFilter = "";  // filter by event_type, "" = all
     let aiSentOpen  = true;   // 情緒概覽 collapsible state
-    let aiPicksOpen = false;  // 今日重點 collapsible state
+    let aiPicksOpen = true;   // 今日重點 collapsible state
 
     const AI_TIME_BTNS = [
       { label: "最新", hours: 0 },
@@ -820,8 +866,8 @@ const CATS = ["全部", ...CATEGORIES];
       </div>`;
 
       container.innerHTML = navHtml + stripHtml
-        + `<div class="ai-columns"><div class="ai-col-left">${sentHtml}${clusterHtml}</div><div class="ai-col-right">${eventHtml}${tagHtml}</div></div>`
-        + picksSection;
+        + picksSection
+        + `<div class="ai-columns"><div class="ai-col-left">${sentHtml}${clusterHtml}</div><div class="ai-col-right">${eventHtml}${tagHtml}</div></div>`;
 
       container.querySelectorAll("[data-ai-collapse]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -988,6 +1034,47 @@ const CATS = ["全部", ...CATEGORIES];
       toggleClusterSummary(cid);
     }
 
+    function handleCardAction(action, el, event) {
+      if (!action) return false;
+      if (action === "filter-cluster") {
+        event.preventDefault();
+        event.stopPropagation();
+        filterCluster(el.dataset.clusterId || "");
+        return true;
+      }
+      if (action === "collapse-cluster") {
+        event.preventDefault();
+        event.stopPropagation();
+        collapseCluster();
+        return true;
+      }
+      if (action === "toggle-summary") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleClusterSummary(el.dataset.clusterId || "");
+        return true;
+      }
+      if (action === "bookmark") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleBookmark(el.dataset.articleId || "");
+        return true;
+      }
+      if (action === "mute-source") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSourceMute(el.dataset.source || "");
+        return true;
+      }
+      if (action === "downrank-source") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSourceDownrank(el.dataset.source || "");
+        return true;
+      }
+      return false;
+    }
+
     function panelDigestHtml(cid) {
       const d = panelDigests[cid];
       if (!d) return "";
@@ -1125,6 +1212,24 @@ const CATS = ["全部", ...CATEGORIES];
     let _renderFilteredScrollTop = false;
     function renderFilteredFromUI() { _renderFilteredScrollTop = true; renderFiltered(); }
 
+    function clearListFiltersForPanel() {
+      activeCat = "全部";
+      activeSource = "";
+      activeTag = "";
+      onlyImportant = false;
+      onlyUnread = false;
+      onlySaved = false;
+      searchQuery = "";
+      const search = document.getElementById("search");
+      if (search) search.value = "";
+      document.querySelectorAll("#filters .filter-btn").forEach(btn =>
+        btn.classList.toggle("active", btn.dataset.cat === "全部")
+      );
+      buildSourceFilters();
+      buildTagFilters();
+      syncQuickToggleButtons();
+    }
+
     function scoreClass(score) {
       if (!score) return "score-low";
       return score >= 8 ? "score-high" : score >= 5 ? "score-mid" : "score-low";
@@ -1165,8 +1270,9 @@ const CATS = ["全部", ...CATEGORIES];
         const isCluster = Number(a.cluster_size) > 1 && cid;
         const isExpandedCluster = isCluster && expandedClusterId === cid;
         const isClusterStack = isCluster && !isExpandedCluster;
+        const clusterAction = isExpandedCluster ? "collapse-cluster" : "filter-cluster";
         const clusterBadge = isCluster
-          ? `<span class="cluster-badge" onclick="event.preventDefault();event.stopPropagation();${isExpandedCluster ? "collapseCluster()" : `filterCluster('${cid}')`}">${Number(a.cluster_size)} 來源 · ${isExpandedCluster ? "點擊收起" : "點擊展開"}</span>` : "";
+          ? `<span class="cluster-badge" data-card-action="${clusterAction}" data-cluster-id="${esc(cid)}">${Number(a.cluster_size)} 來源 · ${isExpandedCluster ? "點擊收起" : "點擊展開"}</span>` : "";
         const hasContradiction = isCluster && cid && (panelDigests[cid]?.contradictions || []).length > 0;
         const contradictionBadge = hasContradiction
           ? `<span class="contradiction-badge" title="各來源有事實矛盾">⚠ 矛盾</span>` : "";
@@ -1179,7 +1285,7 @@ const CATS = ["全部", ...CATEGORIES];
           (digest.contradictions || []).length > 0 ? "⚠矛盾" : null,
         ].filter(Boolean).join(" · ") : null;
         const clusterSummaryButton = isClusterStack
-          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();toggleClusterSummary('${cid}')" onkeydown="handleClusterSummaryKey(event,'${cid}')">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要" + (digestIndicators ? ` <span class="digest-preview">${esc(digestIndicators)}</span>` : "")}</span>`
+          ? `<span class="cluster-ai-btn${expandedClusterSummaryId === cid ? " active" : ""}" role="button" tabindex="0" data-card-action="toggle-summary" data-cluster-id="${esc(cid)}">${expandedClusterSummaryId === cid ? "收起摘要" : "AI 綜合摘要" + (digestIndicators ? ` <span class="digest-preview">${esc(digestIndicators)}</span>` : "")}</span>`
           : "";
         const tagChips = (a.tags || []).map(t => `<span class="tag-chip">${esc(t)}</span>`).join("");
         const tags = (tagChips || clusterSummaryButton)
@@ -1195,12 +1301,12 @@ const CATS = ["全部", ...CATEGORIES];
         const catCls = catClass(a.category);
         const cardClass = `card ${catCls}${score !== null && score >= 8 ? " important" : ""}${isRead ? " read" : ""}${isBookmarked ? " bookmarked" : ""}${isDownranked ? " downranked-source" : ""}${isClusterStack ? " cluster-stack" : ""}${isExpandedCluster ? " cluster-expanded" : ""}${isBreakingCluster ? " breaking" : ""}`;
         const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
-        const cardClick = isClusterStack ? ` onclick="event.preventDefault();filterCluster('${cid}')"` : "";
+        const cardActionAttrs = isClusterStack ? ` data-card-action="filter-cluster" data-cluster-id="${esc(cid)}"` : "";
         const sourceName = esc(a.source || "");
         const actionBar = `<span class="card-actions">
-          <span class="mini-action${isBookmarked ? " active" : ""}" role="button" title="收藏" onclick="event.preventDefault();event.stopPropagation();toggleBookmark('${aid}')">★</span>
-          <span class="mini-action" role="button" title="靜音來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceMute('${sourceName}')">×</span>
-          <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" onclick="event.preventDefault();event.stopPropagation();toggleSourceDownrank('${sourceName}')">↓</span>
+          <span class="mini-action${isBookmarked ? " active" : ""}" role="button" title="收藏" data-card-action="bookmark" data-article-id="${esc(aid)}">★</span>
+          <span class="mini-action" role="button" title="靜音來源" data-card-action="mute-source" data-source="${sourceName}">×</span>
+          <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" data-card-action="downrank-source" data-source="${sourceName}">↓</span>
         </span>`;
         const shouldRenderClusterSummary = isClusterStack
           && expandedClusterSummaryId === cid
@@ -1209,7 +1315,7 @@ const CATS = ["全部", ...CATEGORIES];
         const clusterBodySummary = shouldRenderClusterSummary
           ? clusterSummaryHtml(cid, "body")
           : "";
-        return `<a class="${cardClass}" href="${cardHref}"${cardClick}>
+        return `<a class="${cardClass}" href="${cardHref}"${cardActionAttrs}>
           <div class="card-media">
             ${thumb}
           </div>
@@ -1229,8 +1335,23 @@ const CATS = ["全部", ...CATEGORIES];
       }).join("");
       if (typeof window.scrollTo === "function") window.scrollTo({ top: savedScrollY, behavior: "instant" });
     }
+
+    const gridEl = document.getElementById("grid");
+    gridEl.addEventListener("click", event => {
+      const el = event.target.closest("[data-card-action]");
+      if (!el || (typeof gridEl.contains === "function" && !gridEl.contains(el))) return;
+      handleCardAction(el.dataset.cardAction, el, event);
+    });
+    gridEl.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const el = event.target.closest("[data-card-action]");
+      if (!el || (typeof gridEl.contains === "function" && !gridEl.contains(el))) return;
+      handleCardAction(el.dataset.cardAction, el, event);
+    });
+
     registerServiceWorker();
 
+    setupMobileFilterSheet();
     load();
     // Background poll
     setInterval(async () => {
@@ -1297,13 +1418,18 @@ const CATS = ["全部", ...CATEGORIES];
 
       if (tab === "home") {
         activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = false;
+        syncQuickToggleButtons();
         buildTopPicks();
         renderFilteredFromUI();
         pollForNew().catch(() => null);
       } else if (tab === "ai") {
+        clearListFiltersForPanel();
         buildTopPicks();
       } else if (tab === "hot") {
-        activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = true;
+        clearListFiltersForPanel();
+        onlyImportant = true;
+        onlyUnread = false; onlySaved = false;
+        syncQuickToggleButtons();
         buildTopPicks();
         _renderFilteredScrollTop = true;
         renderFiltered();
@@ -1337,6 +1463,23 @@ const CATS = ["全部", ...CATEGORIES];
       document.getElementById("s-saved")?.classList.toggle("active",     onlySaved);
       document.getElementById("s-text")?.classList.toggle("active",      document.body.classList.contains("text-only"));
     }
+
+    document.getElementById("settings-panel")?.addEventListener("click", event => {
+      const btn = event.target.closest("[data-setting-action]");
+      if (!btn) return;
+      const action = btn.dataset.settingAction;
+      if (action === "sort-date") document.querySelector('[data-sort="date"]')?.click();
+      else if (action === "sort-ai") document.querySelector('[data-sort="ai"]')?.click();
+      else if (action === "important") window.__toggleImportant?.();
+      else if (action === "unread") window.__toggleUnread?.();
+      else if (action === "saved") window.__toggleSaved?.();
+      else if (action === "compact") document.getElementById("compact-toggle")?.click();
+      else if (action === "text") document.getElementById("text-toggle")?.click();
+      else if (action === "theme") document.getElementById("theme-toggle")?.click();
+      else if (action === "font-dec") document.getElementById("font-dec")?.click();
+      else if (action === "font-inc") document.getElementById("font-inc")?.click();
+      _updateSettingsPanel();
+    });
 
     // Bind tab clicks via event delegation (more reliable than inline onclick)
     document.getElementById("tab-bar")?.addEventListener("click", e => {

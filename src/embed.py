@@ -19,10 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-DATA_DIR  = Path(__file__).parent.parent / "docs" / "data"
-EMB_PATH  = DATA_DIR / "embeddings.bin"
-META_PATH = DATA_DIR / "embeddings_meta.json"
-SIM_PATH  = DATA_DIR / "similar.json"
+DATA_DIR = Path(__file__).parent.parent / "docs" / "data"
 
 MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 EMBED_DIM  = 384
@@ -41,27 +38,37 @@ def _article_hash(a: dict) -> str:
     return hashlib.md5(_article_text(a).encode("utf-8")).hexdigest()[:12]
 
 
-def _load_meta() -> dict:
-    if META_PATH.exists():
+def _embed_paths(data_dir: Path | str | None = None) -> tuple[Path, Path, Path, Path]:
+    root = Path(data_dir) if data_dir is not None else DATA_DIR
+    return (
+        root,
+        root / "embeddings.bin",
+        root / "embeddings_meta.json",
+        root / "similar.json",
+    )
+
+
+def _load_meta(meta_path: Path) -> dict:
+    if meta_path.exists():
         try:
-            return json.loads(META_PATH.read_text(encoding="utf-8"))
+            return json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception:
             pass
     return {"ids": [], "hashes": {}, "dim": EMBED_DIM, "count": 0}
 
 
-def _save_meta(meta: dict):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = META_PATH.with_suffix(META_PATH.suffix + ".tmp")
+def _save_meta(meta: dict, data_dir: Path, meta_path: Path):
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tmp = meta_path.with_suffix(meta_path.suffix + ".tmp")
     tmp.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")),
                    encoding="utf-8")
-    os.replace(tmp, META_PATH)
+    os.replace(tmp, meta_path)
 
 
-def _load_embeddings(count: int) -> np.ndarray:
-    if EMB_PATH.exists():
+def _load_embeddings(count: int, emb_path: Path) -> np.ndarray:
+    if emb_path.exists():
         try:
-            arr = np.frombuffer(EMB_PATH.read_bytes(), dtype=np.float32)
+            arr = np.frombuffer(emb_path.read_bytes(), dtype=np.float32)
             if arr.size == count * EMBED_DIM:
                 return arr.reshape(count, EMBED_DIM)
         except Exception:
@@ -69,25 +76,26 @@ def _load_embeddings(count: int) -> np.ndarray:
     return np.empty((0, EMBED_DIM), dtype=np.float32)
 
 
-def _save_embeddings(mat: np.ndarray):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = EMB_PATH.with_suffix(EMB_PATH.suffix + ".tmp")
+def _save_embeddings(mat: np.ndarray, data_dir: Path, emb_path: Path):
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tmp = emb_path.with_suffix(emb_path.suffix + ".tmp")
     tmp.write_bytes(mat.astype(np.float32).tobytes())
-    os.replace(tmp, EMB_PATH)
+    os.replace(tmp, emb_path)
 
 
-def _save_similar(similar: dict):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SIM_PATH.with_suffix(SIM_PATH.suffix + ".tmp")
+def _save_similar(similar: dict, data_dir: Path, sim_path: Path):
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tmp = sim_path.with_suffix(sim_path.suffix + ".tmp")
     tmp.write_text(json.dumps(similar, ensure_ascii=False, separators=(",", ":")),
                    encoding="utf-8")
-    os.replace(tmp, SIM_PATH)
+    os.replace(tmp, sim_path)
 
 
-def compute_embeddings(articles: list) -> None:
+def compute_embeddings(articles: list, data_dir: Path | str | None = None) -> None:
     """Embed all articles, cache incrementally, write similar.json."""
     if not articles:
         return
+    data_root, emb_path, meta_path, sim_path = _embed_paths(data_dir)
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -95,10 +103,10 @@ def compute_embeddings(articles: list) -> None:
         print("[embed] sentence-transformers not installed — skipping embeddings")
         return
 
-    meta      = _load_meta()
+    meta      = _load_meta(meta_path)
     old_ids   = meta.get("ids") or []
     old_count = len(old_ids)
-    old_mat   = _load_embeddings(old_count)
+    old_mat   = _load_embeddings(old_count, emb_path)
     old_hash  = meta.get("hashes") or {}
 
     # Keep existing embeddings for articles whose text hasn't changed.
@@ -161,12 +169,13 @@ def compute_embeddings(articles: list) -> None:
         return
 
     mat = np.stack(ordered_vecs, axis=0)   # (n, 384), already L2-normalised
-    _save_embeddings(mat)
+    _save_embeddings(mat, data_root, emb_path)
 
     new_hash = {a["id"]: _article_hash(a) for a in articles}
     updated  = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT")
     _save_meta({"ids": ordered_ids, "hashes": new_hash,
-                "dim": EMBED_DIM, "count": len(ordered_ids), "updated": updated})
+                "dim": EMBED_DIM, "count": len(ordered_ids), "updated": updated},
+               data_root, meta_path)
 
     # Compute top-K similar for each article (cosine sim = dot product, normalised).
     sim_matrix = mat @ mat.T          # (n, n)
@@ -179,10 +188,10 @@ def compute_embeddings(articles: list) -> None:
         similar[ordered_ids[i]] = [
             ordered_ids[j] for j in top_idx if row[j] >= SIM_MIN
         ]
-    _save_similar(similar)
+    _save_similar(similar, data_root, sim_path)
 
-    kb_emb  = EMB_PATH.stat().st_size  // 1024
-    kb_sim  = SIM_PATH.stat().st_size  // 1024
-    kb_meta = META_PATH.stat().st_size // 1024
+    kb_emb  = emb_path.stat().st_size  // 1024
+    kb_sim  = sim_path.stat().st_size  // 1024
+    kb_meta = meta_path.stat().st_size // 1024
     print(f"[embed] embeddings.bin {kb_emb} KB, similar.json {kb_sim} KB, "
           f"meta {kb_meta} KB ({n} articles)")

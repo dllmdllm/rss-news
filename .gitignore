@@ -4,3 +4,7 @@ __pycache__/
 venv/
 .venv/
 .claude/
+.tmp/
+.pytest-tmp/
+build_timing.log
+*build_out.txt

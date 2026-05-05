@@ -520,6 +520,19 @@ def save_json(articles: list, source_stats: dict):
     )
 
 
+def _write_build_status(status: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path = DATA_DIR / "build_status.json"
+    payload = {
+        "updated": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
+        "steps": status,
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
 def _minimal_content(article: dict) -> str:
     """Last-resort readable content so every active article has a sidecar."""
     title = html_escape(article.get("title") or "未能擷取全文")
@@ -779,6 +792,15 @@ async def main():
     global _core_saved
     _tlog("=== build start ===")
     t0 = time.monotonic()
+    build_status = {}
+
+    def mark_step(name: str, ok: bool = True, error: str = "", seconds: float | None = None) -> None:
+        row = {"ok": ok}
+        if error:
+            row["error"] = error
+        if seconds is not None:
+            row["seconds"] = round(seconds, 1)
+        build_status[name] = row
 
     old_articles = _load_old_articles()
 
@@ -838,32 +860,41 @@ async def main():
     _tlog("panel_digest start")
     try:
         await asyncio.wait_for(generate_panel_digests(articles), timeout=200)
+        mark_step("panel_digest", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"panel_digest: {exc!r}")
+        mark_step("panel_digest", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"panel_digest done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("embed start")
     try:
-        compute_embeddings(articles)
+        compute_embeddings(articles, data_dir=DATA_DIR)
+        mark_step("embed", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"embed: {exc!r}")
+        mark_step("embed", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"embed done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     try:
         await asyncio.wait_for(send_breaking_alerts(articles), timeout=60)
+        mark_step("breaking_alert", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"breaking_alert: {exc!r}")
+        mark_step("breaking_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"breaking done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("entity_digest start")
     try:
         await asyncio.wait_for(generate_entity_digests(articles), timeout=120)
+        mark_step("entity_digest", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"entity_digest: {exc!r}")
+        mark_step("entity_digest", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"entity_digest done {time.monotonic()-t:.1f}s — total {time.monotonic()-t0:.1f}s")
+    _write_build_status(build_status)
 
 
 if __name__ == "__main__":
