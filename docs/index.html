@@ -216,6 +216,19 @@
       margin-bottom: 10px; padding-bottom: 6px;
       border-bottom: 1px solid var(--border);
     }
+    /* Collapsible AI section header */
+    .ai-collapse-btn {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; background: none; border: none; border-bottom: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; padding: 0 0 6px; margin-bottom: 10px;
+      font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+      text-align: left; transition: color .15s;
+    }
+    .ai-collapse-btn:hover { color: var(--text); }
+    .ai-collapse-arrow {
+      font-size: .7rem; transition: transform .2s; flex-shrink: 0; margin-left: 8px;
+    }
+    .ai-collapse-btn.collapsed .ai-collapse-arrow { transform: rotate(-90deg); }
 
     /* Sentiment dashboard */
     .sent-legend { font-size: .7rem; font-weight: 400; margin-left: 8px; text-transform: none; letter-spacing: 0; }

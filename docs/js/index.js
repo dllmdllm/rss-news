@@ -585,6 +585,8 @@ const CATS = ["全部", ...CATEGORIES];
     // 0 = all, 2/4/8 = hours window
     let aiTimeFilter = 0;
     let aiEventFilter = "";  // filter by event_type, "" = all
+    let aiSentOpen  = true;   // 情緒概覽 collapsible state
+    let aiPicksOpen = false;  // 今日重點 collapsible state
 
     const AI_TIME_BTNS = [
       { label: "最新", hours: 0 },
@@ -630,7 +632,7 @@ const CATS = ["全部", ...CATEGORIES];
       return result;
     }
 
-    function _aiSentimentSection(pool) {
+    function _aiSentimentSection(pool, isOpen = true) {
       const cats = CATS.filter(c => c !== "全部");
       const rows = [];
       for (const cat of cats) {
@@ -659,9 +661,15 @@ const CATS = ["全部", ...CATEGORIES];
       }
       if (!rows.length) return "";
       const legend = `<span class="sent-legend"><span class="s-pos">■ 正面</span> <span class="s-neu">■ 中性</span> <span class="s-neg">■ 負面</span></span>`;
+      const collCls = isOpen ? "" : " collapsed";
       return `<div class="ai-section">
-        <div class="ai-section-hd">📊 情緒概覽 ${legend}</div>
-        <div class="sentiment-grid">${rows.join("")}</div>
+        <button class="ai-collapse-btn${collCls}" data-ai-collapse="sent">
+          <span>📊 情緒概覽 ${legend}</span>
+          <span class="ai-collapse-arrow">▾</span>
+        </button>
+        <div class="ai-collapse-body"${isOpen ? "" : ' style="display:none"'}>
+          <div class="sentiment-grid">${rows.join("")}</div>
+        </div>
       </div>`;
     }
 
@@ -771,7 +779,7 @@ const CATS = ["全部", ...CATEGORIES];
       }</div>`;
 
       const rawPool = aiPool(aiTimeFilter);
-      const sentHtml    = _aiSentimentSection(rawPool);
+      const sentHtml    = _aiSentimentSection(rawPool, aiSentOpen);
       const clusterHtml = _aiClusterSection(rawPool);
       const eventHtml   = _aiEventSection(rawPool);
       const tagHtml     = _aiTagSection(rawPool);
@@ -800,10 +808,31 @@ const CATS = ["全部", ...CATEGORIES];
           }).join("")
         : `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
 
+      const picksCls  = aiPicksOpen ? "" : " collapsed";
+      const picksSection = `<div class="ai-section" style="margin-top:8px">
+        <button class="ai-collapse-btn${picksCls}" data-ai-collapse="picks">
+          <span>📰 今日重點</span>
+          <span class="ai-collapse-arrow">▾</span>
+        </button>
+        <div class="ai-collapse-body"${aiPicksOpen ? "" : ' style="display:none"'}>
+          <div class="ai-picks-grid">${catHtml}</div>
+        </div>
+      </div>`;
+
       container.innerHTML = navHtml + stripHtml
         + `<div class="ai-columns"><div class="ai-col-left">${sentHtml}${clusterHtml}</div><div class="ai-col-right">${eventHtml}${tagHtml}</div></div>`
-        + `<div class="ai-section-hd" style="margin-top:8px">📰 今日重點</div>`
-        + `<div class="ai-picks-grid">${catHtml}</div>`;
+        + picksSection;
+
+      container.querySelectorAll("[data-ai-collapse]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const key  = btn.dataset.aiCollapse;
+          const body = btn.nextElementSibling;
+          const nowCollapsed = btn.classList.toggle("collapsed");
+          body.style.display = nowCollapsed ? "none" : "";
+          if (key === "sent")  aiSentOpen  = !nowCollapsed;
+          if (key === "picks") aiPicksOpen = !nowCollapsed;
+        });
+      });
 
       container.querySelectorAll(".ai-time-btn").forEach(btn => {
         btn.addEventListener("click", () => {
