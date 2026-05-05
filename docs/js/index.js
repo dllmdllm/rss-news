@@ -639,8 +639,10 @@ const CATS = ["全部", ...CATEGORIES];
     // 0 = all, 2/4/8 = hours window
     let aiTimeFilter = 0;
     let aiEventFilter = "";  // filter by event_type, "" = all
-    let aiSentOpen  = true;   // 情緒概覽 collapsible state
-    let aiPicksOpen = true;   // 今日重點 collapsible state
+    let aiSentOpen    = true;
+    let aiPicksOpen   = true;
+    let aiEventOpen   = true;
+    let aiClusterOpen = true;
 
     const AI_TIME_BTNS = [
       { label: "最新", hours: 0 },
@@ -702,14 +704,9 @@ const CATS = ["全部", ...CATEGORIES];
         rows.push(`<div class="sent-row">
           <div class="sent-cat ${catClass(cat)}">${esc(cat)}</div>
           <div class="sent-bar">
-            <div class="sent-pos" style="width:${posP}%" title="正面 ${pos}篇"></div>
-            <div class="sent-neu" style="width:${neuP}%" title="中性 ${neu}篇"></div>
-            <div class="sent-neg" style="width:${negP}%" title="負面 ${neg}篇"></div>
-          </div>
-          <div class="sent-nums">
-            <span class="s-pos">正 ${pos}</span>
-            <span class="s-neu">中 ${neu}</span>
-            <span class="s-neg">負 ${neg}</span>
+            <div class="sent-pos" style="width:${posP}%" title="正面 ${pos}篇">${posP >= 12 ? posP + "%" : ""}</div>
+            <div class="sent-neu" style="width:${neuP}%" title="中性 ${neu}篇">${neuP >= 12 ? neuP + "%" : ""}</div>
+            <div class="sent-neg" style="width:${negP}%" title="負面 ${neg}篇">${negP >= 12 ? negP + "%" : ""}</div>
           </div>
         </div>`);
       }
@@ -763,9 +760,15 @@ const CATS = ["全部", ...CATEGORIES];
           <div class="cd-meta">${arts.length} 篇報道</div>
         </div>`;
       }).join("");
+      const collClsCl = aiClusterOpen ? "" : " collapsed";
       return `<div class="ai-section" id="ai-sec-cluster">
-        <div class="ai-section-hd">🗞️ 話題聚焦</div>
-        ${cards}
+        <button class="ai-collapse-btn${collClsCl}" data-ai-collapse="cluster">
+          <span>🗞️ 話題聚焦</span>
+          <span class="ai-collapse-arrow">▾</span>
+        </button>
+        <div class="ai-collapse-body"${aiClusterOpen ? "" : ' style="display:none"'}>
+          ${cards}
+        </div>
       </div>`;
     }
 
@@ -780,9 +783,15 @@ const CATS = ["全部", ...CATEGORIES];
       const pills = sorted.map(([t, n]) =>
         `<span class="event-pill${aiEventFilter === t ? " active" : ""}" data-event="${esc(t)}">${esc(t)} <em>${n}</em></span>`
       ).join("");
+      const collClsEv = aiEventOpen ? "" : " collapsed";
       return `<div class="ai-section" id="ai-sec-event">
-        <div class="ai-section-hd">📋 今日事件</div>
-        <div class="event-pills">${pills}</div>
+        <button class="ai-collapse-btn${collClsEv}" data-ai-collapse="event">
+          <span>📋 今日事件</span>
+          <span class="ai-collapse-arrow">▾</span>
+        </button>
+        <div class="ai-collapse-body"${aiEventOpen ? "" : ' style="display:none"'}>
+          <div class="event-pills">${pills}</div>
+        </div>
       </div>`;
     }
 
@@ -888,8 +897,10 @@ const CATS = ["全部", ...CATEGORIES];
           const body = btn.nextElementSibling;
           const nowCollapsed = btn.classList.toggle("collapsed");
           body.style.display = nowCollapsed ? "none" : "";
-          if (key === "sent")  aiSentOpen  = !nowCollapsed;
-          if (key === "picks") aiPicksOpen = !nowCollapsed;
+          if (key === "sent")    aiSentOpen    = !nowCollapsed;
+          if (key === "picks")   aiPicksOpen   = !nowCollapsed;
+          if (key === "event")   aiEventOpen   = !nowCollapsed;
+          if (key === "cluster") aiClusterOpen = !nowCollapsed;
         });
       });
 

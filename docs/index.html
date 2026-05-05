@@ -271,13 +271,18 @@
       padding: 2px 6px; border-radius: 4px; text-align: center;
     }
     .sent-bar {
-      flex: 1; height: 8px; border-radius: 4px; overflow: hidden;
+      flex: 1; height: 20px; border-radius: 4px; overflow: hidden;
       background: var(--border); display: flex;
     }
-    .sent-pos { background: #4ade80; height: 100%; }
-    .sent-neu { background: var(--muted); opacity: .4; height: 100%; }
-    .sent-neg { background: #f87171; height: 100%; }
-    .sent-nums { font-size: .7rem; display: flex; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+    .sent-pos, .sent-neu, .sent-neg {
+      height: 100%; display: flex; align-items: center; justify-content: center;
+      font-size: .68rem; font-weight: 700; color: rgba(0,0,0,.55); overflow: hidden;
+      white-space: nowrap;
+    }
+    .sent-pos { background: #4ade80; }
+    .sent-neu { background: var(--muted); opacity: .55; }
+    .sent-neg { background: #f87171; }
+    .sent-nums { display: none; }
     .s-pos { color: #4ade80; }
     .s-neu { color: var(--muted); }
     .s-neg { color: #f87171; }
