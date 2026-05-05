@@ -1267,16 +1267,22 @@ const CATS = ["全部", ...CATEGORIES];
     function sentimentTimelineHtml(cid) {
       const members = getSorted(all.filter(a => a.cluster_id === cid && !a.duplicate_of));
       if (members.length < 2) return "";
-      const dots = members.map(a => {
-        const sent = ["positive", "negative", "neutral"].includes(a.sentiment) ? a.sentiment : "neutral";
-        const source = a.source || "";
-        const time = a.date
-          ? new Date(a.date).toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
-          : "";
-        const tooltip = source + (time ? " · " + time : "");
-        return `<span class="sent-tl-dot sent-${sent}" title="${esc(tooltip)}"></span>`;
-      }).join("");
-      return `<div class="sent-timeline"><span class="sent-tl-label">情緒</span>${dots}</div>`;
+      const pos = members.filter(a => a.sentiment === "positive").length;
+      const neg = members.filter(a => a.sentiment === "negative").length;
+      const neu = members.length - pos - neg;
+      const total = members.length;
+      const posP = Math.round(pos / total * 100);
+      const negP = Math.round(neg / total * 100);
+      const neuP = 100 - posP - negP;
+      return `<div class="sent-mini">
+        <span class="sent-mini-label">情緒</span>
+        <div class="sent-mini-bar">
+          <div class="sent-pos" style="width:${posP}%" title="正面 ${pos}篇">${posP >= 15 ? posP + "%" : ""}</div>
+          <div class="sent-neu" style="width:${neuP}%" title="中性 ${neu}篇">${neuP >= 15 ? neuP + "%" : ""}</div>
+          <div class="sent-neg" style="width:${negP}%" title="負面 ${neg}篇">${negP >= 15 ? negP + "%" : ""}</div>
+        </div>
+        <span class="sent-mini-nums"><span class="s-pos">正${pos}</span><span class="s-neu">中${neu}</span><span class="s-neg">負${neg}</span></span>
+      </div>`;
     }
 
     function clusterSummaryHtml(cid, suffix = "") {
