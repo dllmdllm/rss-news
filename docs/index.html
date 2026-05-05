@@ -363,7 +363,7 @@
     .ai-pick-source { color: var(--accent); font-weight: 600; }
     /* AI tab navigation links strip */
     .ai-nav-strip {
-      display: flex; gap: 8px; padding: 4px 0 12px; flex-wrap: wrap;
+      display: flex; gap: 8px; padding: 4px 0 12px; flex-wrap: wrap; align-items: center;
     }
     .ai-nav-btn {
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
@@ -372,6 +372,15 @@
       transition: border-color .15s, color .15s;
     }
     .ai-nav-btn:hover { border-color: var(--accent); color: var(--text); }
+    .ai-nav-divider {
+      width: 1px; background: var(--border); align-self: stretch; margin: 0 2px; flex-shrink: 0;
+    }
+    .ai-nav-anchor {
+      background: rgba(124,106,247,.07); border-color: rgba(124,106,247,.22); color: var(--link);
+    }
+    .ai-nav-anchor:hover { background: rgba(124,106,247,.14); border-color: var(--accent); color: var(--accent); }
+    body.theme-light .ai-nav-anchor { background: #f4f1ff; border-color: #c4b5fd; color: #4c3fbf; }
+    body.theme-light .ai-nav-anchor:hover { background: #ede9fe; border-color: #7c6af7; color: #4c3fbf; }
 
     /* ── new-articles toast ── */
     .news-toast {

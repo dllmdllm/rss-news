@@ -716,7 +716,7 @@ const CATS = ["全部", ...CATEGORIES];
       if (!rows.length) return "";
       const legend = `<span class="sent-legend"><span class="s-pos">■ 正面</span> <span class="s-neu">■ 中性</span> <span class="s-neg">■ 負面</span></span>`;
       const collCls = isOpen ? "" : " collapsed";
-      return `<div class="ai-section">
+      return `<div class="ai-section" id="ai-sec-sent">
         <button class="ai-collapse-btn${collCls}" data-ai-collapse="sent">
           <span>📊 情緒概覽 ${legend}</span>
           <span class="ai-collapse-arrow">▾</span>
@@ -763,7 +763,7 @@ const CATS = ["全部", ...CATEGORIES];
           <div class="cd-meta">${arts.length} 篇報道</div>
         </div>`;
       }).join("");
-      return `<div class="ai-section">
+      return `<div class="ai-section" id="ai-sec-cluster">
         <div class="ai-section-hd">🗞️ 話題聚焦</div>
         ${cards}
       </div>`;
@@ -780,7 +780,7 @@ const CATS = ["全部", ...CATEGORIES];
       const pills = sorted.map(([t, n]) =>
         `<span class="event-pill${aiEventFilter === t ? " active" : ""}" data-event="${esc(t)}">${esc(t)} <em>${n}</em></span>`
       ).join("");
-      return `<div class="ai-section">
+      return `<div class="ai-section" id="ai-sec-event">
         <div class="ai-section-hd">📋 今日事件</div>
         <div class="event-pills">${pills}</div>
       </div>`;
@@ -825,6 +825,11 @@ const CATS = ["全部", ...CATEGORIES];
         <a class="ai-nav-btn" href="graph.html">🕸️ 圖譜</a>
         <a class="ai-nav-btn" href="upcoming.html">📅 預告</a>
         <a class="ai-nav-btn" href="entities.html">👤 實體</a>
+        <span class="ai-nav-divider" aria-hidden="true"></span>
+        <button class="ai-nav-btn ai-nav-anchor" data-ai-anchor="sent">📊 情緒概覽</button>
+        <button class="ai-nav-btn ai-nav-anchor" data-ai-anchor="event">📋 今日事件</button>
+        <button class="ai-nav-btn ai-nav-anchor" data-ai-anchor="picks">📰 今日重點</button>
+        <button class="ai-nav-btn ai-nav-anchor" data-ai-anchor="cluster">🗞️ 話題聚焦</button>
       </div>`;
       const stripHtml = `<div class="ai-time-strip">${
         AI_TIME_BTNS.map(b =>
@@ -863,7 +868,7 @@ const CATS = ["全部", ...CATEGORIES];
         : `<div style="color:var(--muted);font-size:.85rem;padding:16px 0">此時段暫無新聞</div>`;
 
       const picksCls  = aiPicksOpen ? "" : " collapsed";
-      const picksSection = `<div class="ai-section" style="margin-top:8px">
+      const picksSection = `<div class="ai-section" id="ai-sec-picks" style="margin-top:8px">
         <button class="ai-collapse-btn${picksCls}" data-ai-collapse="picks">
           <span>📰 今日重點</span>
           <span class="ai-collapse-arrow">▾</span>
@@ -885,6 +890,20 @@ const CATS = ["全部", ...CATEGORIES];
           body.style.display = nowCollapsed ? "none" : "";
           if (key === "sent")  aiSentOpen  = !nowCollapsed;
           if (key === "picks") aiPicksOpen = !nowCollapsed;
+        });
+      });
+
+      container.querySelectorAll("[data-ai-anchor]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.aiAnchor;
+          const sec = document.getElementById("ai-sec-" + key);
+          if (!sec) return;
+          // Expand if collapsed
+          const collapseBtn = sec.querySelector("[data-ai-collapse]");
+          if (collapseBtn && collapseBtn.classList.contains("collapsed")) {
+            collapseBtn.click();
+          }
+          setTimeout(() => sec.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
         });
       });
 
