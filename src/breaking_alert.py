@@ -14,6 +14,9 @@ import aiohttp
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "1122095129")
+WORKER_URL         = os.getenv("WORKER_URL", "")
+NOTIFY_SECRET      = os.getenv("NOTIFY_SECRET", "")
+SITE_BASE          = "https://dllmdllm.github.io/rss-news"
 
 STATE_PATH            = Path(__file__).parent.parent / "docs" / "data" / "breaking_alerts.json"
 BREAKING_WINDOW_HOURS = 2
@@ -77,6 +80,23 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
     return breaking
 
 
+async def _send_worker_push(session: aiohttp.ClientSession, headline: str, article_id: str) -> None:
+    if not WORKER_URL or not NOTIFY_SECRET:
+        return
+    url = f"{SITE_BASE}/article.html?id={article_id}"
+    try:
+        async with session.post(
+            f"{WORKER_URL}/notify",
+            headers={"Authorization": f"Bearer {NOTIFY_SECRET}"},
+            json={"title": "🔴 突發新聞", "body": headline[:120], "url": url},
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
+            body = await resp.text()
+            print(f"[breaking] Worker push: {resp.status} {body}")
+    except Exception as exc:
+        print(f"[breaking] Worker push failed: {exc!r}")
+
+
 async def _send_telegram(session: aiohttp.ClientSession, text: str) -> int:
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     async with session.post(
@@ -122,6 +142,7 @@ async def send_breaking_alerts(articles: list) -> None:
                     print(f"[breaking] Telegram returned {status}")
             except Exception as exc:
                 print(f"[breaking] Send failed: {exc!r}")
+            await _send_worker_push(session, b["headline"], b["article_id"])
 
     # Prune entries older than TTL so state file doesn't grow unboundedly.
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=STATE_TTL_HOURS)).isoformat()

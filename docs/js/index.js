@@ -1597,6 +1597,113 @@ const CATS = ["全部", ...CATEGORIES];
       document.getElementById("s-unread")?.classList.toggle("active",    onlyUnread);
       document.getElementById("s-saved")?.classList.toggle("active",     onlySaved);
       document.getElementById("s-text")?.classList.toggle("active",      document.body.classList.contains("text-only"));
+      _refreshNotifButton();
+    }
+
+    /* ── Push notification helpers ─────────────────────────────────── */
+
+    function _b64ToU8(str) {
+      const pad = "=".repeat((4 - (str.length % 4)) % 4);
+      const b64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
+      return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    }
+
+    async function _refreshNotifButton() {
+      const btn    = document.getElementById("notif-btn");
+      const status = document.getElementById("notif-status");
+      if (!btn || !status) return;
+
+      const WORKER = window.PUSH_WORKER_URL || "";
+      if (!WORKER) {
+        document.getElementById("notif-section")?.style.setProperty("display", "none");
+        return;
+      }
+
+      const supported = "serviceWorker" in navigator && "PushManager" in window;
+      if (!supported) {
+        status.textContent = "此瀏覽器不支援推送通知";
+        btn.disabled = true;
+        return;
+      }
+
+      const isIOS        = /iP(hone|ad|od)/.test(navigator.userAgent);
+      const isStandalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+      if (isIOS && !isStandalone) {
+        status.textContent = "請先點「分享」→「加入主畫面」，安裝為 App 後才能接收通知";
+        btn.disabled = true;
+        return;
+      }
+
+      if (Notification.permission === "denied") {
+        status.textContent = "通知已被封鎖，請在系統設定 → Safari → 網站通知 中允許";
+        btn.disabled = true;
+        return;
+      }
+
+      try {
+        const reg      = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        btn.disabled   = false;
+        if (existing) {
+          btn.textContent = "🔕 取消通知";
+          status.textContent = "✓ 已訂閱突發通知";
+        } else {
+          btn.textContent = "🔔 允許通知";
+          status.textContent = "訂閱後，突發新聞會彈出通知";
+        }
+      } catch (e) {
+        status.textContent = "無法讀取通知狀態";
+      }
+    }
+
+    async function _toggleNotification() {
+      const btn    = document.getElementById("notif-btn");
+      const status = document.getElementById("notif-status");
+      if (!btn || !status) return;
+
+      const WORKER = window.PUSH_WORKER_URL || "";
+      const VAPID  = window.VAPID_PUBLIC_KEY || "";
+      if (!WORKER || !VAPID) { status.textContent = "推送通知尚未設定"; return; }
+
+      btn.disabled = true;
+      status.textContent = "處理中…";
+
+      try {
+        const reg      = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+
+        if (existing) {
+          await existing.unsubscribe();
+          await fetch(`${WORKER}/unsubscribe`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ endpoint: existing.endpoint }),
+          }).catch(() => {});
+        } else {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") {
+            status.textContent = "通知權限被拒絕";
+            btn.disabled = false;
+            return;
+          }
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly:      true,
+            applicationServerKey: _b64ToU8(VAPID),
+          });
+          const res = await fetch(`${WORKER}/subscribe`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(sub.toJSON()),
+          });
+          if (!res.ok) throw new Error(`Subscribe failed ${res.status}`);
+        }
+      } catch (e) {
+        status.textContent = "操作失敗：" + e.message;
+        btn.disabled = false;
+        return;
+      }
+
+      _refreshNotifButton();
     }
 
     document.getElementById("settings-panel")?.addEventListener("click", event => {
@@ -1613,6 +1720,7 @@ const CATS = ["全部", ...CATEGORIES];
       else if (action === "theme") document.getElementById("theme-toggle")?.click();
       else if (action === "font-dec") document.getElementById("font-dec")?.click();
       else if (action === "font-inc") document.getElementById("font-inc")?.click();
+      else if (action === "notification") { _toggleNotification(); return; }
       _updateSettingsPanel();
     });
 

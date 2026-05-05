@@ -1135,6 +1135,11 @@
       } catch (_) {}
     })();
   </script>
+  <script>
+    // Push notification config — fill in after deploying the Cloudflare Worker.
+    window.PUSH_WORKER_URL  = "";   // e.g. "https://news-pulse-push.yourname.workers.dev"
+    window.VAPID_PUBLIC_KEY = "";   // public key from `npx web-push generate-vapid-keys`
+  </script>
   <!-- new articles toast -->
   <div class="news-toast" id="news-toast">
     <span id="toast-msg"></span>
@@ -1235,6 +1240,13 @@
         <a href="upcoming.html" class="settings-btn">📅 預告</a>
         <a href="entities.html" class="settings-btn">👤 實體</a>
       </div>
+    </div>
+    <div class="settings-section" id="notif-section">
+      <div class="settings-label">推送通知</div>
+      <div class="settings-row">
+        <button id="notif-btn" class="settings-btn" data-setting-action="notification">🔔 允許通知</button>
+      </div>
+      <div id="notif-status" style="font-size:.75rem;color:var(--muted);margin-top:6px;line-height:1.5"></div>
     </div>
   </div>
 

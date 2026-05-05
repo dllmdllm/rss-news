@@ -64,6 +64,35 @@ function staleWhileRevalidate(req) {
   });
 }
 
+/* ── Push notifications ──────────────────────────────────────────── */
+
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data?.json() ?? {}; } catch (_) {}
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "News Pulse", {
+      body:     data.body  || "有突發新聞，點擊查看",
+      icon:     new URL("icon-192.png", self.location.href).href,
+      data:     { url: data.url || self.location.origin },
+      tag:      "breaking",
+      renotify: true,
+      vibrate:  [200, 100, 200],
+    })
+  );
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = event.notification.data?.url || self.location.origin;
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(cs => {
+      const win = cs.find(c => c.url === target);
+      return win ? win.focus() : clients.openWindow(target);
+    })
+  );
+});
+
 self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET") return;
