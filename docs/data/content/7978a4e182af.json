@@ -1,0 +1,1 @@
+{"version":1,"content":"<p>【屋漏偏逢連夜雨 😣】Linux 陣營再陷安全危機，繼早前發現極嚴重的「Copy Fail」漏洞後，隨後再揭發另一個「Dirty Frag」嚴重漏洞。</p><p>更甚的是，該漏洞竟然已存在 8 年，自 2017 年以來幾乎所有主流 Linux 發行版均無一倖免。</p><p>攻擊者可透過極簡單的手段，直接獲取系統最高（Root）權限，而目前官方尚未有任何更新可供下載。</p>","scraped_at":"2026-05-08T16:39:03.025941+00:00","quality":{"score":1,"chars":174,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
