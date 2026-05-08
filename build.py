@@ -26,6 +26,7 @@ load_dotenv()
 from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
 from src.analyse import (
+    _ensure_analysis_defaults,
     _normalise_entities,
     _normalise_key_sentences,
     _normalise_upcoming_events,
@@ -897,9 +898,11 @@ async def main():
         articles = await asyncio.wait_for(analyse_all(articles), timeout=180)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("analyse timed out — using partial")
+        _ensure_analysis_defaults(articles)
     _tlog(f"analyse done {time.monotonic()-t:.1f}s")
 
     articles = _apply_fallback_summaries(articles, old_articles)
+    _ensure_analysis_defaults(articles)
     articles = detect_duplicates(articles)
     articles = cluster_articles(articles)
     articles = annotate_ai_features(articles)

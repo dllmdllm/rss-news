@@ -1007,6 +1007,37 @@ const CATS = ["全部", ...CATEGORIES];
       return score * 10 + clusterBonus + recencyBonus + boost - sourcePenalty;
     }
 
+    function criticalEventWeight(article) {
+      const type = String(article.event_type || "");
+      if (/事故|災|火|天氣|公共|安全|醫療|法庭|罪案|政治|外交|戰爭|衝突/.test(type)) return 18;
+      if (/財經|樓市|科技|教育/.test(type)) return 8;
+      if (/娛樂|旅遊|消費|生活/.test(type)) return -8;
+      return 0;
+    }
+
+    function criticalRankScore(article, now = Date.now()) {
+      const score = typeof article.score === "number" ? article.score : 5;
+      const clusterSize = Math.max(1, Number(article.cluster_size) || 1);
+      const sourcePenalty = (typeof getDownrankSources === "function" && getDownrankSources().has(article.source)) ? 26 : 0;
+      const ageHours = (now - articleTime(article)) / 36e5;
+      const recencyBonus = Number.isFinite(ageHours)
+        ? Math.max(0, 24 - Math.min(Math.max(ageHours, 0), 24))
+        : 0;
+      const breakingBonus = article.cluster_id && breakingClusters.has(article.cluster_id) ? 34 : 0;
+      const clusterBonus = Math.min(clusterSize - 1, 5) * 6;
+      const negativeBonus = article.sentiment === "negative" ? 6 : 0;
+      const uncertainBonus = (article.uncertainty_flags || []).length ? 5 : 0;
+      return score * 12 + criticalEventWeight(article) + recencyBonus + breakingBonus + clusterBonus + negativeBonus + uncertainBonus - sourcePenalty;
+    }
+
+    function getCriticalSorted(articles) {
+      const now = Date.now();
+      return [...articles].sort((a, b) => {
+        const delta = criticalRankScore(b, now) - criticalRankScore(a, now);
+        return delta || compareByDate(a, b);
+      });
+    }
+
     function getSorted(articles) {
       if (sortMode === "ai") {
         const now = Date.now();
@@ -1222,9 +1253,22 @@ const CATS = ["全部", ...CATEGORIES];
 
     function alertReason(article) {
       if (article.cluster_id && breakingClusters.has(article.cluster_id)) return "突發多來源";
+      if (criticalEventWeight(article) >= 18) return "危急事件";
       if ((Number(article.score) || 0) >= 8) return "高重要度";
       if ((article.uncertainty_flags || []).length) return "需留意：" + article.uncertainty_flags[0];
       return "";
+    }
+
+    function aiAlertCard(article) {
+      const reason = alertReason(article) || "重點";
+      const aid = /^[0-9a-f]{1,32}$/i.test(article.id || "") ? article.id : "";
+      const date = article.date ? relativeTime(article.date) : "";
+      const score = typeof article.score === "number" ? article.score : 5;
+      return `<a class="ai-alert-card" href="article.html?id=${encodeURIComponent(aid)}">
+        <span class="ai-alert-reason">${esc(reason)}</span>
+        <span class="ai-alert-title">${esc(article.title || "")}</span>
+        <span class="ai-alert-meta">${esc(article.source || "")} · 危急 ${Math.round(criticalRankScore(article))} · 重要度 ${score}${date ? " · " + esc(date) : ""}</span>
+      </a>`;
     }
 
     function buildAiAlerts() {
@@ -1236,41 +1280,32 @@ const CATS = ["全部", ...CATEGORIES];
         return;
       }
       const muted = getMutedSources();
-      const cutoff = Date.now() - 6 * 60 * 60 * 1000;
-      const seenClusters = new Set();
-      const candidates = getSorted(all.filter(a => {
-        if (muted.has(a.source) || a.duplicate_of) return false;
-        const ts = Date.parse(a.date || "");
-        const recent = Number.isFinite(ts) && ts >= cutoff;
-        const important = (Number(a.score) || 0) >= 8;
-        const breaking = a.cluster_id && breakingClusters.has(a.cluster_id);
-        const uncertain = (a.uncertainty_flags || []).length && (Number(a.score) || 0) >= 7;
-        return breaking || important || (recent && uncertain);
-      })).filter(a => {
-        const cid = a.cluster_id || "";
-        if (!cid) return true;
-        if (seenClusters.has(cid)) return false;
-        seenClusters.add(cid);
-        return true;
-      }).slice(0, 3);
+      const sections = ["新聞", "國際", "娛樂"].map(category => {
+        const seenClusters = new Set();
+        const rows = getCriticalSorted(all.filter(a => {
+          if (!a || muted.has(a.source) || a.duplicate_of) return false;
+          return a.category === category;
+        })).filter(a => {
+          const cid = a.cluster_id || "";
+          if (!cid) return true;
+          if (seenClusters.has(cid)) return false;
+          seenClusters.add(cid);
+          return true;
+        }).slice(0, 3);
+        if (!rows.length) return "";
+        return `<section class="ai-alert-section">
+          <div class="ai-alert-section-title">${esc(category)}</div>
+          <div class="ai-alert-section-list">${rows.map(aiAlertCard).join("")}</div>
+        </section>`;
+      }).filter(Boolean);
 
-      if (!candidates.length) {
+      if (!sections.length) {
         container.classList.remove("show");
         container.innerHTML = "";
         return;
       }
-      const cards = candidates.map(a => {
-        const reason = alertReason(a);
-        const aid = /^[0-9a-f]{1,32}$/i.test(a.id || "") ? a.id : "";
-        const date = a.date ? relativeTime(a.date) : "";
-        return `<a class="ai-alert-card" href="article.html?id=${encodeURIComponent(aid)}">
-          <span class="ai-alert-reason">${esc(reason)}</span>
-          <span class="ai-alert-title">${esc(a.title || "")}</span>
-          <span class="ai-alert-meta">${esc(a.source || "")}${date ? " · " + esc(date) : ""}</span>
-        </a>`;
-      }).join("");
       container.classList.add("show");
-      container.innerHTML = `<div class="ai-alerts-inner"><div class="ai-alerts-title">今日 AI 摘要</div>${cards}</div>`;
+      container.innerHTML = `<div class="ai-alerts-inner"><div class="ai-alerts-title">今日 AI 摘要</div>${sections.join("")}</div>`;
     }
 
     function desktopAiItem(article, kicker) {
@@ -1309,8 +1344,8 @@ const CATS = ["全部", ...CATEGORIES];
         return;
       }
 
-      const important = getSorted(base)
-        .filter(a => (Number(a.score) || 0) >= 6)
+      const important = getCriticalSorted(base)
+        .filter(a => (Number(a.score) || 0) >= 5 || criticalEventWeight(a) > 0)
         .slice(0, 3);
       const importantHtml = important.length
         ? `<div class="desktop-ai-list">${important.map(a => desktopAiItem(a, alertReason(a))).join("")}</div>`

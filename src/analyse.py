@@ -514,15 +514,22 @@ async def _analyse_batch(
 
 def _ensure_analysis_defaults(articles: list) -> None:
     for a in articles:
-        a.setdefault("summary", "")
-        a.setdefault("score", 5)
-        a.setdefault("tags", [])
-        a.setdefault("sentiment", "neutral")
-        a.setdefault("topic", "")
-        a.setdefault("event_type", "")
-        a.setdefault("entities", _normalise_entities({}))
-        a.setdefault("key_sentences", [])
-        a.setdefault("upcoming_events", [])
+        if not a.get("summary"):
+            title = str(a.get("title") or "").strip()
+            a["summary"] = f"・{title[:80]}" if title else ""
+        if not isinstance(a.get("score"), int):
+            a["score"] = 5
+        if not isinstance(a.get("tags"), list):
+            a["tags"] = []
+        if a.get("sentiment") not in ("positive", "negative", "neutral"):
+            a["sentiment"] = "neutral"
+        if not isinstance(a.get("topic"), str):
+            a["topic"] = ""
+        if not isinstance(a.get("event_type"), str):
+            a["event_type"] = ""
+        a["entities"] = _normalise_entities(a.get("entities"))
+        a["key_sentences"] = _normalise_key_sentences(a.get("key_sentences"))
+        a["upcoming_events"] = _normalise_upcoming_events(a.get("upcoming_events"))
 
 
 async def analyse_all(articles: list) -> list:
