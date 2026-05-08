@@ -512,9 +512,23 @@ async def _analyse_batch(
         ))
 
 
+def _ensure_analysis_defaults(articles: list) -> None:
+    for a in articles:
+        a.setdefault("summary", "")
+        a.setdefault("score", 5)
+        a.setdefault("tags", [])
+        a.setdefault("sentiment", "neutral")
+        a.setdefault("topic", "")
+        a.setdefault("event_type", "")
+        a.setdefault("entities", _normalise_entities({}))
+        a.setdefault("key_sentences", [])
+        a.setdefault("upcoming_events", [])
+
+
 async def analyse_all(articles: list) -> list:
     if not MINIMAX_API_KEY:
         print("[analyse] Skipped — set MINIMAX_API_KEY")
+        _ensure_analysis_defaults(articles)
         return articles
 
     cache = load_cache()
@@ -560,15 +574,6 @@ async def analyse_all(articles: list) -> list:
 
     # Safety net: articles that failed analysis (API timeout / no content) get
     # minimal defaults so downstream steps and tests never see missing fields.
-    for a in articles:
-        a.setdefault("summary", "")
-        a.setdefault("score", 5)
-        a.setdefault("tags", [])
-        a.setdefault("sentiment", "neutral")
-        a.setdefault("topic", "")
-        a.setdefault("event_type", "")
-        a.setdefault("entities", _normalise_entities({}))
-        a.setdefault("key_sentences", [])
-        a.setdefault("upcoming_events", [])
+    _ensure_analysis_defaults(articles)
 
     return articles

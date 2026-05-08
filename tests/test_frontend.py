@@ -481,7 +481,7 @@ def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
     assert 'id="filter-backdrop"' in html
     assert "filter-sheet-open" in html
     assert "function setupMobileFilterSheet()" in source
-    assert "let aiPicksOpen = true" in source
+    assert re.search(r"\blet\s+aiPicksOpen\s*=\s*true\b", source)
     assert "container.innerHTML = navHtml + stripHtml\n        + picksSection" in source
 
 

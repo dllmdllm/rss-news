@@ -12,6 +12,8 @@ const CATS = ["全部", ...CATEGORIES];
     let buildStatus = null;
     let breakingClusters = new Set();   // cluster_ids that qualify as "breaking"
     let fuse = null;
+    let activeTab = "home";
+    document.body.dataset.tab = "home";
     // Map category to CSS class; returns "" for unknown values so class
     // splitting on accidental whitespace can't happen.
     function catClass(c) { return CAT_WL.has(c) ? "cat-" + c : ""; }
@@ -1143,6 +1145,13 @@ const CATS = ["全部", ...CATEGORIES];
         toggleSourceDownrank(el.dataset.source || "");
         return true;
       }
+      if (action === "toggle-actions") {
+        event.preventDefault();
+        event.stopPropagation();
+        const actions = el.closest(".card-actions");
+        actions?.classList.toggle("actions-open");
+        return true;
+      }
       return false;
     }
 
@@ -1261,7 +1270,93 @@ const CATS = ["全部", ...CATEGORIES];
         </a>`;
       }).join("");
       container.classList.add("show");
-      container.innerHTML = `<div class="ai-alerts-inner"><div class="ai-alerts-title">AI 提示</div>${cards}</div>`;
+      container.innerHTML = `<div class="ai-alerts-inner"><div class="ai-alerts-title">今日 AI 摘要</div>${cards}</div>`;
+    }
+
+    function desktopAiItem(article, kicker) {
+      const aid = /^[0-9a-f]{1,32}$/i.test(article.id || "") ? article.id : "";
+      const score = typeof article.score === "number" ? article.score : 5;
+      const ago = article.date ? relativeTime(article.date) : "";
+      return `<a class="desktop-ai-item" href="article.html?id=${encodeURIComponent(aid)}">
+        <div class="desktop-ai-item-kicker">${esc(kicker)}</div>
+        <div class="desktop-ai-item-title">${esc(article.title || "")}</div>
+        <div class="desktop-ai-item-meta">${esc(article.source || "")} · 重要度 ${score}${ago ? " · " + esc(ago) : ""}</div>
+      </a>`;
+    }
+
+    function desktopAiCard(title, meta, body) {
+      return `<section class="desktop-ai-card">
+        <div class="desktop-ai-head">
+          <div class="desktop-ai-title">${esc(title)}</div>
+          ${meta ? `<div class="desktop-ai-meta">${esc(meta)}</div>` : ""}
+        </div>
+        ${body}
+      </section>`;
+    }
+
+    function buildDesktopAiSidebar(visibleArticles = []) {
+      const sidebar = document.getElementById("desktop-ai-sidebar");
+      if (!sidebar) return;
+      if (activeTab !== "home") {
+        sidebar.innerHTML = "";
+        return;
+      }
+      const muted = getMutedSources();
+      const base = (visibleArticles.length ? visibleArticles : all)
+        .filter(a => a && !a.duplicate_of && !muted.has(a.source));
+      if (!base.length) {
+        sidebar.innerHTML = desktopAiCard("AI 工作台", "", '<div class="desktop-ai-empty">未有可顯示內容</div>');
+        return;
+      }
+
+      const important = getSorted(base)
+        .filter(a => (Number(a.score) || 0) >= 6)
+        .slice(0, 3);
+      const importantHtml = important.length
+        ? `<div class="desktop-ai-list">${important.map(a => desktopAiItem(a, alertReason(a))).join("")}</div>`
+        : '<div class="desktop-ai-empty">暫時未有高重要度新聞</div>';
+
+      const eventCounts = new Map();
+      for (const article of base) {
+        const type = String(article.event_type || "").trim();
+        if (!type) continue;
+        eventCounts.set(type, (eventCounts.get(type) || 0) + 1);
+      }
+      const eventRows = [...eventCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([label, count]) => `<div class="desktop-ai-stat"><span>${esc(label)}</span><strong>${count}</strong></div>`)
+        .join("") || '<div class="desktop-ai-empty">事件類型未夠清晰</div>';
+
+      const clusterMap = new Map();
+      for (const article of base) {
+        const cid = article.cluster_id || "";
+        if (!cid) continue;
+        const row = clusterMap.get(cid) || { article, count: 0, sources: new Set() };
+        row.count += 1;
+        if ((Number(article.score) || 0) > (Number(row.article.score) || 0)) row.article = article;
+        if (article.source) row.sources.add(article.source);
+        clusterMap.set(cid, row);
+      }
+      const clusterRows = [...clusterMap.values()]
+        .sort((a, b) => (b.count - a.count) || ((Number(b.article.score) || 0) - (Number(a.article.score) || 0)))
+        .slice(0, 2);
+      const clusterHtml = clusterRows.length
+        ? `<div class="desktop-ai-list">${clusterRows.map(row =>
+            desktopAiItem(row.article, `${row.count} 篇 · ${row.sources.size} 來源`)
+          ).join("")}</div>`
+        : '<div class="desktop-ai-empty">暫時未形成明顯話題群</div>';
+
+      const failed = Object.values(sourceStats || {}).filter(s => s && s.error).length;
+      const empty = Object.values(sourceStats || {}).filter(s => s && !s.error && Number(s.effective_count ?? s.count) === 0 && !s.not_modified).length;
+      const sourceTotal = Object.keys(sourceStats || {}).length || "—";
+      const sourceHtml = `<div class="desktop-ai-stat"><span>${sourceTotal} 個來源</span><strong>${failed} 失敗 · ${empty} 空</strong></div>`;
+
+      sidebar.innerHTML =
+        desktopAiCard("今日重點", `${important.length} 條`, importantHtml) +
+        desktopAiCard("今日事件", "類型分佈", `<div>${eventRows}</div>`) +
+        desktopAiCard("話題聚焦", `${clusterRows.length} 組`, clusterHtml) +
+        desktopAiCard("來源健康", "今次 build", `<div>${sourceHtml}</div>`);
     }
 
     function sentimentTimelineHtml(cid) {
@@ -1337,6 +1432,7 @@ const CATS = ["全部", ...CATEGORIES];
         const isB = a => !!(a.cluster_id && breakingClusters.has(a.cluster_id));
         sorted = [...sorted.filter(isB), ...sorted.filter(a => !isB(a))];
       }
+      buildDesktopAiSidebar(sorted);
       render(sorted, { scrollToTop: _renderFilteredScrollTop });
       _renderFilteredScrollTop = false;
     }
@@ -1437,11 +1533,18 @@ const CATS = ["全部", ...CATEGORIES];
         const cardHref = isClusterStack ? `#cluster-${cid}` : `article.html?id=${encodeURIComponent(aid)}`;
         const cardActionAttrs = isClusterStack ? ` data-card-action="filter-cluster" data-cluster-id="${esc(cid)}"` : "";
         const sourceName = esc(a.source || "");
-        const actionBar = `<span class="card-actions">
-          <span class="mini-action${isBookmarked ? " active" : ""}" role="button" title="收藏" data-card-action="bookmark" data-article-id="${esc(aid)}">★</span>
-          <span class="mini-action" role="button" title="靜音來源" data-card-action="mute-source" data-source="${sourceName}">×</span>
-          <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" data-card-action="downrank-source" data-source="${sourceName}">↓</span>
-        </span>`;
+        const actionBar = isMobileCard
+          ? `<span class="card-actions">
+              <span class="mini-action card-more-action" role="button" title="更多操作" data-card-action="toggle-actions">⋯</span>
+              <span class="mini-action mobile-hidden-action${isBookmarked ? " active" : ""}" role="button" title="收藏" data-card-action="bookmark" data-article-id="${esc(aid)}">★</span>
+              <span class="mini-action mobile-hidden-action" role="button" title="靜音來源" data-card-action="mute-source" data-source="${sourceName}">×</span>
+              <span class="mini-action mobile-hidden-action${isDownranked ? " active" : ""}" role="button" title="降權來源" data-card-action="downrank-source" data-source="${sourceName}">↓</span>
+            </span>`
+          : `<span class="card-actions">
+              <span class="mini-action${isBookmarked ? " active" : ""}" role="button" title="收藏" data-card-action="bookmark" data-article-id="${esc(aid)}">★</span>
+              <span class="mini-action" role="button" title="靜音來源" data-card-action="mute-source" data-source="${sourceName}">×</span>
+              <span class="mini-action${isDownranked ? " active" : ""}" role="button" title="降權來源" data-card-action="downrank-source" data-source="${sourceName}">↓</span>
+            </span>`;
         const shouldRenderClusterSummary = isClusterStack
           && expandedClusterSummaryId === cid
           && !renderedClusterSummaries.has(cid);
@@ -1457,8 +1560,9 @@ const CATS = ["全部", ...CATEGORIES];
             <div class="card-meta">
               <span class="cat ${catCls}">${esc(a.category)}</span>
               <span class="source">${esc(a.source)}</span>
-              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${uncertaintyBadge}${breakingBadge}${actionBar}
+              ${scoreBadge}${sentDot}${clusterBadge}${contradictionBadge}${uncertaintyBadge}${breakingBadge}
               <span class="date">${esc(date)}</span>
+              ${actionBar}
             </div>
             <div class="card-title ${catCls}">${esc(a.title)}</div>
             ${tags}
@@ -1540,9 +1644,6 @@ const CATS = ["全部", ...CATEGORIES];
     });
 
     // ── Bottom tab bar ────────────────────────────────────────────
-    let activeTab = "home";
-    document.body.dataset.tab = "home";
-
     function switchTab(tab) {
       activeTab = tab;
       document.body.dataset.tab = tab;
@@ -1551,7 +1652,8 @@ const CATS = ["全部", ...CATEGORIES];
       );
 
       if (tab === "home") {
-        activeCat = "全部"; activeSource = ""; activeTag = ""; onlyImportant = false;
+        activeCat = "全部"; activeSource = ""; activeTag = "";
+        onlyImportant = false; onlyUnread = false; onlySaved = false;
         syncQuickToggleButtons();
         buildTopPicks();
         renderFilteredFromUI();
@@ -1567,10 +1669,18 @@ const CATS = ["全部", ...CATEGORIES];
         buildTopPicks();
         _renderFilteredScrollTop = true;
         renderFiltered();
+      } else if (tab === "saved") {
+        clearListFiltersForPanel();
+        onlyImportant = false; onlyUnread = false; onlySaved = true;
+        syncQuickToggleButtons();
+        buildTopPicks();
+        _renderFilteredScrollTop = true;
+        renderFiltered();
       } else if (tab === "settings") {
         _updateSettingsPanel();
       }
       buildAiAlerts();
+      buildDesktopAiSidebar(currentRenderArticles);
     }
 
     function _renderHot() {

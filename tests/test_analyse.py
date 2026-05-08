@@ -267,6 +267,26 @@ def test_analyse_one_treats_none_slot_as_parse_failure(monkeypatch):
     assert "summary" not in article
 
 
+def test_analyse_all_sets_defaults_without_api_key(monkeypatch):
+    monkeypatch.setattr(analyse, "MINIMAX_API_KEY", "")
+
+    articles = [{"id": "a", "title": "No key", "url": "https://example.com/a"}]
+
+    result = asyncio.run(analyse.analyse_all(articles))
+
+    assert result[0]["summary"] == ""
+    assert result[0]["score"] == 5
+    assert result[0]["tags"] == []
+    assert result[0]["sentiment"] == "neutral"
+    assert result[0]["entities"] == {
+        "people": [],
+        "companies": [],
+        "places": [],
+        "dates": [],
+        "numbers": [],
+    }
+
+
 def test_parse_batch_single_accepts_bare_object():
     raw = '{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}'
     out = _parse_batch(raw, 1)

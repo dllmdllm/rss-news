@@ -228,6 +228,47 @@
     .ai-alert-title { color: var(--text); font-size: .88rem; line-height: 1.4; font-weight: 700; }
     .ai-alert-meta { color: var(--muted); font-size: .72rem; }
 
+    .desktop-shell {
+      max-width: 1600px; margin: 0 auto;
+    }
+    .desktop-ai-sidebar { display: none; }
+    .desktop-ai-card {
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface); padding: 12px;
+    }
+    .desktop-ai-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px;
+    }
+    .desktop-ai-title { font-size: 1rem; font-weight: 850; color: var(--text); }
+    .desktop-ai-meta { color: var(--muted); font-size: .78rem; }
+    .desktop-ai-list { display: flex; flex-direction: column; gap: 10px; }
+    .desktop-ai-item {
+      display: block; text-decoration: none; color: inherit;
+      border-left: 2px solid var(--accent); padding: 1px 0 1px 9px;
+    }
+    .desktop-ai-item:hover .desktop-ai-item-title { color: var(--accent); }
+    .desktop-ai-item-kicker {
+      color: var(--muted); font-size: .78rem; font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .desktop-ai-item-title {
+      color: var(--text); font-size: 1rem; line-height: 1.45;
+      font-weight: 650;
+    }
+    .desktop-ai-item-meta {
+      color: var(--muted); font-size: .8rem; margin-top: 3px;
+    }
+    .desktop-ai-stat {
+      display: flex; justify-content: space-between; gap: 12px;
+      color: var(--muted); font-size: .88rem; padding: 7px 0;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    body.theme-light .desktop-ai-stat { border-top-color: #e5e7eb; }
+    .desktop-ai-stat:first-child { border-top: 0; padding-top: 0; }
+    .desktop-ai-stat strong { color: var(--text); font-weight: 750; }
+    .desktop-ai-empty { color: var(--muted); font-size: .88rem; line-height: 1.5; }
+
     /* ── AI tab: time filter strip ── */
     .ai-time-strip {
       display: flex; gap: 7px; padding: 10px 0 4px; flex-wrap: wrap;
@@ -536,11 +577,17 @@
     .cluster-badge:hover { background: #2a4060; }
     body.theme-light .cluster-badge { background: #edf6ff; color: #2f73a8; border-color: #cfe5f7; }
     body.theme-light .cluster-badge:hover { background: #dceffc; }
-    .card-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+    .card-actions {
+      display: inline-flex; gap: 4px; margin-left: 0;
+      opacity: .32; transition: opacity .15s;
+    }
+    .card:hover .card-actions,
+    .card:focus-visible .card-actions,
+    .card-actions:focus-within { opacity: 1; }
     .mini-action {
       border: 1px solid var(--border); background: transparent; color: var(--muted);
-      border-radius: 999px; width: 24px; height: 24px; cursor: pointer;
-      display: inline-flex; align-items: center; justify-content: center; font-size: .76rem;
+      border-radius: 999px; width: 22px; height: 22px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; font-size: .7rem;
     }
     .mini-action:hover, .mini-action.active { border-color: #fbbf24; color: #fbbf24; }
 
@@ -809,12 +856,21 @@
     body.fs-0 .card-title   { font-size: .82rem; }
     body.fs-0 .card-summary { font-size: .75rem; }
     body.fs-0 .cluster-ai-summary { font-size: .75rem; }
+    body.fs-0 .desktop-ai-item-title { font-size: .82rem; }
+    body.fs-0 .desktop-ai-stat,
+    body.fs-0 .desktop-ai-empty { font-size: .75rem; }
     body.fs-1 .card-title   { font-size: 1rem; }     /* default */
     body.fs-1 .card-summary { font-size: .88rem; }
     body.fs-1 .cluster-ai-summary { font-size: .88rem; }
+    body.fs-1 .desktop-ai-item-title { font-size: 1rem; }
+    body.fs-1 .desktop-ai-stat,
+    body.fs-1 .desktop-ai-empty { font-size: .88rem; }
     body.fs-2 .card-title   { font-size: 1.25rem; }
     body.fs-2 .card-summary { font-size: 1.08rem; }
     body.fs-2 .cluster-ai-summary { font-size: 1.08rem; }
+    body.fs-2 .desktop-ai-item-title { font-size: 1.25rem; }
+    body.fs-2 .desktop-ai-stat,
+    body.fs-2 .desktop-ai-empty { font-size: 1.08rem; }
     body.view-compact .card { display: grid; grid-template-columns: 92px 1fr; }
     body.view-compact .card-thumb,
     body.view-compact .card-thumb-placeholder { width: 92px; height: 100%; min-height: 92px; aspect-ratio: auto; }
@@ -925,17 +981,25 @@
       border-top: 1px solid var(--border);
       padding: 6px 0 0; margin-top: 4px; gap: 16px;
     }
-    .desktop-tabs { display: flex; gap: 0; }
+    .desktop-tabs, .desktop-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .desktop-nav-group {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding-right: 10px; border-right: 1px solid var(--border);
+    }
+    .desktop-nav-group:last-child { padding-right: 0; border-right: 0; }
+    .desktop-nav-label {
+      color: var(--muted); font-size: .68rem; font-weight: 800;
+      letter-spacing: .06em; text-transform: uppercase; margin-right: 3px;
+    }
     .d-tab {
       background: transparent; border: none; border-bottom: 3px solid transparent;
-      color: var(--muted); padding: 6px 18px 9px; cursor: pointer;
+      color: var(--muted); padding: 6px 12px 9px; cursor: pointer;
       font-size: .88rem; font-weight: 600; border-radius: 4px 4px 0 0;
       transition: color .15s, border-color .15s;
       display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     }
     .d-tab:hover { color: var(--text); }
     .d-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .desktop-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
     /* AI tab layout wrappers (stacked on mobile, 2-col on desktop) */
     .ai-columns { margin-bottom: 20px; }
@@ -981,15 +1045,34 @@
       .ai-alerts {
         padding-left: max(14px, env(safe-area-inset-left));
         padding-right: max(14px, env(safe-area-inset-right));
+        margin-top: 8px;
       }
-      .ai-alerts-inner { padding-bottom: 10px; }
+      .ai-alerts-inner {
+        padding: 10px 11px; gap: 8px; overflow-x: visible;
+        flex-direction: column; border-radius: 10px;
+      }
+      .ai-alerts-title { padding-top: 0; font-size: .76rem; }
+      .ai-alert-card {
+        flex: 0 0 auto; border-left-width: 2px;
+        padding: 1px 0 1px 9px; gap: 2px;
+      }
+      .ai-alert-card:nth-of-type(n+3) { display: none; }
+      .ai-alert-title {
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden; font-size: .9rem;
+      }
       .top-picks-list     { grid-template-columns: 1fr; }
       .card               { display: grid; grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
       .card-media         { grid-column: 1; grid-row: 1; }
       .card-thumb,
-      .card-thumb-placeholder { width: 100%; height: auto; min-height: 180px; aspect-ratio: 16 / 9; }
+      .card-thumb-placeholder { width: 100%; height: auto; min-height: 148px; aspect-ratio: 16 / 9; }
       .card-body          { grid-column: 1; grid-row: 2; padding: 12px 12px; gap: 6px; }
       .card-title         { line-height: 1.42; }
+      .card-summary {
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .card-tags { max-height: 24px; overflow: hidden; }
       body.fs-1 .card-title   { font-size: 1rem; }
       body.fs-1 .card-summary { font-size: .85rem; }
       body.fs-1 .cluster-ai-summary { font-size: .85rem; }
@@ -1017,6 +1100,13 @@
       .breaking-badge::after { content: "🔴"; font-size: .75rem; }
       .cluster-badge { max-width: 72px; overflow: hidden; white-space: nowrap;
         text-overflow: ellipsis; }
+      .card-actions { opacity: 1; margin-left: auto; position: relative; }
+      .card-more-action { width: 28px; height: 28px; }
+      .card-actions:not(.actions-open) .mobile-hidden-action { display: none; }
+      .card-actions.actions-open {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 999px; padding: 2px; box-shadow: 0 4px 14px #00000022;
+      }
       .mini-action { width: 28px; height: 28px; }
       .card-meta  { gap: 6px; }
 
@@ -1052,6 +1142,7 @@
       #settings-panel { display: none !important; }
 
       body[data-tab="home"] #top-picks { display: none !important; }
+      body[data-tab="saved"] #top-picks { display: none !important; }
 
       body[data-tab="ai"] .search-row,
       body[data-tab="ai"] #filters,
@@ -1096,6 +1187,38 @@
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 14px;
+      }
+    }
+
+    @media (min-width: 900px) {
+      body[data-tab="home"] #ai-alerts { display: none !important; }
+      body[data-tab="home"] .desktop-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 360px);
+        gap: 18px;
+        padding: 20px 24px 24px;
+      }
+      body[data-tab="home"] .grid {
+        max-width: none; margin: 0; padding: 0;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      }
+      body[data-tab="home"] .desktop-ai-sidebar {
+        display: flex; flex-direction: column; gap: 12px;
+        position: sticky; top: 14px; align-self: start;
+      }
+      body[data-tab="home"] .card-thumb,
+      body[data-tab="home"] .card-thumb-placeholder {
+        aspect-ratio: 16 / 9;
+        max-height: 160px;
+      }
+      body[data-tab="home"] .card-body { padding: 10px 12px; gap: 6px; }
+      body[data-tab="home"] .card-title {
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      body[data-tab="home"] .card-summary {
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+        overflow: hidden;
       }
     }
 
@@ -1161,20 +1284,35 @@
     <!-- desktop second-row nav (hidden on mobile) -->
     <nav class="desktop-nav" id="desktop-nav">
       <div class="desktop-tabs">
-        <button class="tab-btn d-tab active" data-tab="home">📰 新聞</button>
-        <button class="tab-btn d-tab" data-tab="ai">🤖 AI</button>
-        <button class="tab-btn d-tab" data-tab="hot">🔥 熱門</button>
+        <div class="desktop-nav-group">
+          <span class="desktop-nav-label">主頁</span>
+          <button class="tab-btn d-tab active" data-tab="home">📰 新聞</button>
+          <button class="tab-btn d-tab" data-tab="hot">🔥 熱門</button>
+        </div>
+        <div class="desktop-nav-group">
+          <span class="desktop-nav-label">AI</span>
+          <button class="tab-btn d-tab" data-tab="ai">🤖 AI 分析</button>
+        </div>
       </div>
       <div class="desktop-controls">
-        <div class="sort-toggle" id="sort-toggle">
-          <button class="sort-btn active" data-sort="date">🕒 最新</button>
-          <button class="sort-btn" data-sort="ai">✨ 推薦</button>
+        <div class="desktop-nav-group">
+          <span class="desktop-nav-label">排序</span>
+          <div class="sort-toggle" id="sort-toggle">
+            <button class="sort-btn active" data-sort="date">🕒 最新</button>
+            <button class="sort-btn" data-sort="ai">✨ 推薦</button>
+          </div>
         </div>
-        <div class="quick-toggle" id="quick-toggle">
-          <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>
-          <button class="view-btn" id="unread-toggle" type="button">📬 未讀</button>
-          <button class="view-btn" id="saved-toggle" type="button">🔖 收藏</button>
-          <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
+        <div class="desktop-nav-group">
+          <span class="desktop-nav-label">篩選</span>
+          <div class="quick-toggle" id="quick-toggle">
+            <button class="view-btn" id="important-toggle" type="button" title="只顯示重要度 ≥ 7">🔥 精選</button>
+            <button class="view-btn" id="unread-toggle" type="button">📬 未讀</button>
+            <button class="view-btn" id="saved-toggle" type="button">🔖 收藏</button>
+            <button class="view-btn" id="compact-toggle" type="button">📋 精簡</button>
+          </div>
+        </div>
+        <div class="desktop-nav-group">
+          <span class="desktop-nav-label">工具</span>
           <a class="view-btn" href="graph.html" title="知識圖譜：人物/機構/地點關係網絡">🕸️ 圖譜</a>
           <a class="view-btn" href="upcoming.html" title="文章中提及嘅未來活動">📅 預告</a>
           <a class="view-btn" href="entities.html" title="人物、機構、地點近況追蹤">👤 實體</a>
@@ -1250,13 +1388,16 @@
     </div>
   </div>
 
-  <div class="grid" id="grid">
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
-    <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+  <div class="desktop-shell">
+    <div class="grid" id="grid">
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+      <div class="skeleton-card"><div class="skel-block skel-thumb"></div><div class="skel-body"><div class="skel-block skel-line short"></div><div class="skel-block skel-line long"></div><div class="skel-block skel-line mid"></div></div></div>
+    </div>
+    <aside class="desktop-ai-sidebar" id="desktop-ai-sidebar" aria-label="Desktop AI panel"></aside>
   </div>
 
   <!-- source health modal -->
@@ -1275,6 +1416,7 @@
     <button class="tab-btn active" data-tab="home"><span class="tab-icon">🏠</span><span>首頁</span></button>
     <button class="tab-btn"        data-tab="ai"><span class="tab-icon">🤖</span><span>AI</span></button>
     <button class="tab-btn"        data-tab="hot"><span class="tab-icon">🔥</span><span>熱門</span></button>
+    <button class="tab-btn"        data-tab="saved"><span class="tab-icon">🔖</span><span>收藏</span></button>
     <button class="tab-btn"        data-tab="settings"><span class="tab-icon">⚙️</span><span>設定</span></button>
   </nav>
 
