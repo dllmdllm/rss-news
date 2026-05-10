@@ -1,0 +1,1 @@
+{"version":1,"content":"<p>【注意 ⚠️】繼早前發現「Copy Fail」與「Dirty Frag」極嚴重漏洞後，近日再發現 Linux 存在另一個嚴重風險：有黑客正在兜售名為「PamDOORa」的惡意後門木馬。</p><p>該木馬利用 Linux 系統中的「可插拔認證模組」（PAM）架構，能讓攻擊者在毋須合法憑證的情況下，長期潛伏於伺服器，並大規模竊取 SSH 登入資訊。</p>","scraped_at":"2026-05-10T09:07:48.165779+00:00","quality":{"score":1,"chars":168,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
