@@ -22,11 +22,7 @@ def test_articles_have_required_analysis_fields():
             bad.append((article.get("id"), "tags"))
         if article.get("sentiment") not in {"positive", "negative", "neutral"}:
             bad.append((article.get("id"), "sentiment"))
-    # Allow up to 40% failure — after a long build gap the cache can be stale and
-    # many new articles need API analysis; transient failures are expected.
-    # If > 40% fail the whole pipeline is likely broken (missing key, API down).
-    limit = max(5, len(articles) * 2 // 5)
-    assert len(bad) <= limit, f"{len(bad)} articles missing analysis fields (limit {limit}): {bad[:10]}"
+    assert not bad[:10]
 
 
 def test_content_sidecars_match_active_articles():

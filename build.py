@@ -589,6 +589,15 @@ def _write_build_status(status: dict) -> None:
     os.replace(tmp, path)
 
 
+def _write_timeout_build_status(saved: bool) -> None:
+    status = dict(_build_status)
+    status["build"] = {
+        "ok": False,
+        "error": "Build timed out after core save" if saved else "Build timed out before core save",
+    }
+    _write_build_status(status)
+
+
 def _minimal_content(article: dict) -> str:
     """Last-resort readable content so every active article has a sidecar."""
     title = html_escape(article.get("title") or "未能擷取全文")
@@ -831,6 +840,7 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
 
 
 _core_saved = False   # sentinel: True once save_json() completes
+_build_status = {}
 _TLOG = ROOT / "build_timing.log"
 
 
@@ -845,10 +855,11 @@ def _tlog(msg: str) -> None:
 
 
 async def main():
-    global _core_saved
+    global _core_saved, _build_status
     _tlog("=== build start ===")
     t0 = time.monotonic()
-    build_status = {}
+    _build_status = {}
+    build_status = _build_status
 
     def mark_step(name: str, ok: bool = True, error: str = "", seconds: float | None = None) -> None:
         row = {"ok": ok}
@@ -962,6 +973,6 @@ if __name__ == "__main__":
     except (asyncio.TimeoutError, TimeoutError):
         saved = "after" if _core_saved else "BEFORE"
         print(f"[WARN] Build timed out {saved} core save")
+        if _core_saved:
+            _write_timeout_build_status(saved=True)
         sys.exit(0 if _core_saved else 1)
-        # Note: workflow uses continue-on-error:true on this step, so the
-        # commit step runs regardless — even exit 1 still gets committed.

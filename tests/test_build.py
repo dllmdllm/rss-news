@@ -347,3 +347,16 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     assert "<guid isPermaLink=\"false\">dryrun</guid>" in feed
     assert embed_call["data_dir"] == data_dir
     assert (data_dir / "build_status.json").exists()
+
+
+def test_timeout_status_records_build_failure(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "_build_status", {"panel_digest": {"ok": True}})
+
+    build._write_timeout_build_status(saved=True)
+
+    payload = json.loads((data_dir / "build_status.json").read_text(encoding="utf-8"))
+    assert payload["steps"]["panel_digest"]["ok"] is True
+    assert payload["steps"]["build"]["ok"] is False
+    assert "after core save" in payload["steps"]["build"]["error"]
