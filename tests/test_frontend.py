@@ -458,6 +458,8 @@ def test_index_has_reading_controls_and_top_picks():
         assert 'id="leadStory"' in html
         assert 'id="dailyBrief"' in html
         assert 'id="criticalList"' in html
+        assert 'id="fontTools"' in html
+        assert "rss_home_font_size" in redesign_source
         assert "renderDailyBrief" in redesign_source
         return
     assert 'id="unread-toggle"' in html
@@ -712,6 +714,7 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     if "js/redesign.js" in html:
         redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
         assert 'id="feed"' in html
+        assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in html
         assert "renderCategorySections" in redesign_source
         assert "compactSummaryHtml" in redesign_source
         return

@@ -331,7 +331,18 @@
     renderAiPanel();
   }
 
+  function applyFontSize(size) {
+    const sizes = { small: "15px", normal: "16px", large: "18px" };
+    const next = sizes[size] ? size : "normal";
+    document.documentElement.style.fontSize = sizes[next];
+    localStorage.setItem("rss_home_font_size", next);
+    document.querySelectorAll("#fontTools button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.font === next);
+    });
+  }
+
   function bindEvents() {
+    applyFontSize(localStorage.getItem("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
       const sourceButton = event.target.closest("button[data-source]");
       if (sourceButton) {
@@ -371,6 +382,11 @@
       state.mode = button.dataset.mode;
       document.querySelectorAll("#modeNav button").forEach((b) => b.classList.toggle("active", b === button));
       renderAll();
+    });
+    $("fontTools")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-font]");
+      if (!button) return;
+      applyFontSize(button.dataset.font);
     });
     $("search").addEventListener("input", (event) => {
       state.query = event.target.value;

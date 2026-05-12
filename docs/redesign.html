@@ -119,7 +119,7 @@
       padding: 7px 8px;
       font-size: .9rem;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto auto;
       gap: 6px;
     }
 
@@ -199,6 +199,32 @@
       white-space: nowrap;
     }
     .mode button.active { background: var(--panel-2); color: var(--text); }
+
+    .font-tools {
+      display: flex;
+      gap: 4px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 4px;
+      border-radius: var(--radius);
+    }
+    .font-tools button {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .font-tools button.active {
+      background: #18352f;
+      color: var(--text);
+    }
+    .font-tools button[data-font="small"] { font-size: .86rem; }
+    .font-tools button[data-font="normal"] { font-size: 1rem; }
+    .font-tools button[data-font="large"] { font-size: 1.14rem; }
 
     .hero {
       display: grid;
@@ -439,10 +465,12 @@
     }
     .category-section {
       display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
     .category-section-head {
+      grid-column: 1 / -1;
       display: flex;
       align-items: baseline;
       justify-content: space-between;
@@ -460,7 +488,7 @@
     }
     .card {
       display: grid;
-      grid-template-columns: 132px minmax(0, 1fr) auto;
+      grid-template-columns: 116px minmax(0, 1fr);
       gap: 12px;
       align-items: start;
       padding: 10px;
@@ -470,7 +498,7 @@
       border-radius: var(--radius);
     }
     .thumb {
-      width: 132px;
+      width: 116px;
       aspect-ratio: 16 / 10;
       border-radius: 6px;
       background: #232932;
@@ -508,10 +536,11 @@
       margin-bottom: 5px;
     }
     .rank {
-      min-width: 66px;
-      text-align: right;
+      grid-column: 1 / -1;
+      min-width: 0;
+      text-align: left;
       display: flex;
-      justify-content: flex-end;
+      justify-content: flex-start;
     }
 
     .ai {
@@ -669,7 +698,15 @@
         grid-template-columns: 1fr;
         gap: 8px;
       }
-      .mode { overflow-x: auto; }
+      .mode,
+      .font-tools {
+        width: 100%;
+        overflow-x: auto;
+      }
+      .mode button,
+      .font-tools button {
+        flex: 1;
+      }
       .hero { grid-template-columns: 1fr; }
       .lead a { min-height: 0; }
       .lead-media { aspect-ratio: 16 / 9; }
@@ -691,6 +728,9 @@
       }
       .card {
         grid-template-columns: 92px minmax(0, 1fr);
+      }
+      .category-section {
+        grid-template-columns: 1fr;
       }
       .thumb { width: 92px; }
       .rank { grid-column: 2; text-align: left; min-width: 0; }
@@ -722,6 +762,11 @@
           <button data-mode="critical" class="active">優先</button>
           <button data-mode="latest">最新</button>
           <button data-mode="balanced">綜合</button>
+        </div>
+        <div class="font-tools" id="fontTools" aria-label="font size">
+          <button data-font="small" type="button">細</button>
+          <button data-font="normal" type="button" class="active">中</button>
+          <button data-font="large" type="button">大</button>
         </div>
       </div>
 
