@@ -1,10 +1,10 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>新聞控制台</title>
+  <title>æ–°èžæŽ§åˆ¶å°</title>
   <style>
     :root {
       color-scheme: dark;
@@ -230,6 +230,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
       gap: 14px;
+      align-items: start;
       margin-bottom: 16px;
     }
 
@@ -238,17 +239,20 @@
       background: var(--panel);
       border-radius: var(--radius);
       overflow: hidden;
+      align-self: start;
     }
 
     .lead {
       display: grid;
-      align-content: stretch;
+      align-content: start;
     }
     .lead a {
       display: block;
+      align-self: start;
     }
     .lead-media {
       aspect-ratio: 16 / 7;
+      max-height: 220px;
       background: #222831;
       overflow: hidden;
     }
@@ -340,6 +344,7 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       padding: 0 16px 16px;
+      align-items: start;
     }
     .lead-extra {
       border: 1px solid var(--line);
@@ -349,6 +354,7 @@
       overflow: hidden;
       display: grid;
       gap: 5px;
+      align-content: start;
     }
     .lead-extra-media {
       aspect-ratio: 16 / 9;
@@ -383,14 +389,14 @@
       margin: 0;
       padding-left: 17px;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
     .lead-extra-summary p {
       margin: 0;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -570,9 +576,19 @@
       margin-bottom: 10px;
     }
     .ai-block h2 {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
       margin: 0 0 10px;
       font-size: 1.02rem;
       letter-spacing: 0;
+    }
+    .ai-block h2 span {
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 600;
+      white-space: nowrap;
     }
     .ai-pick {
       display: grid;
@@ -664,10 +680,10 @@
       line-height: 1;
       background: transparent;
     }
-    .mobile-tabs button:nth-child(1)::before { content: "⌂"; }
-    .mobile-tabs button:nth-child(2)::before { content: "✦"; }
-    .mobile-tabs button:nth-child(3)::before { content: "▦"; }
-    .mobile-tabs button:nth-child(4)::before { content: "⌕"; }
+    .mobile-tabs button:nth-child(1)::before { content: "âŒ‚"; }
+    .mobile-tabs button:nth-child(2)::before { content: "âœ¦"; }
+    .mobile-tabs button:nth-child(3)::before { content: "â–¦"; }
+    .mobile-tabs button:nth-child(4)::before { content: "âŒ•"; }
     .mobile-tabs button.active {
       color: var(--text);
       background: rgba(70, 194, 166, .12);
@@ -744,42 +760,42 @@
   <div class="app">
     <aside class="side">
       <div class="brand">
-        <strong>新聞控制台</strong>
-        <span id="sideUpdated">載入中</span>
+        <strong>æ–°èžæŽ§åˆ¶å°</strong>
+        <span id="sideUpdated">è¼‰å…¥ä¸­</span>
       </div>
       <nav class="nav" id="categoryNav"></nav>
       <div class="side-footer">
-        <span id="sourceHealth">來源健康計算中</span>
+        <span id="sourceHealth">ä¾†æºå¥åº·è¨ˆç®—ä¸­</span>
         <div class="side-health" id="sideSourceHealth"></div>
-        <span>Prototype · Desktop first</span>
+        <span>Prototype Â· Desktop first</span>
       </div>
     </aside>
 
     <main class="main">
       <div class="topbar">
-        <input class="search" id="search" type="search" placeholder="搜尋標題、摘要、來源">
+        <input class="search" id="search" type="search" placeholder="æœå°‹æ¨™é¡Œã€æ‘˜è¦ã€ä¾†æº">
         <div class="mode" id="modeNav">
-          <button data-mode="critical" class="active">優先</button>
-          <button data-mode="latest">最新</button>
-          <button data-mode="balanced">綜合</button>
+          <button data-mode="critical" class="active">å„ªå…ˆ</button>
+          <button data-mode="latest">æœ€æ–°</button>
+          <button data-mode="balanced">ç¶œåˆ</button>
         </div>
         <div class="font-tools" id="fontTools" aria-label="font size">
-          <button data-font="small" type="button">細</button>
-          <button data-font="normal" type="button" class="active">中</button>
-          <button data-font="large" type="button">大</button>
+          <button data-font="small" type="button">ç´°</button>
+          <button data-font="normal" type="button" class="active">ä¸­</button>
+          <button data-font="large" type="button">å¤§</button>
         </div>
       </div>
 
       <section class="hero">
         <article class="lead" id="leadStory"></article>
         <aside class="brief">
-          <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
+          <h2 class="section-title"><strong>ä»Šæ—¥ AI æ‘˜è¦</strong><span>æ¯é¡ž 3 å‰‡</span></h2>
           <ul class="brief-list" id="dailyBrief"></ul>
         </aside>
       </section>
 
       <div class="content-head">
-        <h2 id="feedTitle">重點新聞流</h2>
+        <h2 id="feedTitle">é‡é»žæ–°èžæµ</h2>
         <span id="resultCount"></span>
       </div>
       <section class="feed" id="feed"></section>
@@ -787,25 +803,25 @@
 
     <aside class="ai">
       <div class="ai-title">
-        <strong>AI 工作台</strong>
-        <span id="aiUpdated">同步中</span>
+        <strong>AI å·¥ä½œå°</strong>
+        <span id="aiUpdated">åŒæ­¥ä¸­</span>
       </div>
       <section class="ai-block">
-        <h2>優先排行</h2>
+        <h2>å„ªå…ˆæŽ’è¡Œ <span id="priorityRange"></span></h2>
         <div id="criticalList"></div>
       </section>
       <section class="ai-block">
-        <h2>話題聚焦</h2>
+        <h2>è©±é¡Œèšç„¦</h2>
         <div class="topic-grid" id="topicGrid"></div>
       </section>
     </aside>
   </div>
 
   <nav class="mobile-tabs" id="mobileTabs">
-    <button class="active">首頁</button>
+    <button class="active">é¦–é </button>
     <button>AI</button>
-    <button>分類</button>
-    <button>搜尋</button>
+    <button>åˆ†é¡ž</button>
+    <button>æœå°‹</button>
   </nav>
 
   <script>
@@ -834,3 +850,4 @@
   <script src="js/redesign.js?v=20260512-mobile-nav"></script>
 </body>
 </html>
+

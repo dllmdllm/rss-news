@@ -268,7 +268,7 @@
           return haystack.includes(query);
         }
         return true;
-      })).slice(0, 3);
+      })).slice(0, 4);
       if (!rows.length) return "";
       return `<section class="category-section ${categoryClass(group)}">
         <div class="category-section-head">
@@ -295,6 +295,10 @@
 
   function renderAiPanel() {
     const critical = sortedArticles(state.articles).slice(0, 10);
+    const allScores = state.articles.map(criticalScore).filter((score) => Number.isFinite(score));
+    const minScore = allScores.length ? Math.min(...allScores) : 0;
+    const maxScore = allScores.length ? Math.max(...allScores) : 0;
+    $("priorityRange").textContent = allScores.length ? `範圍 ${minScore}-${maxScore}` : "";
     $("criticalList").innerHTML = critical.map((article) => `
       <a class="ai-pick" href="${articleUrl(article)}">
         <span class="ai-rank-row">
