@@ -215,6 +215,24 @@ def test_save_json_reuses_existing_content_when_current_scrape_has_none(tmp_path
     assert articles[0]["content"] == old_content
 
 
+def test_save_json_removes_duplicate_leading_thumbnail(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    content = '<html><body><img src="https://example.com/a.jpg"><p>body text</p></body></html>'
+    articles = [_article("dupimg", content=content)]
+    articles[0]["thumbnail"] = "https://example.com/a.jpg"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "dupimg.json").read_text(encoding="utf-8"))
+    assert "<img" not in saved["content"]
+    assert saved["quality"]["images"] == 0
+
+
 def test_save_json_prunes_only_articles_missing_from_metadata(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"

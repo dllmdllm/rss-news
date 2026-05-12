@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from pathlib import Path
+from urllib.parse import urldefrag, urljoin
 from xml.sax.saxutils import escape as xml_escape
 
 # Force UTF-8 output on Windows
@@ -22,6 +23,8 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 load_dotenv()
+
+from bs4 import BeautifulSoup
 
 from src.fetch   import ARTICLE_MAX_AGE_HOURS, fetch_all, retranslate_english_titles
 from src.scrape  import content_quality, scrape_all
@@ -572,7 +575,7 @@ def save_json(articles: list, source_stats: dict):
     print(
         f"[build] content/ {content_stats['written']} written, "
         f"{content_stats['unchanged']} unchanged, {content_stats['reused']} reused, "
-        f"{content_stats['minimal']} minimal, {dropped} pruned"
+        f"{content_stats['minimal']} minimal, {content_stats['deduped']} deduped, {dropped} pruned"
     )
 
 
@@ -613,11 +616,35 @@ def _minimal_content(article: dict) -> str:
     )
 
 
+def _canonical_image_url(url: str | None) -> str:
+    if not url:
+        return ""
+    absolute = urljoin("https://dllmdllm.github.io/rss-news/", str(url).strip())
+    absolute, _ = urldefrag(absolute)
+    return absolute
+
+
+def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> tuple[str, bool]:
+    """Drop the first inline image when it duplicates the article thumbnail."""
+    if not content or not thumbnail or "<img" not in content:
+        return content, False
+    soup = BeautifulSoup(content, "html.parser")
+    first_img = soup.find("img")
+    if not first_img:
+        return content, False
+    first_url = first_img.get("src") or first_img.get("data-src") or first_img.get("data-original")
+    if _canonical_image_url(first_url) != _canonical_image_url(thumbnail):
+        return content, False
+    first_img.decompose()
+    return str(soup), True
+
+
 def _write_content_sidecars(articles: list) -> dict[str, int]:
     written = 0
     unchanged = 0
     reused = 0
     minimal = 0
+    deduped = 0
     for a in articles:
         content = a.get("content")
         old_record = None
@@ -633,6 +660,15 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 reused += 1
                 fallback = "reused"
             a["content"] = content
+        content, was_deduped = remove_duplicate_leading_thumbnail(content, a.get("thumbnail"))
+        if was_deduped:
+            deduped += 1
+            a["content"] = content
+            a["content_quality"] = content_quality(
+                content,
+                source=a.get("source", ""),
+                fallback=fallback,
+            )
         cpath = CONTENT_DIR / f"{a['id']}.json"
         quality = a.get("content_quality") or {}
         if not quality and old_record:
@@ -679,6 +715,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
         "unchanged": unchanged,
         "reused": reused,
         "minimal": minimal,
+        "deduped": deduped,
     }
 
 
