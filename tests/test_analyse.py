@@ -274,7 +274,7 @@ def test_analyse_all_sets_defaults_without_api_key(monkeypatch):
 
     result = asyncio.run(analyse.analyse_all(articles))
 
-    assert result[0]["summary"] == "・No key"
+    assert result[0]["summary"] == ""
     assert result[0]["score"] == 5
     assert result[0]["tags"] == []
     assert result[0]["sentiment"] == "neutral"
@@ -302,7 +302,7 @@ def test_analyse_defaults_repair_timeout_placeholders():
 
     analyse._ensure_analysis_defaults([article])
 
-    assert article["summary"] == "・Timeout article"
+    assert article["summary"] == ""
     assert article["score"] == 5
     assert article["tags"] == []
     assert article["sentiment"] == "neutral"

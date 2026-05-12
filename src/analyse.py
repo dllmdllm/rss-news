@@ -515,8 +515,9 @@ async def _analyse_batch(
 def _ensure_analysis_defaults(articles: list) -> None:
     for a in articles:
         if not a.get("summary"):
-            title = str(a.get("title") or "").strip()
-            a["summary"] = f"・{title[:80]}" if title else ""
+            # Leave empty so the renderer can show a "pending AI" placeholder
+            # instead of misleading users with the title echoed as a summary.
+            a["summary"] = ""
         if not isinstance(a.get("score"), int):
             a["score"] = 5
         if not isinstance(a.get("tags"), list):

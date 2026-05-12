@@ -23,7 +23,17 @@
     return date.toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" });
   }
 
+  function summaryIsTitleFallback(article) {
+    if (!article || !article.summary || !article.title) return false;
+    const norm = (s) => String(s).replace(/^・/, "").replace(/\s+/g, "").trim();
+    const s = norm(article.summary);
+    const t = norm(article.title);
+    if (!s || !t) return false;
+    return s === t || (s.length >= 12 && (t.startsWith(s) || s.startsWith(t)));
+  }
+
   function summaryPoints(article, limit = 5) {
+    if (summaryIsTitleFallback(article)) return [];
     const raw = String(article.summary || "").trim();
     let points = raw
       .split(/\n|・|•|●|-/)
@@ -32,7 +42,6 @@
     if (points.length <= 1) {
       points = raw.split(/。|；|;/).map((line) => line.trim()).filter(Boolean);
     }
-    if (!points.length && article.title) points = [article.title];
     return points.slice(0, limit);
   }
 
@@ -114,9 +123,12 @@
 
   function renderMiniArticle(article) {
     const points = summaryPoints(article, 3);
-    const summary = points.length
-      ? `<ul class="mini-summary">${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`
-      : "";
+    let summary = "";
+    if (points.length) {
+      summary = `<ul class="mini-summary">${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
+    } else if (summaryIsTitleFallback(article)) {
+      summary = `<span class="summary-pending">🤖 AI 摘要稍後補上</span>`;
+    }
     return `<a href="${articleUrl(article)}">
       <span>${esc(article.category || "")} · ${esc(article.source || "")} · ${esc(timeLabel(article))}</span>
       <strong>${esc(article.title || "")}</strong>
@@ -165,9 +177,16 @@
       <span>${esc(timeLabel(article))}</span>
       <span class="priority">${esc(priorityLabel(article))}</span>`;
     $("title").textContent = article.title || "";
-    $("dek").textContent = summaryPoints(article, 1)[0] || "";
+    const dekPoint = summaryPoints(article, 1)[0] || "";
+    $("dek").textContent = dekPoint;
+    $("dek").classList.toggle("summary-pending", !dekPoint && summaryIsTitleFallback(article));
+    if (!dekPoint && summaryIsTitleFallback(article)) $("dek").textContent = "🤖 AI 摘要稍後補上";
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
-    $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryPoints(article, 5).map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
+    const summaryItems = summaryPoints(article, 5);
+    const summaryInner = summaryItems.length
+      ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
+      : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
+    $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
     $("sourceLink").href = article.url || "#";
 

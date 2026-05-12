@@ -34,12 +34,25 @@
     return `article.html?id=${encodeURIComponent(article.id)}`;
   }
 
+  function summaryIsTitleFallback(article) {
+    if (!article || !article.summary || !article.title) return false;
+    const norm = (s) => String(s).replace(/^・/, "").replace(/\s+/g, "").trim();
+    const s = norm(article.summary);
+    const t = norm(article.title);
+    if (!s || !t) return false;
+    return s === t || (s.length >= 12 && (t.startsWith(s) || s.startsWith(t)));
+  }
+
+  const PENDING_AI_HTML = `<p class="summary-pending">🤖 AI 摘要稍後補上</p>`;
+
   function summaryText(article, limit = 120) {
+    if (summaryIsTitleFallback(article)) return "";
     const raw = String(article.summary || "").replace(/・/g, " ").replace(/\s+/g, " ").trim();
     return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
   }
 
   function summaryPoints(article, limit = 5) {
+    if (summaryIsTitleFallback(article)) return [];
     const raw = String(article.summary || "").trim();
     let points = raw
       .split(/\n|・|•|●|-/)
@@ -51,12 +64,13 @@
         ? text.split(/。|；|;/).map((line) => line.trim()).filter(Boolean)
         : [];
     }
-    if (!points.length && article.title) points = [String(article.title).trim()];
     return points.slice(0, limit);
   }
 
   function pointsHtml(article, limit = 5) {
-    return summaryPoints(article, limit).map((point) => `<li>${esc(point)}</li>`).join("");
+    const points = summaryPoints(article, limit);
+    if (points.length) return points.map((point) => `<li>${esc(point)}</li>`).join("");
+    return summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
   }
 
   function compactSummaryHtml(article, limit = 3) {
@@ -64,6 +78,7 @@
     if (points.length) {
       return `<ul>${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
     }
+    if (summaryIsTitleFallback(article)) return PENDING_AI_HTML;
     const fallback = summaryText(article, 120);
     return fallback ? `<p>${esc(fallback)}</p>` : "";
   }
