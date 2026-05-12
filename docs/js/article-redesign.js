@@ -54,7 +54,17 @@
     return `優先度 ${criticalScore(article)}`;
   }
 
-  function sanitizeHtml(html) {
+  function canonicalImageUrl(url) {
+    try {
+      const parsed = new URL(String(url || ""), location.href);
+      parsed.hash = "";
+      return parsed.href;
+    } catch {
+      return String(url || "").trim();
+    }
+  }
+
+  function sanitizeHtml(html, heroImage = "") {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
     doc.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
     doc.querySelectorAll("*").forEach((node) => {
@@ -66,6 +76,11 @@
         }
       });
     });
+    const heroUrl = canonicalImageUrl(heroImage);
+    const firstImage = doc.querySelector("img");
+    if (firstImage && heroUrl && canonicalImageUrl(firstImage.getAttribute("src")) === heroUrl) {
+      firstImage.remove();
+    }
     doc.querySelectorAll("img").forEach((img) => {
       img.setAttribute("referrerpolicy", "no-referrer");
       img.setAttribute("loading", "lazy");
@@ -153,7 +168,7 @@
     $("dek").textContent = summaryPoints(article, 1)[0] || "";
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryPoints(article, 5).map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
-    $("content").innerHTML = article.content ? sanitizeHtml(article.content) : `<div class="error">暫時未有全文內容。</div>`;
+    $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
     $("sourceLink").href = article.url || "#";
 
     const plain = stripHtml(article.content || "");

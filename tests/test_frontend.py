@@ -1131,6 +1131,13 @@ def test_article_page_has_related_section():
     assert "toggle.setAttribute(\"aria-expanded\", \"false\")" in source
 
 
+def test_article_redesign_removes_duplicate_hero_image():
+    source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+    assert "function canonicalImageUrl" in source
+    assert "sanitizeHtml(article.content, article.thumbnail || \"\")" in source
+    assert "firstImage.remove()" in source
+
+
 def test_article_page_has_save_and_next_unread_controls():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")

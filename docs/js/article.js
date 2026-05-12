@@ -3,7 +3,17 @@
     // Sanitize scraped HTML: strip scripts, event handlers, javascript: URLs.
     // Content comes from trafilatura (trusted pipeline), but source sites
     // can inject arbitrary HTML via RSS, so scrub defensively.
-    function sanitizeHtml(html) {
+    function canonicalImageUrl(url) {
+      try {
+        const parsed = new URL(String(url || ""), location.href);
+        parsed.hash = "";
+        return parsed.href;
+      } catch {
+        return String(url || "").trim();
+      }
+    }
+
+    function sanitizeHtml(html, heroImage = "") {
       const doc = new DOMParser().parseFromString(String(html ?? ""), "text/html");
       doc.querySelectorAll("script, iframe, object, embed, style, link, meta, base, form").forEach(el => el.remove());
       doc.querySelectorAll("*").forEach(el => {
@@ -22,6 +32,11 @@
           }
         }
       });
+      const heroUrl = canonicalImageUrl(heroImage);
+      const firstImage = doc.querySelector("img");
+      if (firstImage && heroUrl && canonicalImageUrl(firstImage.getAttribute("src")) === heroUrl) {
+        firstImage.remove();
+      }
       return doc.body.innerHTML;
     }
 
@@ -635,7 +650,7 @@
 
         const body = document.getElementById("art-content");
         if (art.content) {
-          body.innerHTML = sanitizeHtml(art.content);
+          body.innerHTML = sanitizeHtml(art.content, art.thumbnail || "");
           body.querySelectorAll("img").forEach(img => {
             img.loading = "lazy";
             img.referrerPolicy = "no-referrer";
