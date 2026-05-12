@@ -210,9 +210,19 @@
     const image = lead.thumbnail
       ? `<img src="${esc(lead.thumbnail)}" alt="">`
       : "";
-    const extras = ["國際", "娛樂", "科技"]
-      .map((category) => sortedArticles(state.articles.filter((article) => article.category === category && article.id !== lead.id))[0])
-      .filter(Boolean)
+    // Hide the cross-category "spotlight" extras when a filter is active.
+    // They used to always sample from 國際 / 娛樂 / 科技 across the full feed,
+    // so picking a single category (e.g. 科技) showed the lead 科技 article
+    // followed by unrelated cross-category extras, making it look like the
+    // filter only matched one article. The full filtered list is rendered
+    // below by renderFeed anyway.
+    const filterActive = state.category !== "全部" || state.source || state.topic;
+    const extraArticles = filterActive
+      ? []
+      : ["國際", "娛樂", "科技"]
+          .map((category) => sortedArticles(state.articles.filter((article) => article.category === category && article.id !== lead.id))[0])
+          .filter(Boolean);
+    const extras = extraArticles
       .map((article) => {
         const image = article.thumbnail
           ? `<img src="${esc(article.thumbnail)}" alt="">`
