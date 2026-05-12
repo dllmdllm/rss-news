@@ -345,6 +345,17 @@
     });
   }
 
+  function showHomeOnMobile() {
+    if (window.matchMedia && !window.matchMedia("(max-width: 900px)").matches) return;
+    const body = document.body;
+    if (body.classList.contains("mobile-home")) return;
+    body.classList.remove("mobile-ai", "mobile-cats", "mobile-search");
+    body.classList.add("mobile-home");
+    const tabs = document.querySelectorAll("#mobileTabs button");
+    tabs.forEach((tab, idx) => tab.classList.toggle("active", idx === 0));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function bindEvents() {
     applyFontSize(localStorage.getItem("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
@@ -355,20 +366,28 @@
         state.topic = "";
         state.openCategories.add(state.category);
         renderAll();
+        showHomeOnMobile();
         return;
       }
       const button = event.target.closest("button[data-tree-category]");
       if (!button) return;
       const category = button.dataset.treeCategory;
+      const wasOpen = state.openCategories.has(category);
       state.category = category;
       state.source = "";
       state.topic = "";
-      if (state.openCategories.has(category)) {
+      if (wasOpen) {
         state.openCategories.delete(category);
       } else {
         state.openCategories.add(category);
       }
       renderAll();
+      // Auto-jump to feed only when the picked category has no expandable
+      // source list (or it was already expanded). Otherwise let the user see
+      // the sources first; a subsequent tap on a source jumps to the feed.
+      if (wasOpen || category === "全部") {
+        showHomeOnMobile();
+      }
     });
     $("topicGrid").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-topic]");
@@ -379,6 +398,7 @@
       state.query = "";
       $("search").value = "";
       renderAll();
+      showHomeOnMobile();
     });
     $("modeNav").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-mode]");
