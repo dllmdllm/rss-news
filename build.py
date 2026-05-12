@@ -635,7 +635,11 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     first_url = first_img.get("src") or first_img.get("data-src") or first_img.get("data-original")
     if _canonical_image_url(first_url) != _canonical_image_url(thumbnail):
         return content, False
-    first_img.decompose()
+    figure_parent = first_img.find_parent("figure")
+    if figure_parent is not None:
+        figure_parent.decompose()
+    else:
+        first_img.decompose()
     return str(soup), True
 
 
