@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>新聞控制台 Prototype</title>
+  <title>新聞控制台</title>
   <style>
     :root {
       color-scheme: dark;
@@ -783,7 +783,7 @@
       const id = url.searchParams.get("id");
       if (!id) return;
       event.preventDefault();
-      location.href = `article-redesign.html?id=${encodeURIComponent(id)}`;
+      location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
   <script src="js/redesign.js?v=20260512-mobile-nav"></script>

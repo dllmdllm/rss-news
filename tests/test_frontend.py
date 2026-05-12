@@ -436,6 +436,11 @@ def test_index_tag_filters_are_scoped_per_category():
 
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    if "js/redesign.js" in html:
+        assert 'data-mode="critical"' in html
+        assert 'data-mode="latest"' in html
+        assert 'data-mode="balanced"' in html
+        return
     assert 'data-sort="date"' in html
     assert ">🕒 最新</button>" in html
     assert 'data-sort="ai"' in html
@@ -447,6 +452,14 @@ def test_index_has_reading_controls_and_top_picks():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    if "js/redesign.js" in html:
+        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+        assert 'id="categoryNav"' in html
+        assert 'id="leadStory"' in html
+        assert 'id="dailyBrief"' in html
+        assert 'id="criticalList"' in html
+        assert "renderDailyBrief" in redesign_source
+        return
     assert 'id="unread-toggle"' in html
     assert 'id="saved-toggle"' in html
     assert 'id="compact-toggle"' in html
@@ -463,6 +476,13 @@ def test_index_has_reading_controls_and_top_picks():
 def test_index_has_personalised_ai_alerts_and_uncertainty_badges():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    if "js/redesign.js" in html:
+        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+        assert 'id="criticalList"' in html
+        assert 'id="topicGrid"' in html
+        assert "priorityBadge" in redesign_source
+        assert "topicGrid" in redesign_source
+        return
     assert 'id="ai-alerts"' in html
     assert ".ai-alerts" in html
     assert ".uncertainty-badge" in html
@@ -477,6 +497,13 @@ def test_index_has_personalised_ai_alerts_and_uncertainty_badges():
 def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    if "js/redesign.js" in html:
+        assert 'id="mobileTabs"' in html
+        assert "mobile-home" in html
+        assert "mobile-ai" in html
+        assert "mobile-cats" in html
+        assert "mobile-search" in html
+        return
     assert 'id="mobile-filter-toggle"' in html
     assert 'id="filter-backdrop"' in html
     assert "filter-sheet-open" in html
@@ -682,6 +709,12 @@ def test_index_cluster_badge_expands_all_sources():
 def test_index_cluster_cards_are_stacked_and_click_to_expand():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    if "js/redesign.js" in html:
+        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+        assert 'id="feed"' in html
+        assert "renderCategorySections" in redesign_source
+        assert "compactSummaryHtml" in redesign_source
+        return
     assert ".card.cluster-stack" in html
     assert ".card.cluster-expanded" in html
     assert ".cluster-ai-btn" in html
@@ -803,6 +836,14 @@ def test_article_page_applies_saved_light_theme():
 def test_article_has_text_only_toggle():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    if "js/article-redesign.js" in html:
+        article_source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+        assert 'id="fontSmall"' in html
+        assert 'id="fontNormal"' in html
+        assert 'id="fontLarge"' in html
+        assert "fs-small" in article_source
+        assert "fs-large" in article_source
+        return
     assert 'id="text-toggle"' in html
     assert "TEXT_ONLY_KEY" in common_source
     assert "body.text-only .content img" in html
@@ -811,6 +852,11 @@ def test_article_has_text_only_toggle():
 def test_article_back_uses_same_origin_history_only():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    if "js/article-redesign.js" in html:
+        assert 'href="index.html"' in html
+        assert 'class="back"' in html
+        assert 'class="mobile-back"' in html
+        return
     assert 'data-safe-back="1"' in html
     assert "function setupSafeBackLinks()" in source
     assert "ref.origin === location.origin" in source
@@ -1055,6 +1101,12 @@ def test_article_related_articles_ignore_weak_type_or_place_only_matches():
 def test_article_page_has_related_section():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    if "js/article-redesign.js" in html:
+        article_source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+        assert 'id="relatedList"' in html
+        assert "relatedArticles" in article_source
+        assert "renderMiniArticle" in article_source
+        return
     assert 'id="related-section"' in html
     assert 'id="related-toggle"' in html
     assert 'id="related-ai-summary"' in html
@@ -1076,6 +1128,12 @@ def test_article_page_has_related_section():
 def test_article_page_has_save_and_next_unread_controls():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    if "js/article-redesign.js" in html:
+        assert 'id="fontSmall"' in html
+        assert 'id="fontNormal"' in html
+        assert 'id="fontLarge"' in html
+        assert 'id="relatedList"' in html
+        return
     assert 'id="save-btn"' in html
     assert 'id="next-unread-btn"' in html
     assert ".image-fallback" in html

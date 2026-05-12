@@ -22,7 +22,7 @@
   }[c]));
 
   function articleUrl(article) {
-    return `article-redesign.html?id=${encodeURIComponent(article.id)}`;
+    return `article.html?id=${encodeURIComponent(article.id)}`;
   }
 
   function summaryText(article, limit = 120) {
