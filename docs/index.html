@@ -838,7 +838,7 @@
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
     document.addEventListener("click", (event) => {
-      const link = event.target.closest('a[href*="article.html"], a[href*="article-redesign.html"]');
+      const link = event.target.closest('a[href*="article.html"]');
       if (!link) return;
       const url = new URL(link.getAttribute("href"), location.href);
       const id = url.searchParams.get("id");
