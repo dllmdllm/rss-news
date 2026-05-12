@@ -1,5 +1,14 @@
 (function () {
   const categories = ["全部", "新聞", "國際", "娛樂", "科技", "網媒", "消閒"];
+  const categoryEmoji = {
+    "全部": "🗂️",
+    "新聞": "🏙️",
+    "國際": "🌍",
+    "娛樂": "🎬",
+    "科技": "💻",
+    "網媒": "📡",
+    "消閒": "☕",
+  };
   const state = {
     articles: [],
     topics: [],
@@ -168,7 +177,7 @@
       return `<div class="tree-group">
         <button data-tree-category="${esc(cat)}" class="tree-head ${cat === state.category && !state.source ? "active" : ""}">
           <span class="tree-arrow">${open ? "▾" : "▸"}</span>
-          <span>${esc(cat)}</span>
+          <span>${categoryEmoji[cat] ? categoryEmoji[cat] + " " : ""}${esc(cat)}</span>
           <span class="tree-count">${count}</span>
         </button>
         <div class="source-children" ${open ? "" : "hidden"}>${sourceNames}</div>
