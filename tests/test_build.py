@@ -257,6 +257,69 @@ def test_save_json_removes_duplicate_thumbnail_figure_wrapper(tmp_path, monkeypa
     assert "caption text" not in saved["content"]
 
 
+def test_save_json_dedupes_thumbnail_with_different_size_variant(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    content = (
+        '<html><body>'
+        '<img src="https://image.cdn.example/f/1024p0/0x0/abc/2026/New_Project_456.jpg">'
+        '<p>body text</p></body></html>'
+    )
+    articles = [_article("dupvariant", content=content)]
+    articles[0]["thumbnail"] = "https://image.cdn.example/f/1200p0/0x0/xyz/2026/New_Project_456.jpg"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "dupvariant.json").read_text(encoding="utf-8"))
+    assert "<img" not in saved["content"]
+
+
+def test_save_json_keeps_distinct_images_with_different_filenames(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    content = (
+        '<html><body>'
+        '<img src="https://example.com/genuinely_different.jpg">'
+        '<p>body text</p></body></html>'
+    )
+    articles = [_article("nodupe", content=content)]
+    articles[0]["thumbnail"] = "https://example.com/the_thumbnail.jpg"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "nodupe.json").read_text(encoding="utf-8"))
+    assert '<img src="https://example.com/genuinely_different.jpg"' in saved["content"]
+
+
+def test_save_json_does_not_dedupe_on_generic_filenames(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    content = (
+        '<html><body>'
+        '<img src="https://siteA.example/path/image.jpg">'
+        '<p>body</p></body></html>'
+    )
+    articles = [_article("generic", content=content)]
+    articles[0]["thumbnail"] = "https://siteB.example/other/image.jpg"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "generic.json").read_text(encoding="utf-8"))
+    assert "<img" in saved["content"]
+
+
 def test_save_json_prunes_only_articles_missing_from_metadata(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"

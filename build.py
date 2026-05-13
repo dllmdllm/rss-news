@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from pathlib import Path
-from urllib.parse import urldefrag, urljoin
+from urllib.parse import urldefrag, urljoin, urlparse
 from xml.sax.saxutils import escape as xml_escape
 
 # Force UTF-8 output on Windows
@@ -624,6 +624,41 @@ def _canonical_image_url(url: str | None) -> str:
     return absolute
 
 
+# Distinctive last-path-segment match: many CDNs (e.g. hkhl.hk for 星島頭條,
+# mingpao) serve the same source image at multiple resolutions / signed paths,
+# so the URLs differ but the trailing filename is identical. Treat anything
+# with the same non-trivial filename as the same image. Filenames shorter
+# than 8 chars or matching purely-numeric / generic placeholders are ignored
+# to avoid false positives like "1.jpg" or "logo.png".
+_GENERIC_IMAGE_NAMES = {
+    "image.jpg", "image.png", "image.jpeg", "image.webp",
+    "cover.jpg", "cover.png", "default.jpg",
+    "logo.jpg", "logo.png", "thumb.jpg",
+}
+
+
+def _image_basename(url: str) -> str:
+    if not url:
+        return ""
+    path = urlparse(url).path
+    name = path.rsplit("/", 1)[-1].lower()
+    if not name or len(name) < 8:
+        return ""
+    if name in _GENERIC_IMAGE_NAMES:
+        return ""
+    return name
+
+
+def _images_match(url_a: str | None, url_b: str | None) -> bool:
+    if not url_a or not url_b:
+        return False
+    if _canonical_image_url(url_a) == _canonical_image_url(url_b):
+        return True
+    base_a = _image_basename(url_a)
+    base_b = _image_basename(url_b)
+    return bool(base_a) and base_a == base_b
+
+
 def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> tuple[str, bool]:
     """Drop the first inline image when it duplicates the article thumbnail."""
     if not content or not thumbnail or "<img" not in content:
@@ -633,7 +668,7 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     if not first_img:
         return content, False
     first_url = first_img.get("src") or first_img.get("data-src") or first_img.get("data-original")
-    if _canonical_image_url(first_url) != _canonical_image_url(thumbnail):
+    if not _images_match(first_url, thumbnail):
         return content, False
     figure_parent = first_img.find_parent("figure")
     if figure_parent is not None:
