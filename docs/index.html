@@ -156,6 +156,23 @@
     .main {
       min-width: 0;
       padding: 18px 24px 40px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      grid-auto-rows: min-content;
+      column-gap: 16px;
+      row-gap: 14px;
+      align-items: start;
+    }
+    .main > .topbar { grid-column: 1 / -1; }
+    .main > .lead,
+    .main > .content-head,
+    .main > .feed { grid-column: 1; }
+    .main > .brief {
+      grid-column: 2;
+      grid-row: 2 / span 99;
+      position: sticky;
+      top: 72px;
+      align-self: start;
     }
 
     .topbar {
@@ -226,13 +243,6 @@
     .font-tools button[data-font="normal"] { font-size: 1rem; }
     .font-tools button[data-font="large"] { font-size: 1.14rem; }
 
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-      gap: 14px;
-      align-items: start;
-      margin-bottom: 16px;
-    }
 
     .lead, .brief {
       border: 1px solid var(--line);
@@ -671,7 +681,8 @@
       body.mobile-search .main,
       body.mobile-ai .ai,
       body.mobile-cats .side { display: block; }
-      body.mobile-search .hero,
+      body.mobile-search .lead,
+      body.mobile-search .brief,
       body.mobile-search .content-head,
       body.mobile-search .feed { display: none; }
       .main { padding: 12px; }
@@ -688,7 +699,10 @@
       .font-tools button {
         flex: 1;
       }
-      .hero { grid-template-columns: 1fr; }
+      .main > .brief {
+        position: static;
+        grid-row: auto;
+      }
       .lead a { min-height: 0; }
       .lead-media { aspect-ratio: 16 / 9; }
       .ai {
@@ -751,13 +765,11 @@
         </div>
       </div>
 
-      <section class="hero">
-        <article class="lead" id="leadStory"></article>
-        <aside class="brief">
-          <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
-          <ul class="brief-list" id="dailyBrief"></ul>
-        </aside>
-      </section>
+      <article class="lead" id="leadStory"></article>
+      <aside class="brief">
+        <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
+        <ul class="brief-list" id="dailyBrief"></ul>
+      </aside>
 
       <div class="content-head">
         <h2 id="feedTitle">重點新聞流</h2>
