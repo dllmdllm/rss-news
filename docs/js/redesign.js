@@ -30,26 +30,8 @@
     "'": "&#39;",
   }[c]));
 
-  function articleUrl(article) {
-    return `article.html?id=${encodeURIComponent(article.id)}`;
-  }
-
-  function summaryIsTitleFallback(article) {
-    // Real AI output is multi-bullet (newline-separated or multiple ・).
-    // The placeholder shape is exactly one line: "・" + title[:80] or just
-    // the bare title. Asymmetric s.startsWith(t) was hiding legitimate AI
-    // summaries that happen to lead with the title sentence.
-    if (!article || !article.summary || !article.title) return false;
-    const raw = String(article.summary).trim();
-    if (!raw) return false;
-    const bulletCount = (raw.match(/・/g) || []).length;
-    if (raw.includes("\n") || bulletCount >= 2) return false;
-    const norm = (s) => String(s).replace(/^・/, "").replace(/\s+/g, "").trim();
-    const s = norm(raw);
-    const t = norm(article.title);
-    if (!s || !t) return false;
-    return s === t || (s.length >= 8 && t.startsWith(s));
-  }
+  // articleUrl, timeLabel, summaryIsTitleFallback, criticalScore live in
+  // docs/js/common.js — shared with article-redesign.js.
 
   const PENDING_AI_HTML = `<p class="summary-pending">🤖 AI 摘要稍後補上</p>`;
 
@@ -91,17 +73,6 @@
     return fallback ? `<p>${esc(fallback)}</p>` : "";
   }
 
-  function timeLabel(article) {
-    const date = new Date(article.date || "");
-    if (Number.isNaN(date.getTime())) return "";
-    const diff = Date.now() - date.getTime();
-    const mins = Math.max(0, Math.round(diff / 60000));
-    if (mins < 60) return `${mins} 分鐘前`;
-    const hours = Math.round(mins / 60);
-    if (hours < 24) return `${hours} 小時前`;
-    return date.toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" });
-  }
-
   function metaLine(article, extra = "") {
     return [
       article.category || "",
@@ -109,20 +80,6 @@
       timeLabel(article),
       extra,
     ].filter(Boolean).join(" · ");
-  }
-
-  function criticalScore(article) {
-    const score = Number(article.score || 0);
-    const title = `${article.title || ""} ${article.summary || ""}`;
-    const event = String(article.event_type || "");
-    let boost = 0;
-    if (/突發|事故|火警|爆炸|拘捕|詐騙|死亡|襲擊|制裁|戰爭|地震|疫情|法庭|判刑/.test(title)) boost += 18;
-    if (/刑事|事故|政治|法庭|衛生|國際/.test(event)) boost += 10;
-    if (article.cluster_size > 1) boost += Math.min(18, article.cluster_size * 2);
-    const date = new Date(article.date || "");
-    const ageHours = Number.isNaN(date.getTime()) ? 24 : Math.max(0, (Date.now() - date.getTime()) / 3600000);
-    const freshness = Math.max(0, 18 - ageHours * 1.4);
-    return Math.round(score * 8 + boost + freshness);
   }
 
   function categoryClass(category) {
@@ -338,21 +295,28 @@
       : (state.topic ? `${state.topic} · 話題` : (state.category === "全部" ? "分類重點" : `${state.category}新聞流`));
   }
 
-  function renderAiPanel() {
+  function renderAiPanel(filteredList) {
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
     // keeps showing global picks the user has filtered away.
     const filterActive = state.category !== "全部" || state.source || state.topic;
-    const pool = filterActive ? filteredArticles() : state.articles;
-    const critical = (filterActive
-      ? [...pool].sort((a, b) => criticalScore(b) - criticalScore(a))
-      : sortedArticles(pool)
-    ).slice(0, 10);
-    const allScores = pool.map(criticalScore).filter((score) => Number.isFinite(score));
+    const pool = filterActive ? (filteredList || filteredArticles()) : state.articles;
+    // Score each article once; reuse for sorting, min/max, and badge rendering.
+    const scored = pool.map((article) => ({ article, score: criticalScore(article) }));
+    if (filterActive) {
+      scored.sort((a, b) => b.score - a.score);
+    } else {
+      // Honour the user's current sort mode for the unfiltered AI list too.
+      const sorted = sortedArticles(pool);
+      const order = new Map(sorted.map((article, idx) => [article.id, idx]));
+      scored.sort((a, b) => (order.get(a.article.id) ?? Infinity) - (order.get(b.article.id) ?? Infinity));
+    }
+    const critical = scored.slice(0, 10);
+    const allScores = scored.map((s) => s.score).filter((score) => Number.isFinite(score));
     const minScore = allScores.length ? Math.min(...allScores) : 0;
     const maxScore = allScores.length ? Math.max(...allScores) : 0;
     $("priorityRange").textContent = allScores.length ? `範圍 ${minScore}-${maxScore}` : "";
-    $("criticalList").innerHTML = critical.map((article) => {
+    $("criticalList").innerHTML = critical.map(({ article }) => {
       const points = pointsHtml(article, 3);
       return `
       <a class="ai-pick" href="${articleUrl(article)}">
@@ -389,7 +353,7 @@
     renderLead(list);
     renderDailyBrief();
     renderFeed(list);
-    renderAiPanel();
+    renderAiPanel(list);
   }
 
   function applyFontSize(size) {

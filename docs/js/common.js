@@ -185,6 +185,58 @@ function aiSummaryBlockHtml(articles, prefix) {
   return { digestHtml, sourceRows };
 }
 
+// Shared between docs/js/redesign.js and docs/js/article-redesign.js.
+// Define at common.js top level so each IIFE bundle inherits them via the
+// global scope and we keep one source of truth.
+
+function articleUrl(article) {
+  return `article.html?id=${encodeURIComponent(article.id)}`;
+}
+
+function timeLabel(article) {
+  const date = new Date(article.date || "");
+  if (Number.isNaN(date.getTime())) return "";
+  const diff = Date.now() - date.getTime();
+  const mins = Math.max(0, Math.round(diff / 60000));
+  if (mins < 60) return `${mins} 分鐘前`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return date.toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" });
+}
+
+// Detect when summary is just the article title (the placeholder shape
+// `_ensure_analysis_defaults` writes on AI timeout). Real AI output is
+// multi-bullet, so anything with a newline or two ・ separators is real
+// content. Otherwise compare normalised forms.
+function summaryIsTitleFallback(article) {
+  if (!article || !article.summary || !article.title) return false;
+  const raw = String(article.summary).trim();
+  if (!raw) return false;
+  const bulletCount = (raw.match(/・/g) || []).length;
+  if (raw.includes("\n") || bulletCount >= 2) return false;
+  const norm = (s) => String(s).replace(/^・/, "").replace(/\s+/g, "").trim();
+  const s = norm(raw);
+  const t = norm(article.title);
+  if (!s || !t) return false;
+  return s === t || (s.length >= 8 && t.startsWith(s));
+}
+
+// Composite ranking used by the homepage list and the article reader's
+// related-stories panel. Higher is more critical.
+function criticalScore(article) {
+  const score = Number(article.score || 0);
+  const title = `${article.title || ""} ${article.summary || ""}`;
+  const event = String(article.event_type || "");
+  let boost = 0;
+  if (/突發|事故|火警|爆炸|拘捕|詐騙|死亡|襲擊|制裁|戰爭|地震|疫情|法庭|判刑/.test(title)) boost += 18;
+  if (/刑事|事故|政治|法庭|衛生|國際/.test(event)) boost += 10;
+  if (article.cluster_size > 1) boost += Math.min(18, article.cluster_size * 2);
+  const date = new Date(article.date || "");
+  const ageHours = Number.isNaN(date.getTime()) ? 24 : Math.max(0, (Date.now() - date.getTime()) / 3600000);
+  const freshness = Math.max(0, 18 - ageHours * 1.4);
+  return Math.round(score * 8 + boost + freshness);
+}
+
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
