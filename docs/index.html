@@ -480,6 +480,9 @@
       display: grid;
       gap: 10px;
     }
+    .feed.feed-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .category-section {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -622,6 +625,19 @@
       gap: 6px;
       align-items: center;
     }
+    .ai-pick-points {
+      margin: 4px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: .82rem;
+      line-height: 1.45;
+      list-style: disc;
+    }
+    .ai-pick-points li + li { margin-top: 2px; }
+    .ai-pick-points li.summary-pending {
+      list-style: none;
+      margin-left: -18px;
+    }
     .topic-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -756,7 +772,8 @@
       .card {
         grid-template-columns: 92px minmax(0, 1fr);
       }
-      .category-section {
+      .category-section,
+      .feed.feed-grid {
         grid-template-columns: 1fr;
       }
       .thumb { width: 92px; }
@@ -786,8 +803,8 @@
       <div class="topbar">
         <input class="search" id="search" type="search" placeholder="搜尋標題、摘要、來源">
         <div class="mode" id="modeNav">
-          <button data-mode="critical" class="active">🔥 優先</button>
-          <button data-mode="latest">🕒 最新</button>
+          <button data-mode="critical">🔥 優先</button>
+          <button data-mode="latest" class="active">🕒 最新</button>
           <button data-mode="balanced">⚖️ 綜合</button>
         </div>
         <div class="font-tools" id="fontTools" aria-label="font size">

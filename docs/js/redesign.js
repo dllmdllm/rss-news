@@ -16,8 +16,8 @@
     category: "全部",
     source: "",
     topic: "",
-    openCategories: new Set(["新聞", "國際", "娛樂"]),
-    mode: "critical",
+    openCategories: new Set(),
+    mode: "latest",
     query: "",
   };
 
@@ -316,10 +316,13 @@
   }
 
   function renderFeed(list) {
+    const feed = $("feed");
     if (!state.topic && state.category === "全部" && !state.source) {
+      feed.classList.remove("feed-grid");
       renderCategorySections();
     } else {
-      $("feed").innerHTML = list.slice(state.topic ? 0 : 1, 31).map(card).join("");
+      feed.classList.add("feed-grid");
+      feed.innerHTML = list.slice(state.topic ? 0 : 1, 31).map(card).join("");
     }
     $("resultCount").textContent = `${list.length} 篇`;
     $("feedTitle").textContent = state.source
@@ -328,19 +331,31 @@
   }
 
   function renderAiPanel() {
-    const critical = sortedArticles(state.articles).slice(0, 10);
-    const allScores = state.articles.map(criticalScore).filter((score) => Number.isFinite(score));
+    // When the user has narrowed to a category / source / topic, the AI
+    // workstation should reflect that scope — otherwise the priority list
+    // keeps showing global picks the user has filtered away.
+    const filterActive = state.category !== "全部" || state.source || state.topic;
+    const pool = filterActive ? filteredArticles() : state.articles;
+    const critical = (filterActive
+      ? [...pool].sort((a, b) => criticalScore(b) - criticalScore(a))
+      : sortedArticles(pool)
+    ).slice(0, 10);
+    const allScores = pool.map(criticalScore).filter((score) => Number.isFinite(score));
     const minScore = allScores.length ? Math.min(...allScores) : 0;
     const maxScore = allScores.length ? Math.max(...allScores) : 0;
     $("priorityRange").textContent = allScores.length ? `範圍 ${minScore}-${maxScore}` : "";
-    $("criticalList").innerHTML = critical.map((article) => `
+    $("criticalList").innerHTML = critical.map((article) => {
+      const points = pointsHtml(article, 3);
+      return `
       <a class="ai-pick" href="${articleUrl(article)}">
         <span class="ai-rank-row">
           <span>${esc(metaLine(article))}</span>
           ${priorityBadge(article)}
         </span>
         <strong>${esc(article.title || "")}</strong>
-      </a>`).join("");
+        ${points ? `<ul class="ai-pick-points">${points}</ul>` : ""}
+      </a>`;
+    }).join("");
 
     $("topicGrid").innerHTML = (state.topics || []).slice(0, 6).map((topic) => `
       <button class="topic ${state.topic === topic.topic ? "active" : ""}" data-topic="${esc(topic.topic || "")}" type="button">
