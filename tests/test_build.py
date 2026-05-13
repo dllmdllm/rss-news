@@ -299,6 +299,53 @@ def test_save_json_keeps_distinct_images_with_different_filenames(tmp_path, monk
     assert '<img src="https://example.com/genuinely_different.jpg"' in saved["content"]
 
 
+def test_save_json_dedupes_short_filename_variant(tmp_path, monkeypatch):
+    # 星島頭條 / hkhl.hk style: same source image at two CDN variants with a
+    # short filename like "0_2.png". The earlier 8-char minimum let these slip
+    # through and rendered the hero twice on the article page.
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    content = (
+        '<html><body>'
+        '<img src="https://image.hkhl.hk/f/1024p0/0x0/abc/2026-05/0_2.png">'
+        '<p>body</p></body></html>'
+    )
+    articles = [_article("hkhlshort", content=content)]
+    articles[0]["thumbnail"] = "https://image.hkhl.hk/f/1200p0/0x0/xyz/2026-05/0_2.png"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "hkhlshort.json").read_text(encoding="utf-8"))
+    assert "<img" not in saved["content"]
+
+
+def test_save_json_does_not_dedupe_on_bare_numeric_filename(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    content_dir = data_dir / "content"
+
+    monkeypatch.setattr(build, "DATA_DIR", data_dir)
+    monkeypatch.setattr(build, "CONTENT_DIR", content_dir)
+
+    # "1.jpg" appears across many unrelated articles; never treat it as a
+    # signal of the-same-image.
+    content = (
+        '<html><body>'
+        '<img src="https://siteA.example/path/1.jpg">'
+        '<p>body</p></body></html>'
+    )
+    articles = [_article("bareindex", content=content)]
+    articles[0]["thumbnail"] = "https://siteB.example/other/1.jpg"
+
+    build.save_json(articles, {})
+
+    saved = json.loads((content_dir / "bareindex.json").read_text(encoding="utf-8"))
+    assert "<img" in saved["content"]
+
+
 def test_save_json_does_not_dedupe_on_generic_filenames(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"

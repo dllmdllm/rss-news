@@ -627,9 +627,9 @@ def _canonical_image_url(url: str | None) -> str:
 # Distinctive last-path-segment match: many CDNs (e.g. hkhl.hk for 星島頭條,
 # mingpao) serve the same source image at multiple resolutions / signed paths,
 # so the URLs differ but the trailing filename is identical. Treat anything
-# with the same non-trivial filename as the same image. Filenames shorter
-# than 8 chars or matching purely-numeric / generic placeholders are ignored
-# to avoid false positives like "1.jpg" or "logo.png".
+# with the same non-trivial filename as the same image. Common generic
+# names ("logo.png", "image.jpg") and bare-index stems ("1.jpg") are filtered
+# out to avoid false positives.
 _GENERIC_IMAGE_NAMES = {
     "image.jpg", "image.png", "image.jpeg", "image.webp",
     "cover.jpg", "cover.png", "default.jpg",
@@ -642,9 +642,14 @@ def _image_basename(url: str) -> str:
         return ""
     path = urlparse(url).path
     name = path.rsplit("/", 1)[-1].lower()
-    if not name or len(name) < 8:
+    if not name or "." not in name:
         return ""
     if name in _GENERIC_IMAGE_NAMES:
+        return ""
+    stem = name.rsplit(".", 1)[0]
+    # Block bare numeric / one-char stems ("1.jpg", "a.png") that often
+    # repeat across articles. "0_2", "1aa", and so on are fine.
+    if len(stem) < 2 or stem.isdigit():
         return ""
     return name
 
