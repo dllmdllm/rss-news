@@ -228,7 +228,7 @@
 
     .hero {
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
       gap: 14px;
       align-items: start;
       margin-bottom: 16px;
@@ -350,68 +350,6 @@
     p.summary-pending {
       margin: 6px 0 0;
     }
-    .lead-extras {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      padding: 0 16px 16px;
-      align-items: start;
-    }
-    .lead-extra {
-      border: 1px solid var(--line);
-      border-top: 3px solid var(--cat-color);
-      background: var(--panel-2);
-      border-radius: 6px;
-      overflow: hidden;
-      display: grid;
-      gap: 5px;
-      align-content: start;
-    }
-    .lead-extra-media {
-      aspect-ratio: 16 / 9;
-      background: #232932;
-      overflow: hidden;
-    }
-    .lead-extra-media img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .lead-extra-copy {
-      display: grid;
-      gap: 5px;
-      padding: 9px;
-    }
-    .lead-extra span {
-      color: var(--muted);
-      font-size: .82rem;
-    }
-    .lead-extra strong {
-      font-size: .92rem;
-      line-height: 1.35;
-    }
-    .lead-extra-summary {
-      color: #c8d0d8;
-      font-size: .82rem;
-      line-height: 1.35;
-    }
-    .lead-extra-summary ul {
-      margin: 0;
-      padding-left: 17px;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .lead-extra-summary p {
-      margin: 0;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-
     .brief {
       padding: 14px;
       display: grid;
@@ -753,7 +691,6 @@
       .hero { grid-template-columns: 1fr; }
       .lead a { min-height: 0; }
       .lead-media { aspect-ratio: 16 / 9; }
-      .lead-extras { grid-template-columns: 1fr; }
       .ai {
         position: static;
         height: auto;

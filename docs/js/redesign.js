@@ -175,34 +175,6 @@
     const image = lead.thumbnail
       ? `<img src="${esc(lead.thumbnail)}" alt="">`
       : "";
-    // Hide the cross-category "spotlight" extras when a filter is active.
-    // They used to always sample from 國際 / 娛樂 / 科技 across the full feed,
-    // so picking a single category (e.g. 科技) showed the lead 科技 article
-    // followed by unrelated cross-category extras, making it look like the
-    // filter only matched one article. The full filtered list is rendered
-    // below by renderFeed anyway.
-    const filterActive = state.category !== "全部" || state.source || state.topic;
-    const extraArticles = filterActive
-      ? []
-      : ["國際", "娛樂", "科技"]
-          .map((category) => sortedArticles(state.articles.filter((article) => article.category === category && article.id !== lead.id))[0])
-          .filter(Boolean);
-    const extras = extraArticles
-      .map((article) => {
-        const image = article.thumbnail
-          ? `<img src="${esc(article.thumbnail)}" alt="">`
-          : "";
-        return `<a class="lead-extra ${categoryClass(article.category)}" href="${articleUrl(article)}">
-        <div class="lead-extra-media">${image}</div>
-        <div class="lead-extra-copy">
-          <span>${categoryChip(article.category)} ${esc(timeLabel(article))}</span>
-          ${priorityBadge(article)}
-          <strong>${esc(article.title || "")}</strong>
-          <div class="lead-extra-summary">${compactSummaryHtml(article, 3)}</div>
-        </div>
-      </a>`;
-      })
-      .join("");
     $("leadStory").innerHTML = `
       <a href="${articleUrl(lead)}">
         <div class="lead-media">${image}</div>
@@ -217,8 +189,7 @@
           <p class="summary">${esc(summaryText(lead, 180))}</p>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
         </div>
-      </a>
-      <div class="lead-extras">${extras}</div>`;
+      </a>`;
   }
 
   function briefItem(article, label) {
@@ -250,7 +221,7 @@
           <span>${esc(timeLabel(article))}</span>
         </div>
         <h3>${esc(article.title || "")}</h3>
-        <ul class="card-points">${pointsHtml(article, 3)}</ul>
+        <ul class="card-points">${pointsHtml(article, 5)}</ul>
       </div>
       <div class="rank">${priorityBadge(article)}</div>
     </a>`;
