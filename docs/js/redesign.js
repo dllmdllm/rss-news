@@ -35,12 +35,20 @@
   }
 
   function summaryIsTitleFallback(article) {
+    // Real AI output is multi-bullet (newline-separated or multiple ・).
+    // The placeholder shape is exactly one line: "・" + title[:80] or just
+    // the bare title. Asymmetric s.startsWith(t) was hiding legitimate AI
+    // summaries that happen to lead with the title sentence.
     if (!article || !article.summary || !article.title) return false;
+    const raw = String(article.summary).trim();
+    if (!raw) return false;
+    const bulletCount = (raw.match(/・/g) || []).length;
+    if (raw.includes("\n") || bulletCount >= 2) return false;
     const norm = (s) => String(s).replace(/^・/, "").replace(/\s+/g, "").trim();
-    const s = norm(article.summary);
+    const s = norm(raw);
     const t = norm(article.title);
     if (!s || !t) return false;
-    return s === t || (s.length >= 12 && (t.startsWith(s) || s.startsWith(t)));
+    return s === t || (s.length >= 8 && t.startsWith(s));
   }
 
   const PENDING_AI_HTML = `<p class="summary-pending">🤖 AI 摘要稍後補上</p>`;
