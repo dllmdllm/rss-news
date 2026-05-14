@@ -311,3 +311,62 @@ def test_scrape_one_uses_oncc_parser_before_trafilatura(monkeypatch):
     assert "東網第一段完整內文" in out["content"]
     assert 'src="https://hk.on.cc/a.jpg"' in out["content"]
     assert out["content_quality"]["fallback"] == "none"
+
+
+def test_build_hk01_content_skips_description_when_it_prefixes_first_block():
+    """HK01 sometimes ships a truncated `description` whose text is a strict
+    prefix of the first text block (e.g. cut mid-sentence). In that case the
+    description must be dropped, otherwise readers see the same lead twice
+    (once truncated, once full)."""
+    payload = {
+        "props": {
+            "initialProps": {
+                "pageProps": {
+                    "article": {
+                        "description": "盧惠光曾在泰拳界聲名大振，更在1989年當上龍虎武師，與",
+                        "blocks": [
+                            {
+                                "blockType": "text",
+                                "htmlTokens": [[
+                                    {"type": "text", "content": "盧惠光曾在泰拳界聲名大振，更在1989年當上龍虎武師，與成龍合作無間。"},
+                                ]],
+                            },
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    import json as _json
+    html = f'<html><body><script id="__NEXT_DATA__" type="application/json">{_json.dumps(payload, ensure_ascii=False)}</script></body></html>'
+    out = scrape._build_hk01_content(html)
+    assert out is not None
+    assert out.count("盧惠光曾在泰拳界聲名大振") == 1
+    assert "與成龍合作無間" in out
+
+
+def test_build_hk01_content_keeps_description_when_distinct_from_blocks():
+    payload = {
+        "props": {
+            "initialProps": {
+                "pageProps": {
+                    "article": {
+                        "description": "獨家專訪，深入剖析事件全貌。",
+                        "blocks": [
+                            {
+                                "blockType": "text",
+                                "htmlTokens": [[
+                                    {"type": "text", "content": "事件起因要追溯至上週的會議。"},
+                                ]],
+                            },
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    import json as _json
+    html = f'<html><body><script id="__NEXT_DATA__" type="application/json">{_json.dumps(payload, ensure_ascii=False)}</script></body></html>'
+    out = scrape._build_hk01_content(html)
+    assert "獨家專訪" in out
+    assert "事件起因要追溯" in out

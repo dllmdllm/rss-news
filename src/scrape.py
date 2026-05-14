@@ -103,8 +103,27 @@ def _build_hk01_content(html: str) -> str | None:
         return None
 
     parts: list[str] = []
+    # HK01's `description` is usually a teaser paragraph that does NOT appear
+    # in `blocks` — but on some articles it's a truncated prefix of the first
+    # text block (e.g. cut mid-sentence at "...與"). Skip the description in
+    # that case to avoid showing it twice. We compare against the first text
+    # paragraph found in blocks.
+    first_block_text = ""
+    for block in blocks:
+        if block.get("blockType") == "text":
+            for para in block.get("htmlTokens") or []:
+                txt = _hk01_tokens_to_text(para).strip()
+                if txt:
+                    first_block_text = txt
+                    break
+        if first_block_text:
+            break
     if description:
-        parts.append(f"<p>{_html_escape(description)}</p>")
+        desc_norm = re.sub(r"\s+", "", description)
+        first_norm = re.sub(r"\s+", "", first_block_text)
+        is_prefix = bool(desc_norm) and bool(first_norm) and first_norm.startswith(desc_norm)
+        if not is_prefix:
+            parts.append(f"<p>{_html_escape(description)}</p>")
     def _emit_image(img: dict):
         url = (img or {}).get("cdnUrl")
         if not url:
