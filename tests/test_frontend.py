@@ -718,8 +718,8 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
         assert 'id="feed"' in html
         assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in html
         assert "renderCategorySections" in redesign_source
-        assert ")).slice(0, 4)" in redesign_source
-        assert "compactSummaryHtml" in redesign_source
+        assert "CATEGORY_BASE_PER_GROUP = 4" in redesign_source
+        assert "fillCategoriesToMatchBrief" in redesign_source
         return
     assert ".card.cluster-stack" in html
     assert ".card.cluster-expanded" in html

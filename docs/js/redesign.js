@@ -227,9 +227,12 @@
     </a>`;
   }
 
-  function renderCategorySections() {
-    const groups = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
-    const sections = groups.map((group) => {
+  const CATEGORY_GROUPS = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
+  const CATEGORY_BASE_PER_GROUP = 4;
+  const CATEGORY_MAX_PER_GROUP = 12;
+
+  function renderCategorySections(perGroup = CATEGORY_BASE_PER_GROUP) {
+    const sections = CATEGORY_GROUPS.map((group) => {
       const rows = sortedArticles(state.articles.filter((article) => {
         if (article.category !== group) return false;
         if (state.query) {
@@ -238,7 +241,7 @@
           return haystack.includes(query);
         }
         return true;
-      })).slice(0, 4);
+      })).slice(0, perGroup);
       if (!rows.length) return "";
       return `<section class="category-section ${categoryClass(group)}">
         <div class="category-section-head">
@@ -249,6 +252,32 @@
       </section>`;
     }).join("");
     $("feed").innerHTML = sections;
+  }
+
+  // Grow 分類重點 until its column height matches the brief column on the
+  // right. Without this, a tall brief sticks out below the lead while the
+  // category grid ends short, leaving the brief column visually orphaned.
+  function fillCategoriesToMatchBrief() {
+    if (state.topic || state.category !== "全部" || state.source) return;
+    if (window.matchMedia && !window.matchMedia("(min-width: 901px)").matches) return;
+    const brief = document.querySelector(".brief");
+    const feed = $("feed");
+    if (!brief || !feed) return;
+    let perGroup = CATEGORY_BASE_PER_GROUP;
+    let lastFeedH = -1;
+    // Iterate a few times, expanding the per-category cap until the category
+    // grid is at least as tall as the brief (within 60px tolerance). Bail out
+    // early if a re-render produces no growth — that means every category is
+    // already saturated and adding more would have no effect.
+    for (let i = 0; i < 6 && perGroup < CATEGORY_MAX_PER_GROUP; i++) {
+      const briefH = brief.offsetHeight;
+      const feedH = feed.offsetHeight;
+      if (feedH >= briefH - 60) break;
+      if (feedH === lastFeedH) break;
+      lastFeedH = feedH;
+      perGroup += 2;
+      renderCategorySections(perGroup);
+    }
   }
 
   function renderFeed(list) {
@@ -325,6 +354,8 @@
     renderDailyBrief();
     renderFeed(list);
     renderAiPanel(list);
+    // Defer until layout settles, otherwise offsetHeight reads stale numbers.
+    requestAnimationFrame(fillCategoriesToMatchBrief);
   }
 
   function applyFontSize(size) {
