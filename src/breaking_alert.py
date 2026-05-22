@@ -28,8 +28,10 @@ def _load_state() -> dict:
     if STATE_PATH.exists():
         try:
             return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as exc:
+            # Silent failure here re-alerts every already-notified cluster on
+            # next build — log so corrupt state is at least visible.
+            print(f"[breaking] state load failed: {exc!r}")
     return {"alerted": {}}
 
 
@@ -120,31 +122,29 @@ async def send_breaking_alerts(articles: list) -> None:
         _save_state(state)   # ensure the file always exists
         return
 
-    state   = _load_state()
-    alerted = state.get("alerted") or {}
+    alerted  = state.get("alerted") or {}
     new_ones = [b for b in breaking if b["cid"] not in alerted]
-    if not new_ones:
-        return
 
-    async with aiohttp.ClientSession() as session:
-        for b in new_ones:
-            sources_str = "、".join(b["sources"][:5])
-            text = (
-                f"🔴 <b>突發</b>：{b['headline']}\n"
-                f"來源：{sources_str}"
-            )
-            try:
-                status = await _send_telegram(session, text)
-                if 200 <= status < 300:
-                    alerted[b["cid"]] = b["date"]
-                    print(f"[breaking] Alerted: {b['headline'][:50]}")
-                else:
-                    print(f"[breaking] Telegram returned {status}")
-            except Exception as exc:
-                print(f"[breaking] Send failed: {exc!r}")
-            await _send_worker_push(session, b["headline"], b["article_id"])
+    if new_ones:
+        async with aiohttp.ClientSession() as session:
+            for b in new_ones:
+                sources_str = "、".join(b["sources"][:5])
+                text = (
+                    f"🔴 <b>突發</b>：{b['headline']}\n"
+                    f"來源：{sources_str}"
+                )
+                try:
+                    status = await _send_telegram(session, text)
+                    if 200 <= status < 300:
+                        alerted[b["cid"]] = b["date"]
+                        print(f"[breaking] Alerted: {b['headline'][:50]}")
+                    else:
+                        print(f"[breaking] Telegram returned {status}")
+                except Exception as exc:
+                    print(f"[breaking] Send failed: {exc!r}")
+                await _send_worker_push(session, b["headline"], b["article_id"])
 
-    # Prune entries older than TTL so state file doesn't grow unboundedly.
+    # Always prune so state doesn't grow unboundedly, even when no new alerts.
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=STATE_TTL_HOURS)).isoformat()
     alerted    = {cid: ts for cid, ts in alerted.items() if ts > cutoff_str}
     state["alerted"] = alerted

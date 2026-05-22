@@ -12,7 +12,12 @@ from pathlib import Path
 
 import aiohttp
 
-from src.analyse import MINIMAX_API_KEY, MINIMAX_MODEL, _should_retry, _strip_fences
+from src.analyse import _strip_fences
+from src.minimax_client import (
+    MINIMAX_API_KEY,
+    post_messages,
+    should_retry as _should_retry,
+)
 
 OUTPUT_PATH          = Path(__file__).parent.parent / "docs" / "data" / "entities.json"
 ENTITY_MIN_ARTICLES  = 3
@@ -128,27 +133,13 @@ async def _summarise_entity(
         total_waited = 0.0
         for attempt in range(ENTITY_MAX_ATTEMPTS):
             try:
-                async with session.post(
-                    "https://api.minimax.io/anthropic/v1/messages",
-                    headers={
-                        "x-api-key":         MINIMAX_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type":      "application/json",
-                    },
-                    json={
-                        "model":      MINIMAX_MODEL,
-                        "max_tokens": 200,
-                        "system":     ENTITY_SUMMARY_PROMPT,
-                        "messages":   [{"role": "user", "content": user_msg}],
-                    },
-                    timeout=aiohttp.ClientTimeout(total=30, connect=15),
-                ) as resp:
-                    status = resp.status
-                    data   = await resp.json(content_type=None)
-                err    = data.get("error") or {}
-                blocks = data.get("content") or []
-                raw    = next(
-                    (b.get("text", "").strip() for b in blocks if b.get("type") == "text"), ""
+                raw, err, status = await post_messages(
+                    session,
+                    system=ENTITY_SUMMARY_PROMPT,
+                    user_text=user_msg,
+                    max_tokens=200,
+                    timeout=30,
+                    connect=15,
                 )
                 if _should_retry(err, status) and attempt < ENTITY_MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 1), 20.0)

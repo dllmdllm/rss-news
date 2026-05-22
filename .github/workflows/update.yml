@@ -105,15 +105,25 @@ jobs:
           echo "push failed after 3 attempts — see output above"
           exit 1
 
-      # Optional: notify Slack on build failure. Enable by uncommenting and
-      # adding a SLACK_WEBHOOK_URL secret (Incoming Webhook URL from Slack
-      # App → Features → Incoming Webhooks).
-      # - name: Notify Slack on failure
-      #   if: failure()
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      #   run: |
-      #     $body = @{
-      #       text = "rss-news build failed — run $env:GITHUB_RUN_ID on $env:GITHUB_REF"
-      #     } | ConvertTo-Json
-      #     Invoke-RestMethod -Uri $env:SLACK_WEBHOOK_URL -Method Post -Body $body -ContentType 'application/json'
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: "1122095129"
+        run: |
+          $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $text = "❌ rss-news build failed`nrun #$env:GITHUB_RUN_NUMBER on $env:GITHUB_REF_NAME`n$runUrl"
+          $body = @{
+            chat_id = $env:TELEGRAM_CHAT_ID
+            text    = $text
+          } | ConvertTo-Json -Compress
+          try {
+            Invoke-RestMethod `
+              -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
+              -Method Post `
+              -Body $body `
+              -ContentType 'application/json; charset=utf-8' | Out-Null
+            Write-Host "telegram notify sent"
+          } catch {
+            Write-Host "telegram notify failed: $_"
+          }

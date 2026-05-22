@@ -22,10 +22,9 @@ from src.feeds import (
     RSS_FEEDS,
     SIMPLIFIED_SOURCES,
 )
+from src.minimax_client import MINIMAX_API_KEY, post_messages
 
 ARTICLE_MAX_AGE_HOURS = 30
-MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 
 # Conditional-request cache: maps feed URL → {"etag": ..., "last_modified": ...}
 # Saves bandwidth when the upstream feed has not changed (HTTP 304 path).
@@ -62,36 +61,25 @@ async def _translate_titles_minimax(
         f"{numbered}"
     )
     try:
-        async with session.post(
-            "https://api.minimax.io/anthropic/v1/messages",
-            headers={
-                "x-api-key": MINIMAX_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": MINIMAX_MODEL,
-                # MiniMax-M2.7 prepends an internal "thinking" segment before the
-                # JSON answer. If the budget truncates the thinking, the answer
-                # never arrives and _parse_title_translations returns None,
-                # causing us to silently fall back to English titles. Budget
-                # generously so the final array always fits.
-                "max_tokens": max(1200, len(titles) * 200),
-                "system": "You are a concise news title translator. Output valid JSON only.",
-                "messages": [{"role": "user", "content": user_text}],
-            },
-            timeout=aiohttp.ClientTimeout(total=30),
-        ) as resp:
-            data = await resp.json(content_type=None)
+        # MiniMax-M2.7 prepends an internal "thinking" segment before the JSON
+        # answer. If the budget truncates the thinking, the answer never arrives
+        # and _parse_title_translations returns None, causing us to silently
+        # fall back to English titles. Budget generously so the final array
+        # always fits.
+        raw, err, _status = await post_messages(
+            session,
+            system="You are a concise news title translator. Output valid JSON only.",
+            user_text=user_text,
+            max_tokens=max(1200, len(titles) * 200),
+            timeout=30,
+        )
     except Exception as exc:
         print(f"[WARN] MiniMax title translation failed: {exc!r}")
         return titles
 
-    if data.get("error"):
-        print(f"[WARN] MiniMax title translation error: {data.get('error')!r}")
+    if err:
+        print(f"[WARN] MiniMax title translation error: {err!r}")
         return titles
-    blocks = data.get("content") or []
-    raw = next((b.get("text", "").strip() for b in blocks if b.get("type") == "text"), "")
     translated = _parse_title_translations(raw, len(titles)) if raw else None
     if not translated:
         print(f"[WARN] title translation parse failed ({len(titles)} titles); "
@@ -950,10 +938,21 @@ async def retranslate_english_titles(articles: list) -> None:
         # budget. Chunks run concurrently so one slow straggler does not
         # serialize the whole retrofix pass.
         chunks = [titles[i:i + 10] for i in range(0, len(titles), 10)]
+        # return_exceptions=True so one chunk's failure (network blip, parse
+        # error) doesn't cancel the others. _translate_titles_minimax already
+        # returns the original titles on internal error; only an unexpected
+        # crash bubbles up here, in which case we fall back to originals too.
         results = await asyncio.gather(
-            *[_translate_titles_minimax(session, chunk) for chunk in chunks]
+            *[_translate_titles_minimax(session, chunk) for chunk in chunks],
+            return_exceptions=True,
         )
-        translated: list[str] = [t for out in results for t in out]
+        translated: list[str] = []
+        for chunk, out in zip(chunks, results):
+            if isinstance(out, BaseException):
+                print(f"[fetch] title translation chunk failed: {out!r}")
+                translated.extend(chunk)
+            else:
+                translated.extend(out)
     changed = 0
     for article, new_title in zip(pending, translated):
         if new_title and new_title != article["title"]:
@@ -969,13 +968,20 @@ async def fetch_all() -> tuple[list, dict]:
     connector  = aiohttp.TCPConnector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks   = [_fetch_one(session, f, cutoff, http_cache) for f in RSS_FEEDS]
-        results = await asyncio.gather(*tasks)
+        # return_exceptions=True so a single feed crash (TLS error, parser
+        # blow-up) doesn't cancel every other feed in flight.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
     source_stats: dict[str, dict] = {}
     articles: list = []
     failed_sources     = 0
     not_modified_count = 0
-    for feed_info, (batch, error, not_modified) in zip(RSS_FEEDS, results):
+    for feed_info, result in zip(RSS_FEEDS, results):
+        if isinstance(result, BaseException):
+            print(f"[fetch] {feed_info['name']} crashed: {result!r}")
+            batch, error, not_modified = [], str(result), False
+        else:
+            batch, error, not_modified = result
         source_stats[feed_info["name"]] = {
             "category":     feed_info["category"],
             "count":        len(batch),

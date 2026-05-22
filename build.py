@@ -983,11 +983,17 @@ async def main():
         _tlog("scrape outer timeout — using partial")
     _tlog(f"scrape done {time.monotonic()-t:.1f}s")
 
-    # --- analyse (hard cap 180s) ---
+    # --- analyse (hard cap 280s) ---
+    # 540+ articles ÷ batch=5 ÷ concurrency=5 ≈ 22 batch-rounds. At 6-10s per
+    # round (incl. occasional retry backoff) the floor is ~130s and the ceiling
+    # ~220s, so 180s was clipping the tail and dropping summaries. 280s leaves
+    # headroom for slow MiniMax days without endangering the 780s outer cap
+    # (post-analyse stages total ~250s, so 280+250 = 530s + scrape/fetch slack
+    # stays well inside 780s).
     t = time.monotonic()
     _tlog("analyse start")
     try:
-        articles = await asyncio.wait_for(analyse_all(articles), timeout=180)
+        articles = await asyncio.wait_for(analyse_all(articles), timeout=280)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("analyse timed out — using partial")
         _ensure_analysis_defaults(articles)

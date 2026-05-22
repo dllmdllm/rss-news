@@ -14,18 +14,21 @@ from pathlib import Path
 
 import aiohttp
 
-from src.analyse import (
+from src.analyse import _strip_fences
+from src.minimax_client import (
     MINIMAX_API_KEY,
-    MINIMAX_MODEL,
-    _should_retry,
-    _strip_fences,
+    post_messages,
+    should_retry as _should_retry,
 )
 
 CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "panel_digests.json"
 # This file doubles as both cache (signature/version per entry) and the
 # frontend-readable artefact (just look up by cluster_id and pull `.digest`).
 
-DIGEST_CONCURRENCY = 3            # smaller than per-article — clusters are heavier
+DIGEST_CONCURRENCY = 5            # 7 typical clusters at 3-concurrent took ~110s
+                                  # in 3 rounds; 5-concurrent fits in 2 rounds.
+                                  # Still well under the 500 RPM token plan cap
+                                  # since panel runs sequentially after analyse.
 DIGEST_MAX_ATTEMPTS = 3
 DIGEST_BACKOFF_BUDGET = 45.0
 DIGEST_MIN_CLUSTER_SIZE = 4       # clusters smaller than this only qualify via score
@@ -206,30 +209,12 @@ async def _digest_one(
         total_waited = 0.0
         for attempt in range(DIGEST_MAX_ATTEMPTS):
             try:
-                # Cluster digest needs a different system prompt than the
-                # per-article schema in analyse.py — call the API directly.
-                async with session.post(
-                    "https://api.minimax.io/anthropic/v1/messages",
-                    headers={
-                        "x-api-key":         MINIMAX_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type":      "application/json",
-                    },
-                    json={
-                        "model":      MINIMAX_MODEL,
-                        "max_tokens": 1100,
-                        "system":     PANEL_PROMPT,
-                        "messages":   [{"role": "user", "content": user}],
-                    },
-                    timeout=aiohttp.ClientTimeout(total=45, connect=20),
-                ) as resp:
-                    status = resp.status
-                    data = await resp.json(content_type=None)
-                err = data.get("error") or {}
-                blocks = data.get("content") or []
-                raw = next(
-                    (b.get("text", "").strip() for b in blocks if b.get("type") == "text"),
-                    ""
+                raw, err, status = await post_messages(
+                    session,
+                    system=PANEL_PROMPT,
+                    user_text=user,
+                    max_tokens=1100,
+                    timeout=45,
                 )
                 if _should_retry(err, status) and attempt < DIGEST_MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), DIGEST_BACKOFF_BUDGET - total_waited)
@@ -310,7 +295,12 @@ async def generate_panel_digests(articles: list) -> dict:
         async with aiohttp.ClientSession() as session:
             tasks = [_digest_one(session, cid, members, sem, new_results)
                      for cid, members, _sig in pending]
-            await asyncio.gather(*tasks)
+            # return_exceptions=True so one cluster's failure doesn't cancel
+            # siblings; successful digests are still written via the `out` dict.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        for (cid, _members, _sig), r in zip(pending, results):
+            if isinstance(r, BaseException):
+                print(f"[digest] {cid} crashed: {r!r}")
 
         for cid, _members, sig in pending:
             digest = new_results.get(cid)

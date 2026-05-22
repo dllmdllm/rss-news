@@ -253,6 +253,13 @@ def _oncc_caption_for_image(img) -> str:
     return _normalise_oncc_text(img.get("alt") or img.get("title") or "")
 
 
+# One <img> contributes ~600 "character equivalents" when ranking candidate
+# article containers — empirically tuned so an image-heavy gallery node still
+# beats a slightly longer adjacent paragraph wrapper. Set well above typical
+# caption length (~150 chars) so a stray figure caption doesn't tip the scale.
+_ONCC_IMAGE_SCORE_WEIGHT = 600
+
+
 def _oncc_best_container(soup: BeautifulSoup):
     selector_nodes = []
     for selector in _ONCC_CONTAINER_SELECTORS:
@@ -276,7 +283,7 @@ def _oncc_best_container(soup: BeautifulSoup):
             unique.append(node)
     return max(
         unique or candidates,
-        key=lambda node: len(_clean_oncc_text(node.get_text(" ", strip=True))) + 600 * len(node.find_all("img")),
+        key=lambda node: len(_clean_oncc_text(node.get_text(" ", strip=True))) + _ONCC_IMAGE_SCORE_WEIGHT * len(node.find_all("img")),
     )
 
 
@@ -564,8 +571,14 @@ def _extract_noscript_imgs(html: str) -> str:
     )
 
 
+# 4 KB is enough to hit <head> + the start of <body> on a Cloudflare interstitial
+# or 403 page (where the block phrase always appears). Avoids lower-casing the
+# whole article body when it's actually a normal response.
+_BLOCK_SAMPLE_CHARS = 4000
+
+
 def _is_blocked(html: str) -> bool:
-    sample = html[:4000].lower()
+    sample = html[:_BLOCK_SAMPLE_CHARS].lower()
     return any(phrase in sample for phrase in _BLOCK_PHRASES)
 
 

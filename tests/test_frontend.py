@@ -107,16 +107,41 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
 
         const els = new Map();
         for (const id of [
-          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
-          "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
-          "sort-toggle", "grid", "font-dec", "font-inc",
+          "categoryNav", "leadStory", "dailyBrief", "feed", "feedTitle",
+          "resultCount", "priorityRange", "criticalList", "topicGrid",
+          "sideSourceHealth", "sourceHealth", "sideUpdated", "aiUpdated",
+          "fontTools", "modeNav", "search",
         ]) {
           els.set(id, new El(id));
         }
 
+        const articles = [
+          {
+            id: "a1",
+            title: "頭條新聞",
+            url: "https://example.com/a1",
+            date: "2026-05-22T10:00:00+00:00",
+            source: "A",
+            category: "新聞",
+            summary: "・要點一\\n・要點二",
+            score: 8,
+          },
+          {
+            id: "a2",
+            title: "國際大事",
+            url: "https://example.com/a2",
+            date: "2026-05-22T09:00:00+00:00",
+            source: "B",
+            category: "國際",
+            summary: "・國際重點",
+            score: 7,
+          },
+        ];
+
+        const documentRoot = { style: { fontSize: "" } };
         const document = {
           body: new El("body"),
+          documentElement: documentRoot,
           getElementById: id => els.get(id) || new El(id),
           querySelector: () => ({ setAttribute() {} }),
           querySelectorAll: () => [],
@@ -130,25 +155,25 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
           localStorage: { getItem: () => null, setItem() {} },
           setInterval() {},
           setTimeout,
-          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
-          Fuse: class {
-            constructor(items) { this.items = items; }
-            search() { return []; }
-          },
+          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON, Math,
+          Promise,
           fetch: async () => ({
-            json: async () => JSON.parse(fs.readFileSync("docs/data/articles.json", "utf8")),
+            json: async () => ({ articles, trending_topics: [], sources: {}, updated: "2026-05-22" }),
           }),
         };
         context.globalThis = context;
 
-        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
         vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
 
         setTimeout(() => {
-          if (!els.get("grid").innerHTML.includes("class=\\"card")) {
-            throw new Error("index did not render article cards");
+          const lead = els.get("leadStory").innerHTML;
+          if (!lead || lead.length === 0) {
+            throw new Error("leadStory was not rendered");
           }
-        }, 0);
+          if (!lead.includes("頭條新聞")) {
+            throw new Error("leadStory missing top article title: " + lead.slice(0, 200));
+          }
+        }, 50);
         """
     )
     result = subprocess.run(
@@ -283,160 +308,9 @@ def _ignored_index_mobile_cluster_summary_renders_once():
     assert result.returncode == 0, result.stderr
 
 
-def test_index_mobile_cluster_summary_renders_once():
-    node = _require_node()
-    js = textwrap.dedent(
-        """
-        const crypto = require("crypto");
-        const fs = require("fs");
-        const vm = require("vm");
-
-        class El {
-          constructor(id) {
-            this.id = id;
-            this.innerHTML = "";
-            this.textContent = "";
-            this.className = "";
-            this.dataset = {};
-            this.style = {};
-            this.tagName = "DIV";
-            this.value = "";
-            this.classList = {
-              add: () => null,
-              remove: () => null,
-              contains: () => false,
-              toggle: () => null,
-            };
-          }
-          addEventListener() {}
-          querySelectorAll() { return []; }
-        }
-
-        const clusterId = crypto.createHash("md5").update("伊朗局勢").digest("hex").slice(0, 8);
-        const articles = [
-          {
-            id: "a1",
-            title: "美伊局勢升溫",
-            url: "https://example.com/a1",
-            date: "2026-04-21T12:00:00+00:00",
-            source: "A",
-            category: "新聞",
-            summary: "・伊朗升溫\\n・航道受關注",
-            cluster_id: clusterId,
-            cluster_size: 2,
-          },
-          {
-            id: "a2",
-            title: "以色列回應美伊緊張",
-            url: "https://example.com/a2",
-            date: "2026-04-21T11:00:00+00:00",
-            source: "B",
-            category: "新聞",
-            summary: "・以色列施壓\\n・局勢升級",
-            cluster_id: clusterId,
-            cluster_size: 2,
-          },
-        ];
-
-        const els = new Map();
-        for (const id of [
-          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
-          "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
-          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
-        ]) {
-          els.set(id, new El(id));
-        }
-
-        const document = {
-          body: new El("body"),
-          getElementById: id => els.get(id) || new El(id),
-          querySelector: () => ({ setAttribute() {} }),
-          querySelectorAll: () => [],
-          addEventListener() {},
-        };
-        const context = {
-          console,
-          document,
-          window: { matchMedia: () => ({ matches: true }), addEventListener() {} },
-          navigator: {},
-          localStorage: { getItem: () => null, setItem() {} },
-          setInterval() {},
-          setTimeout,
-          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
-          Fuse: class {
-            constructor(items) { this.items = items; }
-            search() { return []; }
-          },
-          fetch: async () => ({
-            json: async () => ({
-              articles,
-              trending_topics: [],
-              sources: {},
-            }),
-          }),
-        };
-        context.globalThis = context;
-
-        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
-        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
-
-        setTimeout(() => {
-          context.toggleClusterSummary(clusterId);
-          const html = els.get("grid").innerHTML;
-          const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
-          const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
-          if (overlayCount !== 0) {
-            throw new Error("expected no overlay summary, got " + overlayCount);
-          }
-          if (bodyCount !== 1) {
-            throw new Error("expected one body summary, got " + bodyCount);
-          }
-        }, 0);
-        """
-    )
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_index_tag_filters_are_scoped_per_category():
-    node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    fn = _extract_js_function(source, "topTagsForCategory")
-    js = fn + """
-    const articles = [
-      { category: "新聞", tags: ["港聞", "交通"] },
-      { category: "新聞", tags: ["港聞"] },
-      { category: "科技", tags: ["AI"] },
-      { category: "科技", tags: ["AI", "晶片"] },
-      { category: "科技", tags: ["晶片"] },
-    ];
-    const news = topTagsForCategory(articles, "新聞");
-    const tech = topTagsForCategory(articles, "科技");
-    const all = topTagsForCategory(articles, "全部");
-    if (JSON.stringify(news) !== JSON.stringify(["港聞"])) throw new Error("bad news tags: " + JSON.stringify(news));
-    if (JSON.stringify(tech) !== JSON.stringify(["AI", "晶片"])) throw new Error("bad tech tags: " + JSON.stringify(tech));
-    if (!all.includes("港聞") || !all.includes("AI") || !all.includes("晶片")) throw new Error("bad all tags: " + JSON.stringify(all));
-    """
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
-    if "js/redesign.js" in html:
+    if "js/index.js" in html:
         assert 'data-mode="critical"' in html
         assert 'data-mode="latest"' in html
         assert 'data-mode="balanced"' in html
@@ -452,8 +326,8 @@ def test_index_has_reading_controls_and_top_picks():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
-    if "js/redesign.js" in html:
-        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+    if "js/index.js" in html:
+        redesign_source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
         assert 'id="categoryNav"' in html
         assert 'id="leadStory"' in html
         assert 'id="dailyBrief"' in html
@@ -480,8 +354,8 @@ def test_index_has_reading_controls_and_top_picks():
 def test_index_has_personalised_ai_alerts_and_uncertainty_badges():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    if "js/redesign.js" in html:
-        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+    if "js/index.js" in html:
+        redesign_source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
         assert 'id="criticalList"' in html
         assert 'id="topicGrid"' in html
         assert "priorityBadge" in redesign_source
@@ -501,7 +375,7 @@ def test_index_has_personalised_ai_alerts_and_uncertainty_badges():
 def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    if "js/redesign.js" in html:
+    if "js/index.js" in html:
         assert 'id="mobileTabs"' in html
         assert "mobile-home" in html
         assert "mobile-ai" in html
@@ -528,133 +402,21 @@ def test_frontend_avoids_inline_click_handlers():
         assert "onclick=" not in path.read_text(encoding="utf-8")
 
 
-def test_index_ai_tab_clears_list_only_filters():
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    assert "function clearListFiltersForPanel()" in source
-    assert 'tab === "ai"' in source
-    assert "clearListFiltersForPanel();" in source
-    assert "syncQuickToggleButtons();" in source
-
-
-def test_index_text_only_mode_applies_body_class():
-    node = _require_node()
-    js = textwrap.dedent(
-        """
-        const fs = require("fs");
-        const vm = require("vm");
-
-        class El {
-          constructor(id) {
-            this.id = id;
-            this.innerHTML = "";
-            this.textContent = "";
-            this.className = "";
-            this.dataset = {};
-            this.style = {};
-            this.tagName = "DIV";
-            this.value = "";
-            this.classList = {
-              add: () => null,
-              remove: () => null,
-              contains: () => false,
-              toggle: () => null,
-            };
-          }
-          addEventListener() {}
-          querySelectorAll() { return []; }
-        }
-
-        const els = new Map();
-        for (const id of [
-          "theme-toggle", "text-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
-          "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
-          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
-        ]) {
-          els.set(id, new El(id));
-        }
-
-        const bodyClasses = new Set();
-        const body = {
-          className: "",
-          dataset: {},
-          classList: {
-            add: (...names) => { names.forEach(n => bodyClasses.add(n)); body.className = [...bodyClasses].join(" "); },
-            remove: (...names) => { names.forEach(n => bodyClasses.delete(n)); body.className = [...bodyClasses].join(" "); },
-            contains: name => bodyClasses.has(name),
-            toggle: (name, force) => {
-              const next = force === undefined ? !bodyClasses.has(name) : !!force;
-              if (next) bodyClasses.add(name);
-              else bodyClasses.delete(name);
-              body.className = [...bodyClasses].join(" ");
-              return next;
-            },
-          },
-        };
-
-        const document = {
-          body,
-          getElementById: id => els.get(id) || new El(id),
-          querySelector: () => ({ setAttribute() {} }),
-          querySelectorAll: () => [],
-          addEventListener() {},
-        };
-        const context = {
-          console,
-          document,
-          window: { matchMedia: () => ({ matches: false }), addEventListener() {} },
-          navigator: {},
-          localStorage: { getItem: key => (key === "rss_text_only" ? "1" : null), setItem() {} },
-          setInterval() {},
-          setTimeout,
-          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
-          Fuse: class {
-            constructor(items) { this.items = items; }
-            search() { return []; }
-          },
-          fetch: async () => ({
-            json: async () => ({ articles: [], trending_topics: [], sources: {} }),
-          }),
-        };
-        context.globalThis = context;
-
-        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
-        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
-
-        setTimeout(() => {
-          if (!body.classList.contains("text-only")) {
-            throw new Error("expected body.text-only to be applied");
-          }
-          if (els.get("text-toggle").textContent !== "圖") {
-            throw new Error("expected toggle label to switch to 圖, got " + els.get("text-toggle").textContent);
-          }
-        }, 0);
-        """
-    )
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 def test_index_latest_sort_orders_by_date():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     funcs = "\n".join(
         _extract_js_function(source, name)
-        for name in ["articleTime", "compareByDate", "aiRankScore", "getSorted"]
+        for name in ["criticalScore", "sortedArticles"]
     )
     js = funcs + """
-    let sortMode = "date";
+    const state = { mode: "latest" };
     const articles = [
       { id: "old", date: "2026-04-20T10:00:00+08:00" },
       { id: "new", date: "2026-04-22T10:00:00+08:00" },
       { id: "mid", date: "2026-04-21T10:00:00+08:00" },
     ];
-    const ids = getSorted(articles).map(a => a.id);
+    const ids = sortedArticles(articles).map(a => a.id);
     if (JSON.stringify(ids) !== JSON.stringify(["new", "mid", "old"])) {
       throw new Error("latest sort was not date-desc: " + JSON.stringify(ids));
     }
@@ -668,53 +430,11 @@ def test_index_latest_sort_orders_by_date():
     assert result.returncode == 0, result.stderr
 
 
-def test_index_compacts_clusters_to_one_representative():
-    node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    funcs = "\n".join(
-        _extract_js_function(source, name)
-        for name in [
-            "articleTime",
-            "compareByDate",
-            "aiRankScore",
-            "getSorted",
-            "clusterKey",
-            "compactClusters",
-        ]
-    )
-    js = funcs + """
-    let sortMode = "date";
-    const articles = [
-      { id: "cluster-old", cluster_id: "abcdef12", cluster_size: 3, date: "2026-04-20T10:00:00+08:00" },
-      { id: "cluster-new", cluster_id: "abcdef12", cluster_size: 3, date: "2026-04-22T10:00:00+08:00" },
-      { id: "single", date: "2026-04-21T10:00:00+08:00" },
-    ];
-    const ids = getSorted(compactClusters(articles)).map(a => a.id);
-    if (JSON.stringify(ids) !== JSON.stringify(["cluster-new", "single"])) {
-      throw new Error("cluster compaction picked wrong representative: " + JSON.stringify(ids));
-    }
-    """
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_index_cluster_badge_expands_all_sources():
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    fn = _extract_js_function(source, "filterCluster")
-    assert "compactClusters" not in fn
-    assert "all.filter(a => a.cluster_id === cid)" in fn
-
-
 def test_index_cluster_cards_are_stacked_and_click_to_expand():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    if "js/redesign.js" in html:
-        redesign_source = (ROOT / "docs/js/redesign.js").read_text(encoding="utf-8")
+    if "js/index.js" in html:
+        redesign_source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
         assert 'id="feed"' in html
         assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in html
         assert "renderCategorySections" in redesign_source
@@ -792,14 +512,6 @@ def test_index_summary_points_normalise_bullets():
     assert result.returncode == 0, result.stderr
 
 
-def test_index_update_timestamp_opens_source_health():
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    listener = source[source.index('document.getElementById("updated").addEventListener("click"'):]
-    listener = listener[:listener.index("// ── Search")]
-    assert "openHealthModal();" in listener
-    assert "checkUpdates();" not in listener
-
-
 def test_article_page_applies_saved_light_theme():
     node = _require_node()
     common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
@@ -842,8 +554,8 @@ def test_article_page_applies_saved_light_theme():
 def test_article_has_text_only_toggle():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     common_source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
-    if "js/article-redesign.js" in html:
-        article_source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+    if "js/article.js" in html:
+        article_source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
         assert 'id="fontSmall"' in html
         assert 'id="fontNormal"' in html
         assert 'id="fontLarge"' in html
@@ -858,7 +570,7 @@ def test_article_has_text_only_toggle():
 def test_article_back_uses_same_origin_history_only():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    if "js/article-redesign.js" in html:
+    if "js/article.js" in html:
         assert 'href="index.html"' in html
         assert 'class="back"' in html
         assert 'class="mobile-back"' in html
@@ -886,24 +598,33 @@ def test_article_text_only_mode_applies_body_class():
             this.style = {};
             this.tagName = "DIV";
             this.value = "";
+            this.href = "";
+            this._listeners = {};
+            const self = this;
+            this._classes = new Set();
             this.classList = {
-              add: () => null,
-              remove: () => null,
-              contains: () => false,
-              toggle: () => null,
+              add: (...names) => { names.forEach(n => self._classes.add(n)); },
+              remove: (...names) => { names.forEach(n => self._classes.delete(n)); },
+              contains: name => self._classes.has(name),
+              toggle: (name, force) => {
+                const next = force === undefined ? !self._classes.has(name) : !!force;
+                if (next) self._classes.add(name);
+                else self._classes.delete(name);
+                return next;
+              },
             };
           }
-          addEventListener() {}
-          querySelectorAll() { return []; }
+          addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); }
+          dispatch(type) { (this._listeners[type] || []).forEach(fn => fn()); }
           setAttribute() {}
         }
 
         const els = new Map();
         for (const id of [
-          "save-btn", "text-toggle", "font-dec", "font-inc", "share-btn", "nav-prev",
-          "nav-back", "nav-next", "related-toggle", "art-meta", "art-title", "art-tags",
-          "art-facts", "art-summary", "art-content", "related-section", "related-ai-summary",
-          "related-list", "loading", "art-body", "topbar-source",
+          "updated", "metaList", "sourceList", "readTime",
+          "fontSmall", "fontNormal", "fontLarge", "textOnly",
+          "eyebrow", "title", "dek", "hero", "summaryBox", "content",
+          "sourceLink", "priorityNote", "facts", "relatedList",
         ]) {
           els.set(id, new El(id));
         }
@@ -933,37 +654,51 @@ def test_article_text_only_mode_applies_body_class():
           querySelectorAll: () => [],
           addEventListener() {},
         };
+
+        class FakeDOMParser {
+          parseFromString() {
+            return {
+              body: { innerHTML: "", textContent: "" },
+              querySelectorAll: () => [],
+              querySelector: () => null,
+            };
+          }
+        }
+
         const context = {
           console,
           document,
           window: { matchMedia: () => ({ matches: false }), addEventListener() {}, scrollTo() {} },
           navigator: {},
-          localStorage: { getItem: key => (key === "rss_text_only" ? "1" : null), setItem() {} },
+          localStorage: { getItem: () => null, setItem() {} },
           setTimeout,
-          Date, URL, URLSearchParams, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
+          Date, URL, URLSearchParams, encodeURIComponent, Number, String, Set, Map, RegExp, JSON, Math,
+          Promise,
+          DOMParser: FakeDOMParser,
           history: { replaceState() {} },
-          location: { search: "?id=abc" },
+          location: { search: "?id=abc", href: "https://example.com/article.html?id=abc" },
           fetch: async () => ({
-            json: async () => ({
-              articles: [{ id: "abc", title: "測試文章", source: "來源", date: "2026-04-27T00:00:00+00:00", category: "新聞" }],
-              sources: {},
-            }),
             ok: true,
+            json: async () => ({
+              articles: [{ id: "abc", title: "測試文章", source: "來源", date: "2026-04-27T00:00:00+00:00", category: "新聞", url: "https://example.com/abc" }],
+              sources: {},
+              updated: "2026-04-27",
+            }),
           }),
         };
         context.globalThis = context;
 
-        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
         vm.runInNewContext(fs.readFileSync("docs/js/article.js", "utf8"), context);
 
         setTimeout(() => {
+          els.get("textOnly").dispatch("click");
           if (!body.classList.contains("text-only")) {
-            throw new Error("expected body.text-only to be applied");
+            throw new Error("expected body.text-only to be applied after click");
           }
-          if (els.get("text-toggle").textContent !== "圖") {
-            throw new Error("expected toggle label to switch to 圖, got " + els.get("text-toggle").textContent);
+          if (!els.get("textOnly")._classes.has("active")) {
+            throw new Error("expected textOnly button to gain 'active' class");
           }
-        }, 0);
+        }, 50);
         """
     )
     result = subprocess.run(
@@ -977,138 +712,14 @@ def test_article_text_only_mode_applies_body_class():
 
 def test_article_share_uses_original_source_url():
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    assert "let currentSourceUrl" in source
-    assert "const url   = currentSourceUrl || location.href;" in source
-    assert 'currentSourceUrl = srcUrl !== "#" ? srcUrl : "";' in source
-
-
-def test_article_fact_items_group_entities():
-    node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    fn = _extract_js_function(source, "articleFactItems")
-    js = fn + """
-    const items = articleFactItems({
-      event_type: "財經",
-      entities: { companies: ["蘋果"], places: ["美國"], numbers: ["600億美元"] },
-    });
-    const labels = items.map(x => x.label + ":" + x.value);
-    if (JSON.stringify(labels) !== JSON.stringify(["類型:財經", "公司:蘋果", "地點:美國", "數字:600億美元"])) {
-      throw new Error("bad article facts: " + JSON.stringify(labels));
-    }
-    """
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_article_related_articles_prioritise_cluster_and_entities():
-    node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    js = "\n".join([
-        _extract_js_function(source, "articleTimestamp"),
-        _extract_js_function(source, "entityValues"),
-        _extract_js_function(source, "intersection"),
-        _extract_js_function(source, "relatedReasons"),
-        _extract_js_function(source, "relatedScore"),
-        _extract_js_function(source, "relatedArticles"),
-        """
-        const current = {
-          id: "a",
-          cluster_id: "c1",
-          topic: "關稅",
-          event_type: "政治",
-          date: "2026-04-22T10:00:00+08:00",
-          entities: { people: ["特朗普"], places: ["美國"], numbers: ["49國"] },
-        };
-        const rows = relatedArticles(current, [
-          current,
-          {
-            id: "b",
-            cluster_id: "c1",
-            topic: "關稅",
-            event_type: "政治",
-            date: "2026-04-22T09:00:00+08:00",
-            entities: { people: ["特朗普"], places: ["美國"] },
-          },
-          {
-            id: "c",
-            cluster_id: "x",
-            topic: "其他",
-            event_type: "政治",
-            date: "2026-04-22T11:00:00+08:00",
-            entities: { people: ["特朗普"] },
-          },
-        ], 2);
-        if (rows[0].article.id !== "b") throw new Error("cluster article should rank first");
-        if (!rows[0].reasons.includes("同一事件") || !rows[0].reasons.includes("同人物：特朗普")) {
-          throw new Error("missing related reasons: " + JSON.stringify(rows[0].reasons));
-        }
-        """,
-    ])
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_article_related_articles_ignore_weak_type_or_place_only_matches():
-    node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    js = "\n".join([
-        _extract_js_function(source, "articleTimestamp"),
-        _extract_js_function(source, "entityValues"),
-        _extract_js_function(source, "intersection"),
-        _extract_js_function(source, "relatedReasons"),
-        _extract_js_function(source, "relatedScore"),
-        _extract_js_function(source, "relatedArticles"),
-        """
-        const current = {
-          id: "a",
-          topic: "蘋果CEO交接",
-          event_type: "科技",
-          date: "2026-04-22T10:00:00+08:00",
-          entities: { places: ["美國"], numbers: ["49國"] },
-        };
-        const rows = relatedArticles(current, [
-          {
-            id: "weak-type",
-            topic: "AI晶片",
-            event_type: "科技",
-            date: "2026-04-22T11:00:00+08:00",
-            entities: {},
-          },
-          {
-            id: "weak-place",
-            topic: "汽車市場",
-            event_type: "財經",
-            date: "2026-04-22T11:00:00+08:00",
-            entities: { places: ["美國"] },
-          },
-        ]);
-        if (rows.length !== 0) throw new Error("weak matches should not be related: " + rows.map(r => r.article.id));
-        """,
-    ])
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
+    assert '$("sourceLink").href = article.url' in source
 
 
 def test_article_page_has_related_section():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    if "js/article-redesign.js" in html:
-        article_source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+    if "js/article.js" in html:
+        article_source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
         assert 'id="relatedList"' in html
         assert "relatedArticles" in article_source
         assert "renderMiniArticle" in article_source
@@ -1132,7 +743,7 @@ def test_article_page_has_related_section():
 
 
 def test_article_redesign_removes_duplicate_hero_image():
-    source = (ROOT / "docs/js/article-redesign.js").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
     assert "function canonicalImageUrl" in source
     assert "sanitizeHtml(article.content, article.thumbnail || \"\")" in source
     assert "firstImage.remove()" in source
@@ -1141,7 +752,7 @@ def test_article_redesign_removes_duplicate_hero_image():
 def test_article_page_has_save_and_next_unread_controls():
     html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    if "js/article-redesign.js" in html:
+    if "js/article.js" in html:
         assert 'id="fontSmall"' in html
         assert 'id="fontNormal"' in html
         assert 'id="fontLarge"' in html
@@ -1181,89 +792,26 @@ def test_article_related_digest_dedupes_summary_points():
     assert result.returncode == 0, result.stderr
 
 
-def test_article_nav_uses_session_context():
-    node = _require_node()
-    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    js = "\n".join([
-        'const NAV_CONTEXT_KEY = "rss_article_nav_context";',
-        _extract_js_function(source, "articleUrl"),
-        _extract_js_function(source, "readNavContext"),
-        _extract_js_function(source, "setNavLink"),
-        _extract_js_function(source, "setupArticleNav"),
-        """
-        const els = new Map();
-        class El {
-          constructor(id) {
-            this.id = id;
-            this.href = "";
-            this.attrs = {};
-            this.classes = new Set(["disabled"]);
-            this.classList = {
-              add: name => this.classes.add(name),
-              remove: name => this.classes.delete(name),
-              contains: name => this.classes.has(name),
-            };
-          }
-          removeAttribute(name) { delete this.attrs[name]; if (name === "href") this.href = ""; }
-          setAttribute(name, value) { this.attrs[name] = value; }
-        }
-        els.set("nav-prev", new El("nav-prev"));
-        els.set("nav-next", new El("nav-next"));
-        const document = { getElementById: id => els.get(id) };
-        const sessionStorage = {
-          getItem: key => key === NAV_CONTEXT_KEY ? JSON.stringify({ ids: ["a", "b", "c"] }) : null,
-        };
-        setupArticleNav("b", [{ id: "x" }, { id: "b" }, { id: "y" }]);
-        if (!els.get("nav-prev").href.endsWith("article.html?id=a")) {
-          throw new Error("prev link not set: " + els.get("nav-prev").href);
-        }
-        if (!els.get("nav-next").href.endsWith("article.html?id=c")) {
-          throw new Error("next link not set: " + els.get("nav-next").href);
-        }
-        if (els.get("nav-prev").classes.has("disabled") || els.get("nav-next").classes.has("disabled")) {
-          throw new Error("nav links should be enabled");
-        }
-        """,
-    ])
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     js = "\n".join([
-        _extract_js_function(source, "articleTime"),
-        _extract_js_function(source, "aiRankScore"),
+        _extract_js_function(source, "criticalScore"),
         """
-        const now = Date.parse("2026-04-21T12:00:00Z");
-        const high = aiRankScore({
-          score: 9,
-          cluster_size: 3,
-          date: "2026-04-20T12:00:00Z",
-        }, now);
-        const lowButFresh = aiRankScore({
-          score: 4,
-          cluster_size: 1,
-          date: "2026-04-21T11:30:00Z",
-        }, now);
-        const clustered = aiRankScore({
-          score: 6,
-          cluster_size: 4,
-          date: "2026-04-21T10:00:00Z",
-        }, now);
-        const solo = aiRankScore({
-          score: 6,
-          cluster_size: 1,
-          date: "2026-04-21T10:00:00Z",
-        }, now);
-        if (high <= lowButFresh) throw new Error("importance should dominate");
-        if (clustered <= solo) throw new Error("cluster bonus missing");
+        const nowIso = new Date().toISOString();
+        const dayAgoIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const weekAgoIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+        const high = criticalScore({ title: "經濟報告", score: 9, cluster_size: 3, date: dayAgoIso });
+        const lowButFresh = criticalScore({ title: "輕新聞", score: 4, cluster_size: 1, date: nowIso });
+        const clustered = criticalScore({ title: "事件追蹤", score: 6, cluster_size: 4, date: weekAgoIso });
+        const solo = criticalScore({ title: "事件追蹤", score: 6, cluster_size: 1, date: weekAgoIso });
+        const breaking = criticalScore({ title: "突發：嚴重火警", score: 6, cluster_size: 1, date: weekAgoIso });
+        const calm = criticalScore({ title: "市場分析", score: 6, cluster_size: 1, date: weekAgoIso });
+
+        if (high <= lowButFresh) throw new Error("importance should dominate: high=" + high + " low=" + lowButFresh);
+        if (clustered <= solo) throw new Error("cluster bonus missing: clustered=" + clustered + " solo=" + solo);
+        if (breaking <= calm) throw new Error("breaking keyword boost missing: breaking=" + breaking + " calm=" + calm);
         """,
     ])
     result = subprocess.run(

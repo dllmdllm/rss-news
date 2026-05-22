@@ -8,8 +8,13 @@ from pathlib import Path
 import aiohttp
 from bs4 import BeautifulSoup
 
-MINIMAX_API_KEY      = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_MODEL        = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
+from src.minimax_client import (
+    MINIMAX_API_KEY,
+    MINIMAX_MODEL,
+    post_messages,
+    should_retry as _should_retry,
+)
+
 # Token Plan regularly rate-limits at 10 concurrent. Dropped to 5 after repeated
 # 2062 errors caused majority of analyses to fail in a single build run.
 ANALYSE_CONCURRENCY  = 5
@@ -73,9 +78,15 @@ def save_cache(cache: dict):
     os.replace(tmp, CACHE_PATH)
 
 
+# Cap each article body fed into the analyse prompt. Five articles per batch
+# at this ceiling keeps the user-message under ~12k tokens, well below MiniMax's
+# context budget after SYSTEM_PROMPT + JSON-schema response is accounted for.
+_MAX_PROMPT_CHARS = 2000
+
+
 def _extract_text(html_content: str) -> str:
     soup = BeautifulSoup(html_content, "html.parser")
-    return soup.get_text(separator=" ", strip=True)[:2000]
+    return soup.get_text(separator=" ", strip=True)[:_MAX_PROMPT_CHARS]
 
 
 def _normalise_summary(raw) -> str:
@@ -293,47 +304,20 @@ def _article_text(a: dict) -> str:
 
 
 async def _post_messages(
-    session:   aiohttp.ClientSession,
-    user_text: str,
+    session:    aiohttp.ClientSession,
+    user_text:  str,
     max_tokens: int,
-    timeout:   float,
+    timeout:    float,
 ) -> tuple[str, dict, int]:
-    """Thin wrapper around the MiniMax messages endpoint.
+    """Per-article wrapper that pins the system prompt to SYSTEM_PROMPT.
     Returns (raw_text, error_dict, http_status)."""
-    async with session.post(
-        "https://api.minimax.io/anthropic/v1/messages",
-        headers={
-            "x-api-key":         MINIMAX_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "Content-Type":      "application/json",
-        },
-        json={
-            "model":      MINIMAX_MODEL,
-            "max_tokens": max_tokens,
-            "system":     SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": user_text}],
-        },
-        # Explicit connect budget: per-request timeout overrides the session
-        # default entirely in aiohttp, so without `connect` here the 20s connect
-        # ceiling set on the session would silently become unlimited.
-        timeout=aiohttp.ClientTimeout(total=timeout, connect=20),
-    ) as resp:
-        status = resp.status
-        data = await resp.json(content_type=None)
-    err = data.get("error") or {}
-    blocks = data.get("content") or []
-    raw = next(
-        (b.get("text", "").strip() for b in blocks if b.get("type") == "text"),
-        ""
+    return await post_messages(
+        session,
+        system=SYSTEM_PROMPT,
+        user_text=user_text,
+        max_tokens=max_tokens,
+        timeout=timeout,
     )
-    return raw, err, status
-
-
-_RETRY_ERR_TYPES = {"overloaded_error", "rate_limit_error", "api_error"}
-
-
-def _should_retry(err: dict, status: int) -> bool:
-    return err.get("type") in _RETRY_ERR_TYPES or status == 429 or status >= 500
 
 
 async def _apply_results(
@@ -548,7 +532,7 @@ async def analyse_all(articles: list) -> list:
         if aid in cache and not _needs_full_analysis(cache[aid]):
             c = cache[aid]
             a["summary"]   = c.get("summary", "")
-            a["score"]     = c.get("score", 5)
+            a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
             a["topic"]     = c.get("topic", "")
@@ -569,7 +553,13 @@ async def analyse_all(articles: list) -> list:
     counter   = [0]
     async with aiohttp.ClientSession() as session:
         tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
-        await asyncio.gather(*tasks)
+        # return_exceptions=True so one batch's crash doesn't cancel siblings
+        # mid-flight (default gather() cancels all on first exception, silently
+        # losing successful work that hasn't yet flushed to cache).
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    for r in results:
+        if isinstance(r, BaseException):
+            print(f"[WARN] analyse batch crashed: {r!r}")
 
     # Evict stale cache entries for articles that have aged out
     active_ids = {a["id"] for a in articles}

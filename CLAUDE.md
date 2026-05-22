@@ -156,6 +156,22 @@ Secrets：`MINIMAX_API_KEY`、`TELEGRAM_BOT_TOKEN`
 
 ---
 
+## Claude Code 設定
+
+`.claude/`（gitignored，不入 repo）：
+
+- **Hook：`hooks/block-env-edit.py`**（PreToolUse）— 擋 `Edit/Write/MultiEdit` on (1) `.env`（保護 `MINIMAX_API_KEY` / `TELEGRAM_BOT_TOKEN`），(2) 任何 `docs/data/` 之下嘅 generated artifact（`articles.json` / `analyses.json` / `embeddings.bin` etc. — 改源頭，唔好手改 output）
+- **Hook：`hooks/pycompile-check.py`**（PostToolUse）— 改完 `.py` 即時跑 `python -m py_compile`，秒級 catch syntax / indent error，特別針對 `scrape.py` 嘅自訂 parser
+- **Skill：`skills/project-conventions/SKILL.md`** — 抽出下方「設計決定」內容，當 Claude 改 `src/analyse.py`、`src/scrape.py`、`src/fetch.py`、`build.py`、`docs/article.html`、`.github/workflows/update.yml` 時會自動載入
+- **Skill：`skills/add-feed-source/SKILL.md`**（user-invocable `/add-feed-source`）— 加新 RSS / 新聞源嘅 workflow：分類、parser 選型、feeds.py entry、smoke test、CLAUDE.md 同步
+- **Subagent：`agents/async-timeout-reviewer.md`** — review 任何 timeout 改動（`asyncio.wait_for` / cloudscraper fallback / GH Actions `timeout-minutes`），確保三層 nested timeout 唔會錯位
+- **Global Skill：`andrej-karpathy-skills:karpathy-guidelines`**（user-scope plugin，唔喺本 repo 入面）— 寫 / review / refactor code 時應該套用，避免 overcomplication、做 surgical change、surface assumptions、define verifiable success criteria
+- **`settings.local.json`** — 個人 permission allowlist + hook 設定（PreToolUse + PostToolUse）
+
+⚠️ Skill 內容係下方「設計決定」嘅 copy，**改其中一邊記得同步另一邊**（或之後重構成一邊 reference 另一邊）。
+
+---
+
 ## 設計決定（勿輕易修改）
 
 以下係經過 debug 確認的非顯而易見決定，修改前請先了解原因。
