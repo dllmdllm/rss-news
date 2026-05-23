@@ -237,6 +237,14 @@
     $("dailyBrief").innerHTML = items.join("");
   }
 
+  function cardSummaryBlock(article) {
+    const points = summaryPoints(article, 5);
+    if (points.length) {
+      return `<ul class="card-points">${points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+    }
+    return `<p class="card-summary">${summarySentencesHtml(article)}</p>`;
+  }
+
   function card(article) {
     const image = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
     return `<a class="card ${categoryClass(article.category)}" href="${articleUrl(article)}">
@@ -249,7 +257,7 @@
           ${priorityBadge(article)}
         </div>
         <h3>${esc(article.title || "")}</h3>
-        <p class="card-summary">${summarySentencesHtml(article)}</p>
+        ${cardSummaryBlock(article)}
       </div>
     </a>`;
   }
