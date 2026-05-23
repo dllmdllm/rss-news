@@ -61,6 +61,10 @@ def _is_tvb_url(url: str) -> bool:
     return "news.tvb.com" in (url or "").lower()
 
 
+def _is_stheadline_url(url: str) -> bool:
+    return "stheadline.com" in (url or "").lower()
+
+
 def _is_nowsnews_url(url: str) -> bool:
     return "news.now.com" in (url or "").lower()
 
@@ -511,6 +515,62 @@ def _extra_headers_for_url(url: str) -> dict:
     }
 
 
+_STHEADLINE_TAIL_MARKERS = (
+    "延伸閱讀",
+    "相關閱讀",
+    "推薦閱讀",
+    "更多閱讀",
+    "推介閱讀",
+    "編輯推薦",
+    "更多文章",
+    "相關文章",
+)
+
+
+def _trim_stheadline_tail(content: str) -> str:
+    """星島頭條 column articles end with the author byline (e.g.
+    `<h3>唐耀賢<br/>好師傅創辦人</h3>`) followed by a strip of related-article
+    thumbnails and an optional `<h3>延伸閱讀…</h3>` heading + more thumbs.
+
+    trafilatura captures all that as part of the body. Trim by:
+      1. cutting at the first heading containing a 延伸閱讀-style marker;
+      2. stripping trailing standalone `<img>` tags (the related thumbnails
+         sitting between the byline and the cut point have no captions, so
+         they fall off naturally once the cut runs)."""
+    if not content:
+        return content
+    soup = BeautifulSoup(content, "html.parser")
+    root = soup.body if soup.body else soup
+    children = list(root.children)
+    cut_idx = None
+    for i, ch in enumerate(children):
+        if getattr(ch, "name", None) in ("h2", "h3", "h4"):
+            text = ch.get_text(strip=True)
+            if any(m in text for m in _STHEADLINE_TAIL_MARKERS):
+                cut_idx = i
+                break
+    if cut_idx is not None:
+        for ch in children[cut_idx:]:
+            try:
+                ch.extract()
+            except Exception:
+                pass
+    while True:
+        last = None
+        for ch in reversed(list(root.children)):
+            if getattr(ch, "name", None) is None:
+                if not str(ch).strip():
+                    continue
+                last = ch
+                break
+            last = ch
+            break
+        if last is None or getattr(last, "name", "") != "img":
+            break
+        last.extract()
+    return str(soup)
+
+
 def _expand_stheadline_galleries(html: str) -> str:
     """
     星島頭條 uses <gallery-N> custom elements populated at runtime by JS.
@@ -904,6 +964,9 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
             if any(j in t for j in _NOWSNEWS_JUNK_STRINGS) or t == "廣告":
                 p.decompose()
         content = str(soup)
+
+    if content and _is_stheadline_url(url):
+        content = _trim_stheadline_tail(content)
 
     og_image: str | None = None
     if need_og_image:
