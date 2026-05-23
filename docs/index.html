@@ -484,14 +484,13 @@
       line-height: 1.35;
       letter-spacing: 0;
     }
-    .card-points {
+    .card-summary {
       margin: 0;
-      padding-left: 18px;
       color: #bdc6cf;
       font-size: .95rem;
-      line-height: 1.45;
+      line-height: 1.5;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -499,16 +498,10 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+      align-items: center;
       color: var(--muted);
       font-size: .88rem;
       margin-bottom: 5px;
-    }
-    .rank {
-      grid-column: 1 / -1;
-      min-width: 0;
-      text-align: left;
-      display: flex;
-      justify-content: flex-start;
     }
 
     .ai {
@@ -699,9 +692,13 @@
       .font-tools button {
         flex: 1;
       }
+      .main {
+        display: flex;
+        flex-direction: column;
+      }
       .main > .brief {
         position: static;
-        grid-row: auto;
+        order: 99;
       }
       .lead a { min-height: 0; }
       .lead-media { aspect-ratio: 16 / 9; }
@@ -728,9 +725,8 @@
         grid-template-columns: 1fr;
       }
       .thumb { width: 92px; }
-      .rank { grid-column: 2; text-align: left; min-width: 0; }
-      .card h3 { font-size: .94rem; }
-      .card-points { display: none; }
+      .card h3 { font-size: 1rem; }
+      .card-summary { -webkit-line-clamp: 5; }
       .mobile-tabs { display: grid; }
     }
   </style>

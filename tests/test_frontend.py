@@ -155,6 +155,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
           localStorage: { getItem: () => null, setItem() {} },
           setInterval() {},
           setTimeout,
+          requestAnimationFrame: (cb) => setTimeout(cb, 0),
           Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON, Math,
           Promise,
           fetch: async () => ({
@@ -163,6 +164,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
         };
         context.globalThis = context;
 
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
         vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
 
         setTimeout(() => {
@@ -405,10 +407,11 @@ def test_frontend_avoids_inline_click_handlers():
 def test_index_latest_sort_orders_by_date():
     node = _require_node()
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
-    funcs = "\n".join(
-        _extract_js_function(source, name)
-        for name in ["criticalScore", "sortedArticles"]
-    )
+    common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    funcs = "\n".join([
+        _extract_js_function(common, "criticalScore"),
+        _extract_js_function(source, "sortedArticles"),
+    ])
     js = funcs + """
     const state = { mode: "latest" };
     const articles = [
@@ -688,6 +691,7 @@ def test_article_text_only_mode_applies_body_class():
         };
         context.globalThis = context;
 
+        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
         vm.runInNewContext(fs.readFileSync("docs/js/article.js", "utf8"), context);
 
         setTimeout(() => {
@@ -794,7 +798,7 @@ def test_article_related_digest_dedupes_summary_points():
 
 def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     node = _require_node()
-    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
     js = "\n".join([
         _extract_js_function(source, "criticalScore"),
         """

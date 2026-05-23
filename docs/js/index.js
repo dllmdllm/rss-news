@@ -63,6 +63,15 @@
     return summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
   }
 
+  function summarySentencesHtml(article) {
+    const ks = Array.isArray(article.key_sentences) ? article.key_sentences.filter(Boolean) : [];
+    if (ks.length) return esc(ks.slice(0, 5).join(" "));
+    const points = summaryPoints(article, 5);
+    if (points.length) return esc(points.join(" "));
+    if (summaryIsTitleFallback(article)) return `<span class="summary-pending">🤖 AI 摘要稍後補上</span>`;
+    return esc(summaryText(article, 220));
+  }
+
   function compactSummaryHtml(article, limit = 3) {
     const points = summaryPoints(article, limit);
     if (points.length) {
@@ -219,11 +228,11 @@
           ${categoryChip(article.category)}
           <span>${esc(article.source || "")}</span>
           <span>${esc(timeLabel(article))}</span>
+          ${priorityBadge(article)}
         </div>
         <h3>${esc(article.title || "")}</h3>
-        <ul class="card-points">${pointsHtml(article, 5)}</ul>
+        <p class="card-summary">${summarySentencesHtml(article)}</p>
       </div>
-      <div class="rank">${priorityBadge(article)}</div>
     </a>`;
   }
 
@@ -359,7 +368,7 @@
   }
 
   function applyFontSize(size) {
-    const sizes = { small: "15px", normal: "16px", large: "18px" };
+    const sizes = { small: "16px", normal: "18px", large: "20px" };
     const next = sizes[size] ? size : "normal";
     document.documentElement.style.fontSize = sizes[next];
     localStorage.setItem("rss_home_font_size", next);
