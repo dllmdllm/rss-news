@@ -172,7 +172,17 @@
       <span>${esc(timeLabel(article))}</span>
       <span class="priority">${esc(priorityLabel(article))}</span>`;
     $("title").textContent = article.title || "";
-    const dekPoint = summaryPoints(article, 1)[0] || "";
+    // 揀第一個唔同 body 開頭 verbatim overlap 嘅 summary point 做 dek，
+    // 避免「dek 一行 + body 第一句」同樣嘅字重覆出現喺 reader 眼前。
+    const bodyOpening = stripHtml(article.content || "").slice(0, 60);
+    const candidatePoints = summaryPoints(article, 5);
+    let dekPoint = "";
+    for (const point of candidatePoints) {
+      if (!point) continue;
+      if (bodyOpening && bodyOpening.startsWith(point)) continue;
+      dekPoint = point;
+      break;
+    }
     $("dek").textContent = dekPoint;
     $("dek").classList.toggle("summary-pending", !dekPoint && summaryIsTitleFallback(article));
     if (!dekPoint && summaryIsTitleFallback(article)) $("dek").textContent = "🤖 AI 摘要稍後補上";

@@ -214,7 +214,7 @@ def _clean_oncc_text(text: str) -> str:
         text,
     )
     text = re.sub(r"\bTweet\s+東網電視\s+更多新聞短片\s*", "", text)
-    text = re.sub(r"\s*上一則\s+下一則\s+on\.cc東網.*$", "", text)
+    text = re.sub(r"\s*上一則\s+下一則(\s+on\.cc東網.*)?$", "", text)
     return _normalise_oncc_text(text)
 
 
