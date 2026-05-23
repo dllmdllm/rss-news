@@ -103,15 +103,23 @@ def _build_hk01_content(html: str) -> str | None:
     ) or {}
     blocks = article.get("blocks") or []
     description = (article.get("description") or "").strip()
-    if not blocks and not description:
+    # HK01 store SEO meta `description` 經常會喺 ~70 字 cut off（例如 cut 喺
+    # 「巴士於中環民光」），完整 lead 段落收喺 `teaser[0]`。優先攞 teaser，
+    # 揀較長果個做 lead，避免漏咗尾句。
+    teaser_items = article.get("teaser") or []
+    teaser_text = ""
+    if isinstance(teaser_items, list):
+        for item in teaser_items:
+            if isinstance(item, str) and item.strip():
+                teaser_text = item.strip()
+                break
+    lead_text = teaser_text if len(teaser_text) > len(description) else description
+    if not blocks and not lead_text:
         return None
 
     parts: list[str] = []
-    # HK01's `description` is usually a teaser paragraph that does NOT appear
-    # in `blocks` — but on some articles it's a truncated prefix of the first
-    # text block (e.g. cut mid-sentence at "...與"). Skip the description in
-    # that case to avoid showing it twice. We compare against the first text
-    # paragraph found in blocks.
+    # 揀完 lead 之後仍要做 prefix check：個別 article 嘅 blocks[0] text 可能
+    # 同 lead 重疊（HK01 偶爾會將 lead 入埋 blocks）。
     first_block_text = ""
     for block in blocks:
         if block.get("blockType") == "text":
@@ -122,12 +130,12 @@ def _build_hk01_content(html: str) -> str | None:
                     break
         if first_block_text:
             break
-    if description:
-        desc_norm = re.sub(r"\s+", "", description)
+    if lead_text:
+        lead_norm = re.sub(r"\s+", "", lead_text)
         first_norm = re.sub(r"\s+", "", first_block_text)
-        is_prefix = bool(desc_norm) and bool(first_norm) and first_norm.startswith(desc_norm)
+        is_prefix = bool(lead_norm) and bool(first_norm) and first_norm.startswith(lead_norm)
         if not is_prefix:
-            parts.append(f"<p>{_html_escape(description)}</p>")
+            parts.append(f"<p>{_html_escape(lead_text)}</p>")
     def _emit_image(img: dict):
         url = (img or {}).get("cdnUrl")
         if not url:
