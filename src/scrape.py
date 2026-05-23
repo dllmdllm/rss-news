@@ -104,8 +104,9 @@ def _build_hk01_content(html: str) -> str | None:
     blocks = article.get("blocks") or []
     description = (article.get("description") or "").strip()
     # HK01 store SEO meta `description` 經常會喺 ~70 字 cut off（例如 cut 喺
-    # 「巴士於中環民光」），完整 lead 段落收喺 `teaser[0]`。優先攞 teaser，
-    # 揀較長果個做 lead，避免漏咗尾句。
+    # 「巴士於中環民光」），亦會將 lead 同 blocks[1] 開頭撈埋一齊再 truncate
+    # （例如「...正式訪問。外交部發言人日前表示，夏巴」）。`teaser[0]` 係 HK01
+    # 自己 curate 嘅 clean lead 段落，所以只要存在就優先用，唔好揀 longer。
     teaser_items = article.get("teaser") or []
     teaser_text = ""
     if isinstance(teaser_items, list):
@@ -113,7 +114,7 @@ def _build_hk01_content(html: str) -> str | None:
             if isinstance(item, str) and item.strip():
                 teaser_text = item.strip()
                 break
-    lead_text = teaser_text if len(teaser_text) > len(description) else description
+    lead_text = teaser_text or description
     if not blocks and not lead_text:
         return None
 
