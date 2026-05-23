@@ -381,8 +381,9 @@ def test_index_mobile_filters_are_sheet_based_and_ai_picks_open_first():
         assert 'id="mobileTabs"' in html
         assert "mobile-home" in html
         assert "mobile-ai" in html
-        assert "mobile-cats" in html
+        assert "mobile-cat-chips" in html
         assert "mobile-search" in html
+        assert "mobile-settings" in html
         return
     assert 'id="mobile-filter-toggle"' in html
     assert 'id="filter-backdrop"' in html
