@@ -226,6 +226,13 @@
       line-height: 1.6;
     }
     .summary-box li + li, .fact-list li + li { margin-top: 3px; }
+    .fact-list li {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .toolbar {
       position: sticky;
       top: 0;

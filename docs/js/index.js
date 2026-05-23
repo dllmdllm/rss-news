@@ -109,8 +109,9 @@
 
   function priorityBadge(article) {
     const score = criticalScore(article);
-    const level = score >= 105 ? "high" : (score >= 80 ? "mid" : "");
-    return `<span class="priority-badge ${level}">優先度 ${score}</span>`;
+    if (score >= 105) return `<span class="priority-badge high" title="優先度 ${score}">🔥 必讀</span>`;
+    if (score >= 80) return `<span class="priority-badge mid" title="優先度 ${score}">⭐ 推薦</span>`;
+    return "";
   }
 
   function sortedArticles(input) {

@@ -682,16 +682,16 @@
       .topbar {
         grid-template-columns: 1fr;
         gap: 8px;
+        position: static;
       }
-      .mode,
-      .font-tools {
+      .mode {
         width: 100%;
         overflow-x: auto;
       }
-      .mode button,
-      .font-tools button {
+      .mode button {
         flex: 1;
       }
+      .font-tools { display: none; }
       .main {
         display: flex;
         flex-direction: column;

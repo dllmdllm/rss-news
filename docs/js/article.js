@@ -25,7 +25,10 @@
   }
 
   function priorityLabel(article) {
-    return `優先度 ${criticalScore(article)}`;
+    const score = criticalScore(article);
+    if (score >= 105) return `🔥 必讀`;
+    if (score >= 80) return `⭐ 推薦`;
+    return `一般`;
   }
 
   function canonicalImageUrl(url) {
@@ -174,13 +177,12 @@
 
     const baseScore = Number(article.score || 0);
     $("priorityNote").innerHTML = `
-      <div class="priority">${esc(priorityLabel(article))}</div>
-      <p class="ai-note">由 AI 重要性 ${baseScore}/10、新聞新鮮度、事件類型同同話題重複度組合而成。</p>`;
+      <div class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${baseScore}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</div>`;
 
     const facts = (article.key_sentences && article.key_sentences.length)
       ? article.key_sentences
       : summaryPoints(article, 5);
-    $("facts").innerHTML = facts.slice(0, 6).map((fact) => `<li>${esc(fact)}</li>`).join("");
+    $("facts").innerHTML = facts.slice(0, 5).map((fact) => `<li>${esc(fact)}</li>`).join("");
     $("relatedList").innerHTML = relatedArticles(article, data.articles || [], 6).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
   }
 
