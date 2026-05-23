@@ -41,6 +41,20 @@
     }
   }
 
+  // 用嚟比對 hero thumbnail 同 content 第一張圖係咪同一張：
+  // 東網 on.cc 嘅 thumbnail (`_01s.jpg`) 同 preview (`_01p.jpg`) 只差一個
+  // size suffix。Strip 走 extension 前嗰個 single letter，順手剝走 query
+  // string，就可以匹配到。
+  function imageSignature(url) {
+    try {
+      const parsed = new URL(String(url || ""), location.href);
+      const path = parsed.pathname.replace(/(\d)[a-z](\.[a-z]+)$/i, "$1$2");
+      return parsed.origin + path;
+    } catch {
+      return String(url || "").trim().replace(/\?.*$/, "");
+    }
+  }
+
   function sanitizeHtml(html, heroImage = "") {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
     doc.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
@@ -53,9 +67,9 @@
         }
       });
     });
-    const heroUrl = canonicalImageUrl(heroImage);
+    const heroSig = imageSignature(heroImage);
     const firstImage = doc.querySelector("img");
-    if (firstImage && heroUrl && canonicalImageUrl(firstImage.getAttribute("src")) === heroUrl) {
+    if (firstImage && heroSig && imageSignature(firstImage.getAttribute("src")) === heroSig) {
       firstImage.remove();
     }
     doc.querySelectorAll("img").forEach((img) => {
