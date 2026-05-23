@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="referrer" content="no-referrer">
   <title>新聞控制台</title>
   <style>
@@ -660,6 +660,14 @@
       backdrop-filter: blur(14px);
       padding: 5px 8px calc(5px + env(safe-area-inset-bottom));
     }
+    .mobile-tabs button,
+    .mobile-sub button,
+    .mobile-cat-chips button,
+    .mobile-settings button,
+    .mode button,
+    .font-tools button {
+      touch-action: manipulation;
+    }
     .mobile-tabs button {
       border: 0;
       background: transparent;
@@ -986,6 +994,41 @@
 
   <script>
     document.body.classList.add(`mobile-${localStorage.getItem("mobile.view") || "home"}`);
+
+    // Inline fallback: ensure tabs / sub-buttons work even if js/index.js is
+    // stale-cached or fails to load. js/index.js attaches its own listeners
+    // which run after and sync state + re-render.
+    document.getElementById("mobileTabs")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-view]");
+      if (!button) return;
+      const view = button.dataset.view;
+      document.body.classList.remove("mobile-home", "mobile-ai", "mobile-search", "mobile-settings");
+      document.body.classList.add(`mobile-${view}`);
+      localStorage.setItem("mobile.view", view);
+      document.querySelectorAll("#mobileTabs button").forEach((b) => b.classList.toggle("active", b === button));
+      if (view === "search") document.getElementById("search")?.focus();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    function applyInlineSubActive(containerId, attr) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.addEventListener("click", (event) => {
+        const button = event.target.closest(`button[${attr}]`);
+        if (!button) return;
+        container.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === button));
+        const storageKey = containerId === "mobileSubHome" ? "mobile.homeMode" : "mobile.aiMode";
+        localStorage.setItem(storageKey, button.getAttribute(attr));
+        const mode = button.getAttribute(attr);
+        const isMobileHome = document.body.classList.contains("mobile-home");
+        const isMobileAi = document.body.classList.contains("mobile-ai");
+        const wantChips = (isMobileHome && mode === "category") || (isMobileAi && mode === "category");
+        document.body.classList.toggle("cat-chips-on", wantChips);
+      });
+    }
+    applyInlineSubActive("mobileSubHome", "data-time-mode");
+    applyInlineSubActive("mobileSubAi", "data-ai-mode");
+
     document.addEventListener("click", (event) => {
       const link = event.target.closest('a[href*="article.html"]');
       if (!link) return;
