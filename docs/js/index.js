@@ -121,15 +121,25 @@
     return "";
   }
 
+  const SORT_CATEGORY_ORDER = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
+  function categoryRank(cat) {
+    const idx = SORT_CATEGORY_ORDER.indexOf(cat);
+    return idx === -1 ? 99 : idx;
+  }
+
   function sortedArticles(input) {
     const arr = [...input];
     if (state.mode === "latest") {
-      return arr.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      return arr.sort((a, b) => {
+        const byDate = String(b.date || "").localeCompare(String(a.date || ""));
+        return byDate || (categoryRank(a.category) - categoryRank(b.category));
+      });
     }
     if (state.mode === "balanced") {
       return arr.sort((a, b) => {
         const score = Number(b.score || 0) - Number(a.score || 0);
-        return score || String(b.date || "").localeCompare(String(a.date || ""));
+        const byDate = String(b.date || "").localeCompare(String(a.date || ""));
+        return score || byDate || (categoryRank(a.category) - categoryRank(b.category));
       });
     }
     return arr.sort((a, b) => criticalScore(b) - criticalScore(a));
@@ -299,7 +309,8 @@
 
   function renderFeed(list) {
     const feed = $("feed");
-    if (!state.topic && state.category === "全部" && !state.source) {
+    const mobileFlat = state.mobile && state.mobile.view === "home";
+    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source) {
       feed.classList.remove("feed-grid");
       renderCategorySections();
     } else {
