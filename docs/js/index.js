@@ -213,7 +213,6 @@
             ${priorityBadge(lead)}
           </div>
           <h1>${esc(lead.title || "")}</h1>
-          <p class="summary">${esc(summaryText(lead, 180))}</p>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
         </div>
       </a>`;
