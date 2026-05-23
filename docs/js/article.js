@@ -185,7 +185,9 @@
     const sameSource = (data.articles || [])
       .filter((row) => row.id !== article.id && row.source === article.source)
       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-      .slice(0, 5);
+      .slice(0, 10);
+    const sourceLabel = article.source || "";
+    $("sourceListTitle").textContent = sourceLabel ? `${sourceLabel} 其他新聞` : "同來源新聞";
     $("sourceList").innerHTML = sameSource.map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有同來源新聞</span>`;
 
     const baseScore = Number(article.score || 0);
