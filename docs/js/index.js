@@ -50,7 +50,8 @@
 
   function summaryPoints(article, limit = 5) {
     if (summaryIsTitleFallback(article)) return [];
-    const raw = String(article.summary || "").trim();
+    // MiniMax 偶爾儲咗 literal "\n"（backslash + n），先 normalize 至真 newline。
+    const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
       .split(/\n|・|•|●|-/)
       .map((line) => line.replace(/\s+/g, " ").trim())

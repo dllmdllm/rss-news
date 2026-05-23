@@ -13,7 +13,7 @@
 
   function summaryPoints(article, limit = 5) {
     if (summaryIsTitleFallback(article)) return [];
-    const raw = String(article.summary || "").trim();
+    const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
       .split(/\n|・|•|●|-/)
       .map((line) => line.replace(/\s+/g, " ").trim())

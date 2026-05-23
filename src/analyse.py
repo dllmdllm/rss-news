@@ -96,6 +96,10 @@ def _normalise_summary(raw) -> str:
         items = [str(x).strip().lstrip("・ ").strip() for x in raw]
         return "\n".join("・" + i for i in items if i)
     text = str(raw or "").strip()
+    # MiniMax 偶爾會 return literal "\n"（backslash + n 兩個 char）而唔係 real
+    # newline，frontend split-on-newline 就 fail。Normalize 番做真 newline 先
+    # 至落到下面 ・-bullet detection。
+    text = text.replace("\\n", "\n")
     if not text or "\n" in text:
         return text
     # No newlines: only split on ・ when it's clearly a bullet list (starts

@@ -133,7 +133,7 @@ function relativeTime(dateStr) {
 // Split an AI summary string into its individual bullet points.
 // Handles both newline-separated bullets and "・" delimited single-line output.
 function summaryPoints(summary) {
-  const text = String(summary || "").replace(/\r/g, "\n").trim();
+  const text = String(summary || "").replace(/\\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!text) return [];
   return text
     .replace(/\s*・\s*/g, "\n")
