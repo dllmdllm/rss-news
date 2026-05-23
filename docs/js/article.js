@@ -118,6 +118,19 @@
       document.body.classList.toggle("text-only");
       $("textOnly").classList.toggle("active", document.body.classList.contains("text-only"));
     });
+    const aiToggle = $("aiToggle");
+    if (aiToggle) {
+      const applyAiState = (collapsed) => {
+        document.body.classList.toggle("ai-collapsed", collapsed);
+        aiToggle.classList.toggle("active", !collapsed);
+      };
+      applyAiState(localStorage.getItem("article.aiCollapsed") === "1");
+      aiToggle.addEventListener("click", () => {
+        const collapsed = !document.body.classList.contains("ai-collapsed");
+        applyAiState(collapsed);
+        localStorage.setItem("article.aiCollapsed", collapsed ? "1" : "0");
+      });
+    }
   }
 
   async function load() {

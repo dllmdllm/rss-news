@@ -43,6 +43,10 @@
       grid-template-columns: var(--side-width) minmax(0, 1fr) var(--ai-width);
       min-height: 100vh;
     }
+    body.ai-collapsed .app {
+      grid-template-columns: var(--side-width) minmax(0, 1fr);
+    }
+    body.ai-collapsed .ai { display: none; }
     .side, .ai {
       position: sticky;
       top: 0;
@@ -474,6 +478,7 @@
           <button class="tool" id="fontNormal" type="button">📖 中</button>
           <button class="tool active" id="fontLarge" type="button">🔎 大</button>
           <button class="tool" id="textOnly" type="button">📝 純文字</button>
+          <button class="tool" id="aiToggle" type="button" title="摺埋／展開 AI 工作台">📊 AI</button>
         </div>
       </div>
       <article>

@@ -130,13 +130,27 @@
       font-size: .84rem;
       min-height: 0;
     }
+    .side-health-wrap > summary {
+      cursor: pointer;
+      color: var(--subtle);
+      list-style: none;
+      user-select: none;
+      padding: 4px 0;
+      border-top: 1px solid var(--line);
+    }
+    .side-health-wrap > summary::before {
+      content: "▸ ";
+      font-size: .75rem;
+    }
+    .side-health-wrap[open] > summary::before {
+      content: "▾ ";
+    }
     .side-health {
       display: grid;
       gap: 7px;
       max-height: 26vh;
       overflow: auto;
-      padding-top: 10px;
-      border-top: 1px solid var(--line);
+      padding-top: 8px;
     }
     .side-health::-webkit-scrollbar {
       width: 0;
@@ -545,6 +559,26 @@
       font-weight: 600;
       white-space: nowrap;
     }
+    .ai-block-collapse > details > summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+    }
+    .ai-block-collapse > details > summary::-webkit-details-marker { display: none; }
+    .ai-block-collapse > details > summary h2 {
+      margin: 0;
+    }
+    .ai-block-collapse > details > summary h2::before {
+      content: "▸ ";
+      font-size: .8rem;
+      color: var(--muted);
+    }
+    .ai-block-collapse > details[open] > summary h2 {
+      margin: 0 0 10px;
+    }
+    .ai-block-collapse > details[open] > summary h2::before {
+      content: "▾ ";
+    }
     .ai-pick {
       display: grid;
       gap: 5px;
@@ -740,8 +774,10 @@
       </div>
       <nav class="nav" id="categoryNav"></nav>
       <div class="side-footer">
-        <span id="sourceHealth">來源健康計算中</span>
-        <div class="side-health" id="sideSourceHealth"></div>
+        <details class="side-health-wrap">
+          <summary><span id="sourceHealth">來源健康</span></summary>
+          <div class="side-health" id="sideSourceHealth"></div>
+        </details>
         <span>Prototype · Desktop first</span>
       </div>
     </aside>
@@ -779,9 +815,11 @@
         <strong>AI 工作台</strong>
         <span id="aiUpdated">同步中</span>
       </div>
-      <section class="ai-block">
-        <h2>優先排行 <span id="priorityRange"></span></h2>
-        <div id="criticalList"></div>
+      <section class="ai-block ai-block-collapse">
+        <details>
+          <summary><h2>優先排行 <span id="priorityRange"></span></h2></summary>
+          <div id="criticalList"></div>
+        </details>
       </section>
       <section class="ai-block">
         <h2>話題聚焦</h2>
