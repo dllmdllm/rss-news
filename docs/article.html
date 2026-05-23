@@ -21,13 +21,13 @@
       --radius: 8px;
       --side-width: 300px;
       --ai-width: 420px;
-      --ui-scale: 1.1;
+      --ui-scale: 1;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
     }
     body.fs-small {
       --side-width: 270px;
       --ai-width: 380px;
-      --ui-scale: .96;
+      --ui-scale: .9;
     }
     body.fs-large {
       --side-width: 350px;
@@ -440,7 +440,7 @@
     }
   </style>
 </head>
-<body>
+<body class="fs-large">
   <div class="app">
     <aside class="side">
       <div class="brand">
@@ -464,8 +464,8 @@
         <span id="readTime">閱讀中</span>
         <div class="toolbar-actions">
           <button class="tool" id="fontSmall" type="button">🔍 細</button>
-          <button class="tool active" id="fontNormal" type="button">📖 中</button>
-          <button class="tool" id="fontLarge" type="button">🔎 大</button>
+          <button class="tool" id="fontNormal" type="button">📖 中</button>
+          <button class="tool active" id="fontLarge" type="button">🔎 大</button>
           <button class="tool" id="textOnly" type="button">📝 純文字</button>
         </div>
       </div>
