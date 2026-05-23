@@ -107,7 +107,7 @@
   }
 
   function renderMiniArticle(article) {
-    const points = summaryPoints(article, 3);
+    const points = summaryPoints(article, 5);
     let summary = "";
     if (points.length) {
       summary = `<ul class="mini-summary">${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
@@ -175,25 +175,15 @@
       <span>${esc(timeLabel(article))}</span>
       <span class="priority">${esc(priorityLabel(article))}</span>`;
     $("title").textContent = article.title || "";
-    // 揀第一個唔係 body 開頭 verbatim prefix 嘅 summary point 做 dek，避
-    // 免「dek 一行 + body 第一句」一字不差出現兩次。揀好之後 summaryBox
-    // 就跳過呢點，唔好喺同一頁面再 echo 一次。
-    const bodyOpening = stripHtml(article.content || "").slice(0, 60);
+    // AI 摘要全部入 summaryBox，唔再揀一點上 dek 做副題，避免「dek 一行像
+    // article lead，summaryBox 又有同一句」嘅 user confusion。Dek slot 收起。
     const summaryItems = summaryPoints(article, 5);
-    let dekPoint = "";
-    for (const point of summaryItems) {
-      if (!point) continue;
-      if (bodyOpening && bodyOpening.startsWith(point)) continue;
-      dekPoint = point;
-      break;
-    }
-    $("dek").textContent = dekPoint;
-    $("dek").classList.toggle("summary-pending", !dekPoint && summaryIsTitleFallback(article));
-    if (!dekPoint && summaryIsTitleFallback(article)) $("dek").textContent = "🤖 AI 摘要稍後補上";
+    const dekEl = $("dek");
+    dekEl.textContent = "";
+    dekEl.style.display = "none";
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
-    const remainingSummary = summaryItems.filter((point) => point && point !== dekPoint);
-    const summaryInner = remainingSummary.length
-      ? remainingSummary.map((point) => `<li>${esc(point)}</li>`).join("")
+    const summaryInner = summaryItems.length
+      ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
