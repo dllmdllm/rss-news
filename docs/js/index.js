@@ -19,6 +19,13 @@
     openCategories: new Set(),
     mode: "latest",
     query: "",
+    mobile: {
+      view: localStorage.getItem("mobile.view") || "home",
+      homeMode: localStorage.getItem("mobile.homeMode") || "latest",
+      aiMode: localStorage.getItem("mobile.aiMode") || "priority",
+      homeCat: localStorage.getItem("mobile.homeCat") || "全部",
+      aiCat: localStorage.getItem("mobile.aiCat") || "全部",
+    },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -364,6 +371,8 @@
     renderDailyBrief();
     renderFeed(list);
     renderAiPanel(list);
+    renderMobileSideHealth();
+    renderVersionInfo();
     // Defer until layout settles, otherwise offsetHeight reads stale numbers.
     requestAnimationFrame(fillCategoriesToMatchBrief);
   }
@@ -373,20 +382,151 @@
     const next = sizes[size] ? size : "normal";
     document.documentElement.style.fontSize = sizes[next];
     localStorage.setItem("rss_home_font_size", next);
-    document.querySelectorAll("#fontTools button").forEach((button) => {
+    document.querySelectorAll("#fontTools button, #mobileFontTools button").forEach((button) => {
       button.classList.toggle("active", button.dataset.font === next);
     });
   }
 
   function showHomeOnMobile() {
     if (window.matchMedia && !window.matchMedia("(max-width: 900px)").matches) return;
+    switchMobileView("home");
+  }
+
+  function syncStateFromMobile() {
+    if (state.mobile.view === "ai") {
+      state.mode = "critical";
+      state.source = "";
+      state.topic = "";
+      state.category = state.mobile.aiMode === "category" ? state.mobile.aiCat : "全部";
+    } else if (state.mobile.view === "home") {
+      state.mode = "latest";
+      state.source = "";
+      state.topic = "";
+      state.category = state.mobile.homeMode === "category" ? state.mobile.homeCat : "全部";
+    }
+  }
+
+  function isMobile() {
+    return window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+  }
+
+  function updateMobileSubUi() {
+    document.querySelectorAll("#mobileSubHome button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.timeMode === state.mobile.homeMode);
+    });
+    document.querySelectorAll("#mobileSubAi button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.aiMode === state.mobile.aiMode);
+    });
+    const showChips =
+      (state.mobile.view === "home" && state.mobile.homeMode === "category") ||
+      (state.mobile.view === "ai" && state.mobile.aiMode === "category");
+    document.body.classList.toggle("cat-chips-on", showChips);
+    renderMobileCatChips();
+  }
+
+  function renderMobileCatChips() {
+    const host = $("mobileCatChips");
+    if (!host) return;
+    const activeCat = state.mobile.view === "ai" ? state.mobile.aiCat : state.mobile.homeCat;
+    host.innerHTML = categories.map((cat) => `
+      <button data-mobile-cat="${esc(cat)}" class="${cat === activeCat ? "active" : ""}" type="button">${esc(categoryEmoji[cat] || "")} ${esc(cat)}</button>
+    `).join("");
+  }
+
+  function switchMobileView(view) {
     const body = document.body;
-    if (body.classList.contains("mobile-home")) return;
-    body.classList.remove("mobile-ai", "mobile-cats", "mobile-search");
-    body.classList.add("mobile-home");
-    const tabs = document.querySelectorAll("#mobileTabs button");
-    tabs.forEach((tab, idx) => tab.classList.toggle("active", idx === 0));
+    body.classList.remove("mobile-home", "mobile-ai", "mobile-search", "mobile-settings");
+    body.classList.add(`mobile-${view}`);
+    state.mobile.view = view;
+    localStorage.setItem("mobile.view", view);
+    document.querySelectorAll("#mobileTabs button").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.view === view);
+    });
+    if (view === "search") $("search")?.focus();
+    syncStateFromMobile();
+    updateMobileSubUi();
+    renderAll();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function applyTheme(theme) {
+    document.body.classList.toggle("theme-light", theme === "light");
+    localStorage.setItem("mobile.theme", theme);
+  }
+
+  function renderMobileSideHealth() {
+    const host = $("mobileSideHealth");
+    if (!host) return;
+    const sourceList = $("sideSourceHealth");
+    host.innerHTML = sourceList ? sourceList.innerHTML : "";
+  }
+
+  function renderVersionInfo() {
+    const node = $("versionInfo");
+    if (!node) return;
+    const updated = $("sideUpdated")?.textContent || "";
+    node.textContent = `資料更新：${updated || "—"}`;
+  }
+
+  function bindMobileShell() {
+    $("mobileTabs")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-view]");
+      if (!button) return;
+      switchMobileView(button.dataset.view);
+    });
+    $("mobileSubHome")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-time-mode]");
+      if (!button) return;
+      state.mobile.homeMode = button.dataset.timeMode;
+      localStorage.setItem("mobile.homeMode", state.mobile.homeMode);
+      syncStateFromMobile();
+      updateMobileSubUi();
+      renderAll();
+    });
+    $("mobileSubAi")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-ai-mode]");
+      if (!button) return;
+      state.mobile.aiMode = button.dataset.aiMode;
+      localStorage.setItem("mobile.aiMode", state.mobile.aiMode);
+      syncStateFromMobile();
+      updateMobileSubUi();
+      renderAll();
+    });
+    $("mobileCatChips")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-mobile-cat]");
+      if (!button) return;
+      const cat = button.dataset.mobileCat;
+      if (state.mobile.view === "ai") {
+        state.mobile.aiCat = cat;
+        localStorage.setItem("mobile.aiCat", cat);
+      } else {
+        state.mobile.homeCat = cat;
+        localStorage.setItem("mobile.homeCat", cat);
+      }
+      syncStateFromMobile();
+      updateMobileSubUi();
+      renderAll();
+    });
+    $("mobileFontTools")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-font]");
+      if (!button) return;
+      applyFontSize(button.dataset.font);
+    });
+    $("themeToggle")?.addEventListener("click", () => {
+      const next = document.body.classList.contains("theme-light") ? "dark" : "light";
+      applyTheme(next);
+    });
+    $("resetMobile")?.addEventListener("click", () => {
+      ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat", "mobile.theme", "rss_home_font_size"]
+        .forEach((k) => localStorage.removeItem(k));
+      location.reload();
+    });
+    applyTheme(localStorage.getItem("mobile.theme") || "dark");
+    if (isMobile()) {
+      switchMobileView(state.mobile.view);
+    } else {
+      updateMobileSubUi();
+    }
   }
 
   function bindEvents() {
@@ -449,6 +589,7 @@
       state.query = event.target.value;
       renderAll();
     });
+    bindMobileShell();
   }
 
   async function load() {

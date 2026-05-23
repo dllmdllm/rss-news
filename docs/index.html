@@ -682,10 +682,91 @@
       line-height: 1;
       background: transparent;
     }
-    .mobile-tabs button:nth-child(1)::before { content: "🏠"; }
-    .mobile-tabs button:nth-child(2)::before { content: "✨"; }
-    .mobile-tabs button:nth-child(3)::before { content: "📂"; }
-    .mobile-tabs button:nth-child(4)::before { content: "🔍"; }
+    .mobile-tabs button[data-view="home"]::before { content: "🕒"; }
+    .mobile-tabs button[data-view="ai"]::before { content: "✨"; }
+    .mobile-tabs button[data-view="search"]::before { content: "🔍"; }
+    .mobile-tabs button[data-view="settings"]::before { content: "⚙️"; }
+
+    .mobile-sub, .mobile-cat-chips, .mobile-settings { display: none; }
+
+    .mobile-sub {
+      gap: 6px;
+      padding: 6px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+    }
+    .mobile-sub button {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 9px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .mobile-sub button.active {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    .mobile-cat-chips {
+      gap: 6px;
+      overflow-x: auto;
+      padding: 2px 0 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .mobile-cat-chips::-webkit-scrollbar { display: none; }
+    .mobile-cat-chips button {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: .85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .mobile-cat-chips button.active {
+      background: #17312d;
+      border-color: #3d5f59;
+      color: var(--text);
+    }
+
+    .mobile-settings {
+      padding: 14px;
+      gap: 10px;
+      flex-direction: column;
+    }
+    .mobile-settings .ai-block { margin-bottom: 0; }
+    .mobile-settings .mobile-font-tools { display: flex; gap: 6px; }
+    .mobile-settings .mobile-font-tools button {
+      flex: 1;
+      width: auto;
+      height: 38px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      border-radius: 6px;
+    }
+    .mobile-settings .mobile-font-tools button.active {
+      background: #18352f;
+      color: var(--text);
+      border-color: #3d5f59;
+    }
+    .settings-btn {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 10px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .settings-btn.warn { color: var(--danger); border-color: rgba(240, 106, 106, .4); }
     .mobile-tabs button.active {
       color: var(--text);
       background: rgba(70, 194, 166, .12);
@@ -707,11 +788,43 @@
       body.mobile-home .main,
       body.mobile-search .main,
       body.mobile-ai .ai,
-      body.mobile-cats .side { display: block; }
+      body.mobile-ai .main { display: block; }
+      body.mobile-settings .mobile-settings { display: flex; }
+      body.mobile-home .mobile-sub-home,
+      body.mobile-ai .mobile-sub-ai { display: flex; }
+      body.mobile-home.cat-chips-on .mobile-cat-chips,
+      body.mobile-ai.cat-chips-on .mobile-cat-chips { display: flex; }
+      body.mobile-home .topbar,
+      body.mobile-ai .topbar { display: none; }
       body.mobile-search .lead,
       body.mobile-search .brief,
       body.mobile-search .content-head,
-      body.mobile-search .feed { display: none; }
+      body.mobile-search .feed,
+      body.mobile-search .mode,
+      body.mobile-search .mobile-sub,
+      body.mobile-search .mobile-cat-chips { display: none; }
+      body.mobile-ai .lead { display: none; }
+      body.mobile-home .app,
+      body.mobile-ai .app,
+      body.mobile-search .app,
+      body.mobile-settings .app {
+        display: flex;
+        flex-direction: column;
+      }
+      body.mobile-home .mobile-sub-home { order: 1; }
+      body.mobile-home .mobile-cat-chips { order: 2; }
+      body.mobile-home .main { order: 3; }
+      body.mobile-ai .mobile-sub-ai { order: 1; }
+      body.mobile-ai .mobile-cat-chips { order: 2; }
+      body.mobile-ai .ai { order: 3; }
+      body.mobile-ai .main { order: 4; }
+      body.mobile-ai .main > .brief { order: 1; }
+      body.mobile-ai .main > .content-head { order: 2; }
+      body.mobile-ai .main > .feed { order: 3; }
+      body.mobile-search .topbar { position: static; }
+      body.mobile-settings .app { display: none; }
+      .mobile-sub, .mobile-cat-chips { margin: 12px; }
+      .mobile-cat-chips { margin-top: 0; }
       .main { padding: 12px; }
       .topbar {
         grid-template-columns: 1fr;
@@ -810,6 +923,16 @@
       <section class="feed" id="feed"></section>
     </main>
 
+    <div class="mobile-sub mobile-sub-home" id="mobileSubHome">
+      <button data-time-mode="latest" class="active" type="button">🕒 最新</button>
+      <button data-time-mode="category" type="button">📂 分類</button>
+    </div>
+    <div class="mobile-sub mobile-sub-ai" id="mobileSubAi">
+      <button data-ai-mode="priority" class="active" type="button">🔥 優先</button>
+      <button data-ai-mode="category" type="button">📂 分類重點</button>
+    </div>
+    <div class="mobile-cat-chips" id="mobileCatChips"></div>
+
     <aside class="ai">
       <div class="ai-title">
         <strong>AI 工作台</strong>
@@ -828,26 +951,41 @@
     </aside>
   </div>
 
+  <aside class="mobile-settings" id="mobileSettings">
+    <section class="ai-block">
+      <h2>字體大小</h2>
+      <div class="font-tools mobile-font-tools" id="mobileFontTools">
+        <button data-font="small" type="button">細</button>
+        <button data-font="normal" type="button" class="active">中</button>
+        <button data-font="large" type="button">大</button>
+      </div>
+    </section>
+    <section class="ai-block">
+      <h2>主題</h2>
+      <button class="settings-btn" id="themeToggle" type="button">🌓 切換深淺</button>
+    </section>
+    <section class="ai-block">
+      <h2>來源健康</h2>
+      <div class="side-health" id="mobileSideHealth"></div>
+    </section>
+    <section class="ai-block">
+      <h2>版本</h2>
+      <div class="ai-note" id="versionInfo">--</div>
+    </section>
+    <section class="ai-block">
+      <button class="settings-btn warn" id="resetMobile" type="button">↺ 還原預設</button>
+    </section>
+  </aside>
+
   <nav class="mobile-tabs" id="mobileTabs">
-    <button class="active">首頁</button>
-    <button>AI</button>
-    <button>分類</button>
-    <button>搜尋</button>
+    <button data-view="home" class="active" type="button">時間線</button>
+    <button data-view="ai" type="button">AI</button>
+    <button data-view="search" type="button">搜尋</button>
+    <button data-view="settings" type="button">設定</button>
   </nav>
 
   <script>
-    document.body.classList.add("mobile-home");
-    document.getElementById("mobileTabs")?.addEventListener("click", (event) => {
-      const button = event.target.closest("button");
-      if (!button) return;
-      const tabs = [...document.querySelectorAll("#mobileTabs button")];
-      const view = ["home", "ai", "cats", "search"][Math.max(0, tabs.indexOf(button))] || "home";
-      document.body.classList.remove("mobile-home", "mobile-ai", "mobile-cats", "mobile-search");
-      document.body.classList.add(`mobile-${view}`);
-      tabs.forEach((tab) => tab.classList.toggle("active", tab === button));
-      if (view === "search") document.getElementById("search")?.focus();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    document.body.classList.add(`mobile-${localStorage.getItem("mobile.view") || "home"}`);
     document.addEventListener("click", (event) => {
       const link = event.target.closest('a[href*="article.html"]');
       if (!link) return;
