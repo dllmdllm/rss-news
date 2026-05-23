@@ -41,14 +41,17 @@
     }
   }
 
-  // 用嚟比對 hero thumbnail 同 content 第一張圖係咪同一張：
-  // 東網 on.cc 嘅 thumbnail (`_01s.jpg`) 同 preview (`_01p.jpg`) 只差一個
-  // size suffix。Strip 走 extension 前嗰個 single letter，順手剝走 query
-  // string，就可以匹配到。
+  // 用嚟比對 hero thumbnail 同 content 第一張圖係咪同一張。各家來源嘅
+  // size variant URL 唔同寫法，依次 strip 走：
+  //   1. dimension suffix「_1200x630.jpg」（TVB / 部分 CMS）
+  //   2. single letter size suffix「_01s.jpg」/「_01p.jpg」（東網 on.cc）
+  // 再剝走 query string 以後就可以匹配同一張原圖。
   function imageSignature(url) {
     try {
       const parsed = new URL(String(url || ""), location.href);
-      const path = parsed.pathname.replace(/(\d)[a-z](\.[a-z]+)$/i, "$1$2");
+      let path = parsed.pathname;
+      path = path.replace(/[_-]\d+x\d+(\.[a-z]+)$/i, "$1");
+      path = path.replace(/(\d)[a-z](\.[a-z]+)$/i, "$1$2");
       return parsed.origin + path;
     } catch {
       return String(url || "").trim().replace(/\?.*$/, "");
@@ -172,12 +175,13 @@
       <span>${esc(timeLabel(article))}</span>
       <span class="priority">${esc(priorityLabel(article))}</span>`;
     $("title").textContent = article.title || "";
-    // 揀第一個唔同 body 開頭 verbatim overlap 嘅 summary point 做 dek，
-    // 避免「dek 一行 + body 第一句」同樣嘅字重覆出現喺 reader 眼前。
+    // 揀第一個唔係 body 開頭 verbatim prefix 嘅 summary point 做 dek，避
+    // 免「dek 一行 + body 第一句」一字不差出現兩次。揀好之後 summaryBox
+    // 就跳過呢點，唔好喺同一頁面再 echo 一次。
     const bodyOpening = stripHtml(article.content || "").slice(0, 60);
-    const candidatePoints = summaryPoints(article, 5);
+    const summaryItems = summaryPoints(article, 5);
     let dekPoint = "";
-    for (const point of candidatePoints) {
+    for (const point of summaryItems) {
       if (!point) continue;
       if (bodyOpening && bodyOpening.startsWith(point)) continue;
       dekPoint = point;
@@ -187,9 +191,9 @@
     $("dek").classList.toggle("summary-pending", !dekPoint && summaryIsTitleFallback(article));
     if (!dekPoint && summaryIsTitleFallback(article)) $("dek").textContent = "🤖 AI 摘要稍後補上";
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
-    const summaryItems = summaryPoints(article, 5);
-    const summaryInner = summaryItems.length
-      ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
+    const remainingSummary = summaryItems.filter((point) => point && point !== dekPoint);
+    const summaryInner = remainingSummary.length
+      ? remainingSummary.map((point) => `<li>${esc(point)}</li>`).join("")
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
