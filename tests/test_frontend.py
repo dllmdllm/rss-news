@@ -102,7 +102,12 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
             };
           }
           addEventListener() {}
+          querySelector() { return null; }
           querySelectorAll() { return []; }
+          insertAdjacentHTML(_pos, html) { this.innerHTML += html; }
+          appendChild() {}
+          remove() {}
+          setAttribute() {}
         }
 
         const els = new Map();
@@ -143,6 +148,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
           body: new El("body"),
           documentElement: documentRoot,
           getElementById: id => els.get(id) || new El(id),
+          createElement: tag => new El(tag),
           querySelector: () => ({ setAttribute() {} }),
           querySelectorAll: () => [],
           addEventListener() {},
@@ -156,6 +162,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
           setInterval() {},
           setTimeout,
           requestAnimationFrame: (cb) => setTimeout(cb, 0),
+          IntersectionObserver: class { constructor() {} observe() {} disconnect() {} },
           Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON, Math,
           Promise,
           fetch: async () => ({
