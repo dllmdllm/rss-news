@@ -771,6 +771,7 @@
       flex-direction: column;
       background: var(--bg);
       min-height: 100vh;
+      min-height: 100dvh;
     }
 
     .search-stage { display: none; flex-direction: column; gap: 12px; padding: 12px 0 24px; }
@@ -1125,7 +1126,18 @@
   </nav>
 
   <script>
-    document.body.classList.add(`mobile-${localStorage.getItem("mobile.view") || "home"}`);
+    (() => {
+      let view = localStorage.getItem("mobile.view") || "home";
+      // Guard: if settings view is requested but the aside is missing
+      // (e.g. iOS Safari serving stale cached HTML from before mobile-settings
+      // was deployed), fall back to home to avoid the black-screen state where
+      // .app is hidden and there's no aside to render.
+      if (view === "settings" && !document.getElementById("mobileSettings")) {
+        view = "home";
+        localStorage.setItem("mobile.view", "home");
+      }
+      document.body.classList.add(`mobile-${view}`);
+    })();
 
     // Inline fallback: ensure tabs / sub-buttons work even if js/index.js is
     // stale-cached or fails to load. js/index.js attaches its own listeners
