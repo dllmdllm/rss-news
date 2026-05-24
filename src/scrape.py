@@ -436,6 +436,42 @@ _NOWSNEWS_JUNK_STRINGS = (
     "pccwmediaiapps@pccw.com",
 )
 
+# Suicide-prevention helpline boilerplate that HK outlets append to any story
+# touching self-harm. Killed at the post-process step so it never reaches the
+# AI summary (which would otherwise treat hotline numbers as article content).
+_SUICIDE_HELPLINE_MARKERS = (
+    "求助網站和熱線",
+    "求助網站及熱線",
+    "求助熱線",
+    "情緒通",
+    "情緒自救法",
+    "防止自殺會",
+    "精神健康支援熱線",
+    "精神健康專線",
+    "芷若園",
+    "撒瑪利亞會熱線",
+    "撒瑪利亞防止自殺",
+    "社會福利署熱線",
+    "生命熱線",
+    "明愛向晴",
+    "不要放棄你的生命",
+    "請看看這些求助",
+)
+
+
+def _strip_suicide_helpline(content: str) -> str:
+    """Remove helpline boilerplate paragraphs/headings without touching real body."""
+    if not content or not any(m in content for m in _SUICIDE_HELPLINE_MARKERS):
+        return content
+    soup = BeautifulSoup(content, "html.parser")
+    for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "li", "blockquote"]):
+        text = tag.get_text(" ", strip=True)
+        if not text:
+            continue
+        if any(marker in text for marker in _SUICIDE_HELPLINE_MARKERS):
+            tag.decompose()
+    return str(soup)
+
 _SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
 
 
@@ -976,6 +1012,9 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
 
     if content and _is_stheadline_url(url):
         content = _trim_stheadline_tail(content)
+
+    if content:
+        content = _strip_suicide_helpline(content)
 
     og_image: str | None = None
     if need_og_image:
