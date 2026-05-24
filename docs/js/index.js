@@ -9,6 +9,18 @@
     "網媒": "📡",
     "消閒": "☕",
   };
+  const RECENT_SEARCH_KEY = "search.recent";
+  const RECENT_SEARCH_MAX = 5;
+
+  function loadRecentSearches() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(RECENT_SEARCH_KEY) || "[]");
+      return Array.isArray(arr) ? arr.filter((s) => typeof s === "string" && s.trim()).slice(0, RECENT_SEARCH_MAX) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   const state = {
     articles: [],
     topics: [],
@@ -19,6 +31,8 @@
     openCategories: new Set(),
     mode: "latest",
     query: "",
+    fuse: null,
+    recentSearches: loadRecentSearches(),
     mobile: {
       view: localStorage.getItem("mobile.view") || "home",
       homeMode: localStorage.getItem("mobile.homeMode") || "latest",
@@ -315,15 +329,70 @@
     }
   }
 
+  // 平鋪 feed 用 IntersectionObserver 做 infinite scroll：sentinel 入 viewport
+  // 就 append 下一批，直到掃完整個 filtered list 為止。renderAll 每次入嚟都
+  // disconnect 舊 observer，避免 filter 切咗之後 stale callback 仍會 append。
+  const FEED_BATCH = 30;
+  let feedObserver = null;
+  function disconnectFeedObserver() {
+    if (feedObserver) {
+      feedObserver.disconnect();
+      feedObserver = null;
+    }
+  }
+
+  function renderFeedFlat(list) {
+    const feed = $("feed");
+    const items = list.slice(state.topic ? 0 : 1);
+    feed.innerHTML = "";
+    disconnectFeedObserver();
+    let rendered = 0;
+    const appendBatch = () => {
+      const next = Math.min(rendered + FEED_BATCH, items.length);
+      if (next > rendered) {
+        const oldSentinel = feed.querySelector(".feed-sentinel");
+        if (oldSentinel) oldSentinel.remove();
+        const oldEnd = feed.querySelector(".feed-end-note");
+        if (oldEnd) oldEnd.remove();
+        feed.insertAdjacentHTML("beforeend", items.slice(rendered, next).map(card).join(""));
+        rendered = next;
+      }
+      if (rendered < items.length) {
+        const sentinel = document.createElement("div");
+        sentinel.className = "feed-sentinel";
+        sentinel.setAttribute("aria-hidden", "true");
+        feed.appendChild(sentinel);
+        if (!feedObserver) {
+          feedObserver = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) appendBatch();
+            }
+          }, { rootMargin: "600px" });
+        }
+        feedObserver.observe(sentinel);
+      } else {
+        disconnectFeedObserver();
+        if (items.length) {
+          const end = document.createElement("div");
+          end.className = "feed-end-note";
+          end.textContent = "已到底 · 無更多文章";
+          feed.appendChild(end);
+        }
+      }
+    };
+    appendBatch();
+  }
+
   function renderFeed(list) {
     const feed = $("feed");
     const mobileFlat = state.mobile && state.mobile.view === "home";
     if (!mobileFlat && !state.topic && state.category === "全部" && !state.source) {
       feed.classList.remove("feed-grid");
+      disconnectFeedObserver();
       renderCategorySections();
     } else {
       feed.classList.add("feed-grid");
-      feed.innerHTML = list.slice(state.topic ? 0 : 1, 31).map(card).join("");
+      renderFeedFlat(list);
     }
     $("resultCount").textContent = `${list.length} 篇`;
     $("feedTitle").textContent = state.source
@@ -383,6 +452,150 @@
     $("sourceHealth").textContent = zero ? `${zero} 個來源暫時空` : "來源正常";
   }
 
+  function ensureFuse() {
+    if (state.fuse || !state.articles.length || typeof Fuse === "undefined") return;
+    state.fuse = new Fuse(state.articles, {
+      keys: [
+        { name: "title", weight: 0.55 },
+        { name: "summary", weight: 0.2 },
+        { name: "source", weight: 0.1 },
+        { name: "tags", weight: 0.15 },
+      ],
+      threshold: 0.38,
+      ignoreLocation: true,
+      includeMatches: true,
+      minMatchCharLength: 2,
+    });
+  }
+
+  function aggregateTagCounts(limit = 12) {
+    const counts = new Map();
+    for (const article of state.articles) {
+      for (const tag of (article.tags || [])) {
+        if (!tag) continue;
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+  }
+
+  function saveRecentSearch(query) {
+    const q = String(query || "").trim();
+    if (!q) return;
+    const list = [q, ...state.recentSearches.filter((s) => s !== q)].slice(0, RECENT_SEARCH_MAX);
+    state.recentSearches = list;
+    try { localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(list)); } catch (_) {}
+    renderSearchRecentChips();
+  }
+
+  function clearRecentSearches() {
+    state.recentSearches = [];
+    try { localStorage.removeItem(RECENT_SEARCH_KEY); } catch (_) {}
+    renderSearchRecentChips();
+  }
+
+  function renderSearchRecentChips() {
+    const host = $("searchRecentChips");
+    if (!host) return;
+    const clearBtn = $("searchRecentClear");
+    if (!state.recentSearches.length) {
+      host.innerHTML = `<span class="empty">未有紀錄 — 輸入關鍵字後會自動儲存最近 ${RECENT_SEARCH_MAX} 次</span>`;
+      if (clearBtn) clearBtn.style.display = "none";
+      return;
+    }
+    if (clearBtn) clearBtn.style.display = "inline";
+    host.innerHTML = state.recentSearches.map((q) => `<button class="recent" data-search-set="${esc(q)}" type="button">${esc(q)}</button>`).join("");
+  }
+
+  function renderSearchTopicChips() {
+    const host = $("searchTopicChips");
+    if (!host) return;
+    const list = (state.topics || []).slice(0, 8);
+    if (!list.length) {
+      host.innerHTML = `<span class="empty">暫無熱門話題</span>`;
+      return;
+    }
+    host.innerHTML = list.map((topic) => `
+      <button class="topic" data-search-topic="${esc(topic.topic || "")}" type="button">${esc(topic.topic || "未分類")} <span style="color:var(--muted);">${Number(topic.count || 0)}</span></button>
+    `).join("");
+  }
+
+  function renderSearchTagChips() {
+    const host = $("searchTagChips");
+    if (!host) return;
+    const list = aggregateTagCounts(12);
+    if (!list.length) {
+      host.innerHTML = `<span class="empty">暫無標籤</span>`;
+      return;
+    }
+    host.innerHTML = list.map(([tag, count]) => `
+      <button class="tag" data-search-set="${esc(tag)}" type="button">${esc(tag)} <span style="color:var(--muted);">${count}</span></button>
+    `).join("");
+  }
+
+  function highlight(text, query) {
+    if (!query) return esc(text);
+    const safe = esc(text);
+    const tokens = query.split(/\s+/).filter((t) => t.length >= 2).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!tokens.length) return safe;
+    const re = new RegExp(tokens.join("|"), "gi");
+    return safe.replace(re, (m) => `<mark>${m}</mark>`);
+  }
+
+  function searchResultItem(article, query) {
+    return `<a href="${articleUrl(article)}">
+      <div class="meta">
+        ${categoryChip(article.category)}
+        <span>${esc(article.source || "")}</span>
+        <span>${esc(timeLabel(article))}</span>
+        ${priorityBadge(article)}
+      </div>
+      <strong>${highlight(article.title || "", query)}</strong>
+    </a>`;
+  }
+
+  function renderSearchResults() {
+    const host = $("searchResultList");
+    const title = $("searchResultTitle");
+    if (!host || !title) return;
+    const query = state.query.trim();
+    if (!query) {
+      title.textContent = "建議閱讀";
+      const top = [...state.articles]
+        .map((article) => ({ article, score: criticalScore(article) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8)
+        .map(({ article }) => article);
+      host.innerHTML = top.length
+        ? top.map((a) => searchResultItem(a, "")).join("")
+        : `<div class="empty-result">暫無建議</div>`;
+      return;
+    }
+    ensureFuse();
+    let results = [];
+    if (state.fuse) {
+      results = state.fuse.search(query, { limit: 20 }).map((r) => r.item);
+    } else {
+      const lower = query.toLowerCase();
+      results = state.articles.filter((article) => {
+        const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
+        return haystack.includes(lower);
+      });
+    }
+    title.textContent = `搜尋結果 · ${results.length} 篇`;
+    host.innerHTML = results.length
+      ? results.slice(0, 20).map((a) => searchResultItem(a, query)).join("")
+      : `<div class="empty-result">冇結果 — 試吓上面嘅熱門話題或標籤</div>`;
+  }
+
+  function renderSearchStage() {
+    if (!$("searchStage")) return;
+    renderSearchRecentChips();
+    renderSearchTopicChips();
+    renderSearchTagChips();
+    renderSearchResults();
+  }
+
   function renderAll() {
     const list = filteredArticles();
     renderNav();
@@ -392,6 +605,7 @@
     renderAiPanel(list);
     renderMobileSideHealth();
     renderVersionInfo();
+    renderSearchStage();
     // Defer until layout settles, otherwise offsetHeight reads stale numbers.
     requestAnimationFrame(fillCategoriesToMatchBrief);
   }
@@ -608,6 +822,38 @@
       state.query = event.target.value;
       renderAll();
     });
+    const commitSearch = () => saveRecentSearch(state.query);
+    $("search").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") commitSearch();
+    });
+    $("search").addEventListener("blur", commitSearch);
+
+    $("searchStage")?.addEventListener("click", (event) => {
+      const setBtn = event.target.closest("button[data-search-set]");
+      if (setBtn) {
+        const value = setBtn.dataset.searchSet;
+        state.query = value;
+        $("search").value = value;
+        if (isMobile()) {
+          switchMobileView("search");
+        }
+        saveRecentSearch(value);
+        renderAll();
+        $("search").focus();
+        return;
+      }
+      const topicBtn = event.target.closest("button[data-search-topic]");
+      if (topicBtn) {
+        state.topic = topicBtn.dataset.searchTopic;
+        state.category = "全部";
+        state.source = "";
+        state.query = "";
+        $("search").value = "";
+        renderAll();
+        showHomeOnMobile();
+      }
+    });
+    $("searchRecentClear")?.addEventListener("click", clearRecentSearches);
     bindMobileShell();
   }
 
@@ -618,6 +864,8 @@
     state.articles = data.articles || [];
     state.topics = data.trending_topics || [];
     state.sources = data.sources || {};
+    state.fuse = null;
+    ensureFuse();
     $("sideUpdated").textContent = data.updated || "";
     $("aiUpdated").textContent = data.updated || "";
     renderAll();

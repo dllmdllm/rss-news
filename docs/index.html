@@ -445,6 +445,18 @@
     .feed.feed-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .feed-sentinel {
+      grid-column: 1 / -1;
+      height: 1px;
+    }
+    .feed-end-note {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 18px 0 6px;
+      color: var(--muted);
+      font-size: .86rem;
+      letter-spacing: 1px;
+    }
     .category-section {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -755,10 +767,94 @@
 
     .mobile-settings {
       padding: 14px;
-      gap: 10px;
+      gap: 12px;
       flex-direction: column;
+      background: var(--bg);
+      min-height: 100vh;
     }
-    .mobile-settings .ai-block { margin-bottom: 0; }
+
+    .search-stage { display: none; flex-direction: column; gap: 12px; padding: 12px 0 24px; }
+    .search-stage .ai-block { margin-bottom: 0; }
+    .search-stage h2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin: 0 0 10px;
+      font-size: .98rem;
+    }
+    .search-stage h2 span {
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 500;
+    }
+    .chip-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip-cloud button {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: .82rem;
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .chip-cloud button.recent { border-color: rgba(242, 193, 78, .4); }
+    .chip-cloud button.recent::before { content: "🕘 "; }
+    .chip-cloud button.topic { border-color: rgba(70, 194, 166, .45); }
+    .chip-cloud button.tag::before { content: "# "; color: var(--muted); }
+    .chip-cloud .empty { color: var(--muted); font-size: .82rem; padding: 4px 2px; }
+    .search-result-list { display: grid; gap: 0; }
+    .search-result-list a {
+      display: grid;
+      gap: 4px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .search-result-list a:first-child { border-top: 0; padding-top: 4px; }
+    .search-result-list .meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: .76rem;
+    }
+    .search-result-list strong {
+      font-size: .96rem;
+      line-height: 1.4;
+    }
+    .search-result-list mark {
+      background: rgba(242, 193, 78, .25);
+      color: inherit;
+      padding: 0 2px;
+      border-radius: 3px;
+    }
+    .search-stage .empty-result {
+      color: var(--muted);
+      font-size: .85rem;
+      padding: 6px 2px;
+    }
+    .mobile-settings-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 4px 2px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .mobile-settings-head h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+    }
+    .mobile-settings-head span {
+      color: var(--muted);
+      font-size: .78rem;
+    }
+    .mobile-settings .ai-block {
+      margin-bottom: 0;
+      background: var(--panel-2);
+      border-color: rgba(70, 194, 166, .28);
+    }
     .mobile-settings .mobile-font-tools { display: flex; gap: 6px; }
     .mobile-settings .mobile-font-tools button {
       flex: 1;
@@ -842,6 +938,7 @@
       body.mobile-ai .main > .content-head { order: 2; }
       body.mobile-ai .main > .feed { order: 3; }
       body.mobile-search .topbar { position: static; }
+      body.mobile-search .search-stage { display: flex; }
       body.mobile-settings .app { display: none; }
       .mobile-sub, .mobile-cat-chips { margin: 12px; }
       .mobile-cat-chips { margin-top: 0; }
@@ -941,6 +1038,25 @@
         <span id="resultCount"></span>
       </div>
       <section class="feed" id="feed"></section>
+
+      <section class="search-stage" id="searchStage" aria-label="搜尋面板">
+        <section class="ai-block">
+          <h2>最近搜尋 <span id="searchRecentClear" style="cursor:pointer; display:none;">清空</span></h2>
+          <div class="chip-cloud" id="searchRecentChips"></div>
+        </section>
+        <section class="ai-block">
+          <h2>熱門話題</h2>
+          <div class="chip-cloud" id="searchTopicChips"></div>
+        </section>
+        <section class="ai-block">
+          <h2>熱門標籤</h2>
+          <div class="chip-cloud" id="searchTagChips"></div>
+        </section>
+        <section class="ai-block">
+          <h2 id="searchResultTitle">建議閱讀</h2>
+          <div class="search-result-list" id="searchResultList"></div>
+        </section>
+      </section>
     </main>
 
     <div class="mobile-sub mobile-sub-home" id="mobileSubHome">
@@ -972,6 +1088,10 @@
   </div>
 
   <aside class="mobile-settings" id="mobileSettings">
+    <div class="mobile-settings-head">
+      <h1>⚙️ 設定</h1>
+      <span>個人化你嘅閱讀</span>
+    </div>
     <section class="ai-block">
       <h2>字體大小</h2>
       <div class="font-tools mobile-font-tools" id="mobileFontTools">
@@ -986,7 +1106,7 @@
     </section>
     <section class="ai-block">
       <h2>來源健康</h2>
-      <div class="side-health" id="mobileSideHealth"></div>
+      <div class="side-health" id="mobileSideHealth"><span class="ai-note">載入中…</span></div>
     </section>
     <section class="ai-block">
       <h2>版本</h2>
@@ -1051,6 +1171,7 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
+  <script src="vendor/fuse.min.js?v=20260513-shared"></script>
   <script src="js/common.js?v=20260513-shared"></script>
   <script src="js/index.js?v=20260513-shared"></script>
 </body>

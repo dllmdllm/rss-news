@@ -88,9 +88,17 @@
     return doc.body.textContent.replace(/\s+/g, " ").trim();
   }
 
-  function relatedArticles(current, articles, limit = 6) {
+  function titleKey(article) {
+    return String(article.title || "").replace(/\s+/g, "").slice(0, 18);
+  }
+
+  // 排走已經喺「同來源新聞」出現嘅 id，同埋 cluster 近似標題只留一篇，
+  // 避免 AI panel 同 side panel 重複顯示同一單新聞。
+  function relatedArticles(current, articles, excludeIds, limit = 6) {
+    const seenTitles = new Set([titleKey(current)].filter(Boolean));
+    const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
     return articles
-      .filter((article) => article.id !== current.id)
+      .filter((article) => article.id !== current.id && !skip.has(article.id))
       .map((article) => {
         let score = 0;
         if (article.topic && article.topic === current.topic) score += 80;
@@ -102,8 +110,14 @@
       })
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || String(b.article.date || "").localeCompare(String(a.article.date || "")))
-      .slice(0, limit)
-      .map((row) => row.article);
+      .reduce((acc, row) => {
+        if (acc.length >= limit) return acc;
+        const key = titleKey(row.article);
+        if (key && seenTitles.has(key)) return acc;
+        if (key) seenTitles.add(key);
+        acc.push(row.article);
+        return acc;
+      }, []);
   }
 
   function renderMiniArticle(article) {
@@ -200,10 +214,19 @@
       ["情緒", article.sentiment || "-"],
     ].map(([key, value]) => `<li><span>${esc(key)}</span><strong>${esc(value)}</strong></li>`).join("");
 
+    const sameSourceSeenTitles = new Set([titleKey(article)].filter(Boolean));
     const sameSource = (data.articles || [])
       .filter((row) => row.id !== article.id && row.source === article.source)
       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-      .slice(0, 10);
+      .reduce((acc, row) => {
+        if (acc.length >= 10) return acc;
+        const key = titleKey(row);
+        if (key && sameSourceSeenTitles.has(key)) return acc;
+        if (key) sameSourceSeenTitles.add(key);
+        acc.push(row);
+        return acc;
+      }, []);
+    const sameSourceIds = new Set(sameSource.map((row) => row.id));
     const sourceLabel = article.source || "";
     $("sourceListTitle").textContent = sourceLabel ? `${sourceLabel} 其他新聞` : "同來源新聞";
     $("sourceList").innerHTML = sameSource.map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有同來源新聞</span>`;
@@ -216,7 +239,7 @@
       ? article.key_sentences
       : summaryPoints(article, 5);
     $("facts").innerHTML = facts.slice(0, 5).map((fact) => `<li>${esc(fact)}</li>`).join("");
-    $("relatedList").innerHTML = relatedArticles(article, data.articles || [], 6).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
+    $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
   }
 
   load().catch((err) => {
