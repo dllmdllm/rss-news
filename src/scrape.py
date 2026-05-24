@@ -768,6 +768,24 @@ def _fix_picture_elements(html: str) -> str:
     return str(soup) if changed else html
 
 
+def _dedupe_paragraphs(content: str) -> str:
+    # trafilatura occasionally emits the same <p> twice for short articles
+    # (e.g. mingpao single-paragraph stories) — drop later duplicates.
+    if not content:
+        return content
+    soup = BeautifulSoup(content, "html.parser")
+    seen: set[str] = set()
+    for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "blockquote", "li"]):
+        text = re.sub(r"\s+", " ", tag.get_text(" ", strip=True))
+        if len(text) < 20:
+            continue
+        if text in seen:
+            tag.decompose()
+        else:
+            seen.add(text)
+    return str(soup)
+
+
 def _remove_leading_title(content: str, title: str) -> str:
     """Remove leading <h1> if it duplicates the article title."""
     soup = BeautifulSoup(content, "html.parser")
@@ -1036,6 +1054,7 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     if content:
         content = _strip_suicide_helpline(content)
         content = _strip_related_reading(content)
+        content = _dedupe_paragraphs(content)
 
     og_image: str | None = None
     if need_og_image:
