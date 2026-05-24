@@ -472,6 +472,26 @@ def _strip_suicide_helpline(content: str) -> str:
             tag.decompose()
     return str(soup)
 
+
+# Cross-promo / "related reading" inline links appended by HK / TW news sites.
+# Prefix-match only (not substring) to avoid killing real prose that happens to
+# mention "相關閱讀" mid-sentence — extremely rare but better safe than sorry.
+_RELATED_READING_RE = re.compile(
+    r"^\s*(相關|延伸|推薦|更多)\s*(閱讀|報[導道]|新聞)\s*[：:｜|・·]"
+)
+
+
+def _strip_related_reading(content: str) -> str:
+    """Remove '相關閱讀：xxx' / '延伸閱讀：xxx' link paragraphs."""
+    if not content or "閱讀" not in content and "報道" not in content and "報導" not in content and "新聞" not in content:
+        return content
+    soup = BeautifulSoup(content, "html.parser")
+    for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "li", "blockquote"]):
+        text = tag.get_text(" ", strip=True)
+        if text and _RELATED_READING_RE.match(text):
+            tag.decompose()
+    return str(soup)
+
 _SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
 
 
@@ -1015,6 +1035,7 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
 
     if content:
         content = _strip_suicide_helpline(content)
+        content = _strip_related_reading(content)
 
     og_image: str | None = None
     if need_og_image:
