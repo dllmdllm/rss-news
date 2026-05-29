@@ -834,9 +834,13 @@ def _restore_intro_from_description(html: str, content: str, title: str, source:
         return content
 
     split_at = desc.find(first_heading)
-    if split_at <= 0:
+    if split_at < 0:
+        # Heading not in og:description — the whole description is the intro
+        intro = desc
+    elif split_at == 0:
         return content
-    intro = desc[:split_at].strip()
+    else:
+        intro = desc[:split_at].strip()
     if not intro:
         return content
 
