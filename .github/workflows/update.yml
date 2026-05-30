@@ -75,11 +75,9 @@ jobs:
           ts="$(date -u +'%Y-%m-%d %H:%M') UTC"
           git commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
 
-          # Retry fetch → rebase → push up to 3 times. Each iteration
-          # re-syncs origin/main so a concurrent push (Codex, or a prior
-          # stuck chore commit) doesn't permanently wedge this one.
-          # After rebase, HEAD is strictly ahead of origin/main, so plain
-          # push is a fast-forward — no force / force-with-lease needed.
+          # Retry fetch → resync → push up to 3 times. Each iteration re-stacks
+          # our generated output on top of the latest origin/main, so a concurrent
+          # push (Codex, or a prior stuck chore commit) can't permanently wedge us.
           for i in 1 2 3; do
             echo "=== attempt $i ==="
             if ! git fetch origin main; then
@@ -87,14 +85,16 @@ jobs:
               sleep 3
               continue
             fi
-            if ! git rebase origin/main -X ours; then
-              echo "rebase failed on attempt $i — aborting"
-              git rebase --abort
-              sleep 3
-              continue
+            # "ours" always wins for generated data: instead of replaying our
+            # commit (rebase dies on delete/modify conflicts when a concurrent
+            # pusher removes aged-out content files), re-stack our output on top
+            # of the latest origin tip. Soft-reset drops our commit but KEEPS the
+            # generated files staged, then we re-commit -> guaranteed fast-forward.
+            git reset --soft origin/main
+            if git diff --cached --quiet; then
+              echo "no changes after resync"; exit 0
             fi
-            echo "--- git log before push ---"
-            git log --oneline origin/main..HEAD
+            git commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
             if git push origin HEAD:main; then
               echo "push OK on attempt $i"
               exit 0
