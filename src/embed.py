@@ -13,7 +13,6 @@ transformers.js, so build-time and browser-time embeddings are compatible.
 import hashlib
 import json
 import os
-import struct
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 

@@ -56,7 +56,7 @@ def aggregate_entities(articles: list) -> list[dict]:
     now    = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=ENTITY_WINDOW_HOURS)
 
-    entity_articles: dict[tuple, list[str]] = {}
+    entity_articles: dict[tuple, set[str]] = {}
 
     n_dup = n_date_err = n_old = n_no_ent = n_ok = 0
     for a in articles:
@@ -86,8 +86,8 @@ def aggregate_entities(articles: list) -> list[dict]:
                 if not name or len(name) < 2:
                     continue
                 key = (etype, name)
-                if aid and aid not in entity_articles.get(key, []):
-                    entity_articles.setdefault(key, []).append(aid)
+                if aid:
+                    entity_articles.setdefault(key, set()).add(aid)
 
     print(f"[entities] aggregate: {n_ok} ok, {n_dup} dup, {n_date_err} date-err, {n_old} old, {n_no_ent} no-entities")
 
@@ -173,14 +173,14 @@ async def generate_entity_digests(articles: list) -> None:
         print("[entities] No qualifying entities")
         _write_output([], articles)
         return
-    cached_by_name = {e["name"]: e for e in (cached.get("entities") or [])}
+    cached_by_name = {(e["type"], e["name"]): e for e in (cached.get("entities") or [])}
     articles_map   = {a["id"]: a for a in articles}
 
     pending = []
     result  = []
     for e in entities:
         sig      = _entity_sig(e["name"], e["article_ids"])
-        cached_e = cached_by_name.get(e["name"])
+        cached_e = cached_by_name.get((e["type"], e["name"]))
         if (
             isinstance(cached_e, dict)
             and cached_e.get("sig")     == sig

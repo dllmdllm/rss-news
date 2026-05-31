@@ -262,10 +262,16 @@ async def generate_panel_digests(articles: list) -> dict:
     if not qualifying:
         existing = load_cache()
         if existing:
-            print("[digest] No qualifying clusters this run — keeping existing cache")
-            return {}
-        print("[digest] No qualifying clusters")
-        save_cache({})
+            current_cids = {a.get("cluster_id") for a in articles if a.get("cluster_id")}
+            pruned = {cid: entry for cid, entry in existing.items() if cid in current_cids}
+            if len(pruned) < len(existing):
+                save_cache(pruned)
+                print(f"[digest] No qualifying clusters — pruned {len(existing) - len(pruned)} stale entries")
+            else:
+                print("[digest] No qualifying clusters this run — keeping existing cache")
+        else:
+            print("[digest] No qualifying clusters")
+            save_cache({})
         return {}
 
     cache = load_cache()

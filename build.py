@@ -1006,7 +1006,7 @@ async def main():
     articles = annotate_ai_features(articles)
 
     # Save core data *before* optional heavy steps so a timeout still commits.
-    # Total budget for steps above: 150+45+255+180 = 630s max → save_json always runs by t=640s.
+    # Total budget for steps above: 150+45+255+280 = 730s max → save_json always runs by t=730s.
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     _tlog("save_json start")
     save_json(articles, source_stats)

@@ -26,6 +26,8 @@ from src.minimax_client import MINIMAX_API_KEY, post_messages
 
 ARTICLE_MAX_AGE_HOURS = 30
 
+_CJK_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+
 # Conditional-request cache: maps feed URL → {"etag": ..., "last_modified": ...}
 # Saves bandwidth when the upstream feed has not changed (HTTP 304 path).
 _FEED_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "feed_http_cache.json"
@@ -905,9 +907,6 @@ async def _fetch_one(
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return articles, repr(exc), False
     return articles, None, False
-
-
-_CJK_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 
 
 def _looks_untranslated(title: str) -> bool:

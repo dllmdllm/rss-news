@@ -177,7 +177,7 @@ def _normalise_key_sentences(raw) -> list[str]:
             continue
         seen.add(text)
         out.append(text)
-        if len(out) >= 2:
+        if len(out) >= 5:
             break
     return out
 

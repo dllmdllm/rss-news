@@ -1076,8 +1076,8 @@ async def _scrape_one(
     # Already scraped in a previous build and restored via _merge_missing_sources
     if article.get("content"):
         return article
-    async with sem:
-        for attempt in range(2):
+    for attempt in range(2):
+        async with sem:
             try:
                 html = await _fetch_html(session, article["url"])
                 extra_headers = _extra_headers_for_url(article["url"])
@@ -1092,8 +1092,12 @@ async def _scrape_one(
                         html = await _cloudscraper_fetch(article["url"], extra_headers)
                         if html and not _is_blocked(html):
                             print(f"[MINGPAO] cloudscraper succeeded")
+                        elif not html:
+                            # Both fallbacks returned nothing — give up, use RSS
+                            _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
+                            return article
 
-                if _is_blocked(html):
+                if html and _is_blocked(html):
                     print(f"[BLOCK] {article['source']} — trying urllib fallback")
                     html = await _urllib_fetch(article["url"], extra_headers)
                     if html and not _is_blocked(html):
@@ -1142,13 +1146,14 @@ async def _scrape_one(
                 if og_image and not article.get("thumbnail"):
                     article["thumbnail"] = og_image
 
-                break  # success, no retry needed
+                return article  # success, no retry needed
 
             except Exception as exc:
-                if attempt == 0:
-                    await asyncio.sleep(3)  # wait before retry
-                else:
+                if attempt == 1:
                     print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")
+        # Semaphore released before sleeping so other articles can proceed
+        if attempt == 0:
+            await asyncio.sleep(3)
     return article
 
 

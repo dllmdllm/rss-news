@@ -13,7 +13,7 @@ from pathlib import Path
 import aiohttp
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "1122095129")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 WORKER_URL         = os.getenv("WORKER_URL", "")
 NOTIFY_SECRET      = os.getenv("NOTIFY_SECRET", "")
 SITE_BASE          = "https://dllmdllm.github.io/rss-news"
@@ -138,11 +138,11 @@ async def send_breaking_alerts(articles: list) -> None:
                     if 200 <= status < 300:
                         alerted[b["cid"]] = b["date"]
                         print(f"[breaking] Alerted: {b['headline'][:50]}")
+                        await _send_worker_push(session, b["headline"], b["article_id"])
                     else:
                         print(f"[breaking] Telegram returned {status}")
                 except Exception as exc:
                     print(f"[breaking] Send failed: {exc!r}")
-                await _send_worker_push(session, b["headline"], b["article_id"])
 
     # Always prune so state doesn't grow unboundedly, even when no new alerts.
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=STATE_TTL_HOURS)).isoformat()
