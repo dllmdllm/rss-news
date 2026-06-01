@@ -350,13 +350,16 @@ def test_key_sentences_drops_too_short_and_too_long():
     assert out == ["啱啱好長度嘅句子應該保留。"]
 
 
-def test_key_sentences_caps_at_two():
+def test_key_sentences_caps_at_five():
     out = _normalise_key_sentences([
         "第一句話，足夠長度嘅內容。",
         "第二句話，足夠長度嘅內容。",
         "第三句話，足夠長度嘅內容。",
+        "第四句話，足夠長度嘅內容。",
+        "第五句話，足夠長度嘅內容。",
+        "第六句話，足夠長度嘅內容。",
     ])
-    assert len(out) == 2
+    assert len(out) == 5
 
 
 def test_key_sentences_handles_garbage_input():
