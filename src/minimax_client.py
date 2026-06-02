@@ -11,7 +11,7 @@ import os
 import aiohttp
 
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_MODEL   = os.getenv("MINIMAX_MODEL", "MiniMax-M3")
+MINIMAX_MODEL   = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 MINIMAX_URL     = "https://api.minimax.io/anthropic/v1/messages"
 
 _RETRY_ERR_TYPES = {"overloaded_error", "rate_limit_error", "api_error"}
