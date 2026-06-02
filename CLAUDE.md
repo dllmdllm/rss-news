@@ -81,11 +81,11 @@ RSS Feed
 | 全文解析 | `trafilatura` | 自動識別正文、保留圖片順序、抗噪聲強 |
 | HTML 解析 | `beautifulsoup4` | 自定義元素展開、圖片修復 |
 | 繁簡轉換 | `zhconv` | 簡體 → 香港繁體 |
-| 標題翻譯 | MiniMax M2.7 | 英文 RSS 標題批量翻譯 |
+| 標題翻譯 | MiniMax M3 | 英文 RSS 標題批量翻譯 |
 | 反爬蟲繞過 | `cloudscraper` | 繞過 Cloudflare 驗證 |
 | 環境變數 | `python-dotenv` | 讀取 .env（API Key）|
 | 前端 | 純 HTML + Vanilla JS | 快，無框架開銷 |
-| AI 分析 | MiniMax M2.7 | 摘要 / 評分 / 標籤 / 情緒 / 話題 |
+| AI 分析 | MiniMax M3 | 摘要 / 評分 / 標籤 / 情緒 / 話題 |
 | 語義搜尋 | `sentence-transformers` | 文章向量化，計算相似度 |
 | 執行環境 | Python 3.13 | 最新穩定版 |
 
