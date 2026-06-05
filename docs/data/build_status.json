@@ -1,1 +1,1 @@
-{"updated":"2026-06-05 15:10 HKT","steps":{"panel_digest":{"ok":true,"seconds":90.0},"embed":{"ok":true,"seconds":85.7},"breaking_alert":{"ok":true,"seconds":0.9},"entity_digest":{"ok":false,"error":"TimeoutError()","seconds":120.2}}}
+{"updated":"2026-06-05 15:27 HKT","steps":{"panel_digest":{"ok":true,"seconds":41.1},"embed":{"ok":true,"seconds":70.7},"breaking_alert":{"ok":true,"seconds":1.9},"entity_digest":{"ok":true,"seconds":78.8}}}
