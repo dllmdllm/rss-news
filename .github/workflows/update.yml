@@ -31,6 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pin Python interpreter
+        # Self-hosted runner inherits PATH from whatever process started it.
+        # If a sibling tool (hermes-agent venv etc.) gets prepended to User
+        # PATH, `python` resolves to a broken venv with no pip and every
+        # build fails on `Install dependencies`. Prepend the known-good MS
+        # Store Python dir to GITHUB_PATH so all subsequent steps see it
+        # first, regardless of what the runner inherited.
+        run: |
+          $pyDir = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
+          if (-not (Test-Path "$pyDir\python.exe")) {
+            Write-Error "python.exe missing at $pyDir"; exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $pyDir
+          & "$pyDir\python.exe" -m pip --version
+
       - name: Cache pip downloads
         uses: actions/cache@v4
         with:
