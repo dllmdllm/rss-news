@@ -1056,7 +1056,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(asyncio.wait_for(main(), timeout=780))  # 13-min hard cap
+        asyncio.run(asyncio.wait_for(main(), timeout=850))  # ~14-min hard cap
     except (asyncio.TimeoutError, TimeoutError):
         saved = "after" if _core_saved else "BEFORE"
         print(f"[WARN] Build timed out {saved} core save")
