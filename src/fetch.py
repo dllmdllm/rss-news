@@ -63,17 +63,16 @@ async def _translate_titles_minimax(
         f"{numbered}"
     )
     try:
-        # MiniMax-M2.7 prepends an internal "thinking" segment before the JSON
-        # answer. If the budget truncates the thinking, the answer never arrives
-        # and _parse_title_translations returns None, causing us to silently
-        # fall back to English titles. Budget generously so the final array
-        # always fits.
+        # Translation is a simple structured-output task — M3 thinking adds
+        # latency with no quality benefit. Disabling it brings M3 back to
+        # M2.7 speed (~5-10s) so the 30s timeout is safe again.
         raw, err, _status = await post_messages(
             session,
             system="You are a concise news title translator. Output valid JSON only.",
             user_text=user_text,
             max_tokens=max(1200, len(titles) * 200),
             timeout=30,
+            thinking={"type": "disabled"},
         )
     except Exception as exc:
         print(f"[WARN] MiniMax title translation failed: {exc!r}")
@@ -961,12 +960,35 @@ async def retranslate_english_titles(articles: list) -> None:
         print(f"[fetch] retranslated {changed}/{len(pending)} stale English titles")
 
 
+# Per-feed budget. Most feeds finish in 1-5s; SkyPost (sitemap walk + up to
+# 120 page fetches) is the slowest legitimate path at ~30-50s. Without this
+# cap, one hung feed eats build.py's whole 150s fetch budget and EVERY source
+# falls back to stale articles — with it, only the slow feed degrades.
+_PER_FEED_TIMEOUT = 75
+
+
+async def _fetch_one_capped(
+    session:    aiohttp.ClientSession,
+    feed_info:  dict,
+    cutoff:     datetime,
+    http_cache: dict,
+) -> tuple[list, str | None, bool]:
+    try:
+        return await asyncio.wait_for(
+            _fetch_one(session, feed_info, cutoff, http_cache),
+            timeout=_PER_FEED_TIMEOUT,
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        print(f"[WARN] fetch {feed_info['name']}: feed timeout after {_PER_FEED_TIMEOUT}s")
+        return [], f"timeout after {_PER_FEED_TIMEOUT}s", False
+
+
 async def fetch_all() -> tuple[list, dict]:
     cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     http_cache = _load_feed_http_cache()
     connector  = aiohttp.TCPConnector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
-        tasks   = [_fetch_one(session, f, cutoff, http_cache) for f in RSS_FEEDS]
+        tasks   = [_fetch_one_capped(session, f, cutoff, http_cache) for f in RSS_FEEDS]
         # return_exceptions=True so a single feed crash (TLS error, parser
         # blow-up) doesn't cancel every other feed in flight.
         results = await asyncio.gather(*tasks, return_exceptions=True)

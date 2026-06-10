@@ -315,12 +315,16 @@ async def _post_messages(
 ) -> tuple[str, dict, int]:
     """Per-article wrapper that pins the system prompt to SYSTEM_PROMPT.
     Returns (raw_text, error_dict, http_status)."""
+    # thinking disabled: analysis is structured-output JSON — M3 thinking
+    # tokens would eat into max_tokens and truncate the array. M2.7 accepts
+    # the param and ignores it (probed 2026-06-10).
     return await post_messages(
         session,
         system=SYSTEM_PROMPT,
         user_text=user_text,
         max_tokens=max_tokens,
         timeout=timeout,
+        thinking={"type": "disabled"},
     )
 
 

@@ -12,10 +12,11 @@ from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse
 from xml.sax.saxutils import escape as xml_escape
 
-# Force UTF-8 output on Windows
-if sys.stdout.encoding.lower() != "utf-8":
+# Force UTF-8 output on Windows. encoding can be None when stdout is a pipe
+# without PYTHONIOENCODING set — treat that the same as non-UTF-8.
+if (sys.stdout.encoding or "").lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if sys.stderr.encoding.lower() != "utf-8":
+if (sys.stderr.encoding or "").lower() != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).parent
@@ -1026,8 +1027,20 @@ async def main():
     t = time.monotonic()
     _tlog("embed start")
     try:
-        compute_embeddings(articles, data_dir=DATA_DIR)
+        # compute_embeddings is synchronous CPU/IO work (model load can pull
+        # ~120 MB on a cold HF cache). Run it in the executor so a hang can't
+        # block the event loop — a blocked loop would also disarm the global
+        # asyncio.wait_for(850) and the whole job dies at the Actions timeout
+        # with nothing pushed. wait_for here lets the build move on instead.
+        loop = asyncio.get_running_loop()
+        await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: compute_embeddings(articles, data_dir=DATA_DIR)),
+            timeout=180,
+        )
         mark_step("embed", seconds=time.monotonic() - t)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("embed timed out — keeping previous embeddings")
+        mark_step("embed", ok=False, error="timeout 180s", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"embed: {exc!r}")
         mark_step("embed", ok=False, error=repr(exc), seconds=time.monotonic() - t)

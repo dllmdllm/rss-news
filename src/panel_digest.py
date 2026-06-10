@@ -215,6 +215,7 @@ async def _digest_one(
                     user_text=user,
                     max_tokens=1100,
                     timeout=45,
+                    thinking={"type": "disabled"},
                 )
                 if _should_retry(err, status) and attempt < DIGEST_MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), DIGEST_BACKOFF_BUDGET - total_waited)

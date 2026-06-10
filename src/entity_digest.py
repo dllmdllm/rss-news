@@ -133,6 +133,8 @@ async def _summarise_entity(
         total_waited = 0.0
         for attempt in range(ENTITY_MAX_ATTEMPTS):
             try:
+                # thinking disabled is critical here: a 200-token cap leaves no
+                # room for an M3 reasoning phase before the JSON answer.
                 raw, err, status = await post_messages(
                     session,
                     system=ENTITY_SUMMARY_PROMPT,
@@ -140,6 +142,7 @@ async def _summarise_entity(
                     max_tokens=200,
                     timeout=30,
                     connect=15,
+                    thinking={"type": "disabled"},
                 )
                 if _should_retry(err, status) and attempt < ENTITY_MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 1), 20.0)

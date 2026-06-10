@@ -29,13 +29,26 @@ async def post_messages(
     max_tokens: int,
     timeout:    float,
     connect:    float = 20,
+    thinking:   dict | None = None,
 ) -> tuple[str, dict, int]:
     """POST a single user message. Returns (raw_text, error_dict, http_status).
 
     Per-request timeout is required — aiohttp drops the session default when
     a request-level timeout is set, so omitting `connect` would silently
     uncap the connect phase.
+
+    Pass thinking={"type": "disabled"} for latency-sensitive tasks (e.g.
+    title translation). MiniMax-M3 enables thinking by default; disabling it
+    removes the reasoning phase and cuts latency to M2.7 levels.
     """
+    payload: dict = {
+        "model":      MINIMAX_MODEL,
+        "max_tokens": max_tokens,
+        "system":     system,
+        "messages":   [{"role": "user", "content": user_text}],
+    }
+    if thinking is not None:
+        payload["thinking"] = thinking
     async with session.post(
         MINIMAX_URL,
         headers={
@@ -43,12 +56,7 @@ async def post_messages(
             "anthropic-version": "2023-06-01",
             "Content-Type":      "application/json",
         },
-        json={
-            "model":      MINIMAX_MODEL,
-            "max_tokens": max_tokens,
-            "system":     system,
-            "messages":   [{"role": "user", "content": user_text}],
-        },
+        json=payload,
         timeout=aiohttp.ClientTimeout(total=timeout, connect=connect),
     ) as resp:
         status = resp.status
