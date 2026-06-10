@@ -19,6 +19,7 @@ rss-news/
 │   ├── embed.py          # 語義向量：計算 embeddings → similar.json
 │   ├── breaking_alert.py # 突發通知：Telegram bot 推送
 │   ├── entity_digest.py  # 實體摘要：聚合人物 / 機構 → entities.json
+│   ├── minimax_client.py # MiniMax API thin wrapper（共用 HTTP shape + thinking 參數）
 │   └── feeds.py          # RSS 來源定義及常數
 ├── build.py              # 主程式：fetch → scrape → analyse → cluster → 輸出 JSON
 ├── docs/                 # GitHub Pages 根目錄
@@ -49,7 +50,7 @@ rss-news/
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py（timeout 15 min）
+        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py（job timeout 16 min）
 ```
 
 ---
@@ -149,10 +150,31 @@ python build.py
 ## 自動化
 
 GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `build.py`：
-- **job timeout：15 分鐘**（防止卡住無限等待）
-- 若 `docs/data/` 有變更則自動 commit & push（最多 retry 3 次 fetch/rebase/push）
+- **job timeout：16 分鐘**（防止卡住無限等待）
+- 若 `docs/data/` 有變更則自動 commit & push（最多 retry 3 次 fetch/resync/push）
+- 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
 
-Secrets：`MINIMAX_API_KEY`、`TELEGRAM_BOT_TOKEN`
+Secrets：`MINIMAX_API_KEY`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`
+
+### Self-hosted runner（部署喺本機 Windows）
+
+Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
+「網站冇 update」十居其九係呢層出事，唔係 build.py 本身：
+
+- **Runner**：`C:\actions-runner\run.cmd`，互動 process（未裝成 Windows service）
+- **Watchdog**：`C:\actions-runner\watchdog.ps1` — 每 5 分鐘檢查 listener，
+  死咗就重啟；idle 過耐就補 dispatch。有 singleton mutex guard。
+- **Keeper task**：`rss-news-watchdog-keeper`（Task Scheduler，每 15 分鐘）—
+  重新啟動 watchdog；如果已有 instance 持有 mutex 就即刻退出。
+  解決「watchdog 被殺之後永遠唔翻生」嘅問題（2026-06-10 根因）。
+- **Dispatch task**：`rss-news-dispatch`（每 20 分鐘）— GitHub 原生 cron 唔可靠，
+  用 `gh workflow run` 補位。
+- 診斷三步：`gh api repos/dllmdllm/rss-news/actions/runners`（offline?）→
+  `Get-Process Runner.Listener`（死咗?）→ `C:\actions-runner\_diag\watchdog.log`
+- Runner 長時間 offline 後，queue 入面嘅 run 可能 wedge（online 咗都唔執）：
+  cancel 晒 stuck runs 再 `gh workflow run update.yml` 即可
+- 治本選項（需 admin，一次過）：`C:\actions-runner\install-service.ps1`
+  將 runner 裝成 Windows service，唔使 login 都會跑
 
 ---
 
@@ -194,9 +216,13 @@ Header: anthropic-version: 2023-06-01
 ```
 
 - 不需要 GroupId、不需要 Bearer token
-- Response 格式：`data["content"][0]["text"]`
+- Response 格式：`data["content"][0]["text"]`（要篩 `type == "text"` 嘅 block，因為 M2.7 會前置 thinking block）
 - 錯誤碼 `overloaded_error`（529）需 retry，10s/20s backoff
-- Rate limit 1002 → 調低 `ANALYSE_CONCURRENCY`（目前 10，安全上限約 500 RPM）
+- Rate limit 1002 → 調低 `ANALYSE_CONCURRENCY`（目前 5，安全上限約 500 RPM）
+- **thinking 參數**：所有 structured-output 調用（translate / analyse / panel / entity）
+  都傳 `thinking={"type": "disabled"}` — M3 預設開 thinking，reasoning tokens 會食
+  `max_tokens` 令 JSON 答案被截斷；M2.7 接受呢個參數但無視佢（2026-06-10 probe 確認），
+  所以傳咗都安全。遷移去 M3 時唔使再改
 
 ### scrape 超時架構
 
@@ -215,10 +241,21 @@ build 卡死。超時後用舊有 content 繼續後續步驟。
 ### build.py 全局超時
 
 ```python
-asyncio.run(asyncio.wait_for(main(), timeout=780))  # 13 分鐘
+asyncio.run(asyncio.wait_for(main(), timeout=850))  # ~14 分鐘
 ```
 
-配合 workflow `timeout-minutes: 15`，確保 job 不會無限運行。
+配合 workflow `timeout-minutes: 16`，確保 job 不會無限運行。
+
+注意：`compute_embeddings`（sentence-transformers）係 sync code，必須經
+`run_in_executor` + `wait_for` 跑——直接喺 event loop 上執行會令全局
+`wait_for(850)` 無法觸發（loop 被 block），一 hang 就食晒成個 job timeout，
+嗰一輪乜都 push 唔到。
+
+### fetch per-feed 超時
+
+`fetch_all()` 每個 feed 包一層 `asyncio.wait_for(75s)`。冇呢層嘅話，
+單一 feed 卡死（SkyPost sitemap walk 最慢）會食晒 build.py 嘅 150s fetch
+budget，**全部來源**都 fallback 去舊文章；有咗就只係嗰個 feed 降級。
 
 ### HK01 全文抓取（`_build_hk01_content`）
 
