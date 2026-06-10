@@ -50,7 +50,7 @@ rss-news/
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py（job timeout 16 min）
+        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py（job timeout 25 min）
 ```
 
 ---
@@ -150,7 +150,7 @@ python build.py
 ## 自動化
 
 GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `build.py`：
-- **job timeout：16 分鐘**（防止卡住無限等待）
+- **job timeout：25 分鐘**（防止卡住無限等待；要預留網絡差嗰日 checkout 可以食 10 分鐘——2026-06-10 實測，16 分鐘上限令成朝零 push）
 - 若 `docs/data/` 有變更則自動 commit & push（最多 retry 3 次 fetch/resync/push）
 - 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
 
@@ -244,7 +244,7 @@ build 卡死。超時後用舊有 content 繼續後續步驟。
 asyncio.run(asyncio.wait_for(main(), timeout=850))  # ~14 分鐘
 ```
 
-配合 workflow `timeout-minutes: 16`，確保 job 不會無限運行。
+配合 workflow `timeout-minutes: 25`，確保 job 不會無限運行（25 嘅原因見 update.yml 註釋：慢網日 checkout 可食 10 分鐘）。
 
 注意：`compute_embeddings`（sentence-transformers）係 sync code，必須經
 `run_in_executor` + `wait_for` 跑——直接喺 event loop 上執行會令全局

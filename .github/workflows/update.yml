@@ -24,7 +24,14 @@ permissions:
 jobs:
   build:
     runs-on: self-hosted
-    timeout-minutes: 16
+    # 25 not 16: on a degraded-network day (observed 2026-06-10) checkout
+    # alone took ~10 min (2 min auth + 7.5 min fetch of the 500+ MB repo)
+    # and the job died at the old 16-min cap before build.py even started —
+    # zero pushes all morning. build.py self-caps at 850s, so the ceiling
+    # here only needs to absorb slow checkout/pip, not a runaway build.
+    # Overlap with the 20-min cron is safe: concurrency group queues the
+    # newer run, cancel-in-progress stays false.
+    timeout-minutes: 25
     defaults:
       run:
         shell: powershell
