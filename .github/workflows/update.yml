@@ -36,7 +36,7 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Pin Python interpreter
         # Self-hosted runner inherits PATH from whatever process started it,
@@ -56,15 +56,12 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$pyDir\Scripts"
           & "$pyDir\python.exe" -m pip --version
 
-      - name: Cache pip downloads
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\pip\Cache
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       - name: Install dependencies
+        # No actions/cache step: on a self-hosted runner the pip cache dir and
+        # the installed site-packages both persist on local disk between runs,
+        # so upload/restore is pure overhead — and its save step was failing
+        # anyway under the LocalSystem service (Git tar.exe path with spaces,
+        # observed 2026-06-12).
         run: python -m pip install --cache-dir "$env:LOCALAPPDATA\pip\Cache" -r requirements.txt
 
       - name: Pre-flight check
