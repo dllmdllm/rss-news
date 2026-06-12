@@ -152,7 +152,22 @@ python build.py
 GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `build.py`：
 - **job timeout：25 分鐘**（防止卡住無限等待；要預留網絡差嗰日 checkout 可以食 10 分鐘——2026-06-10 實測，16 分鐘上限令成朝零 push）
 - 若 `docs/data/` 有變更則自動 commit & push（最多 retry 3 次 fetch/resync/push）
+- **tests 喺 push 之後先跑**（2026-06-12 起）——test 係守 code regression，唔守 data；
+  之前 test 行先，2026-05-31 一個爛 test 扣起文章 20 小時（73 個 run 連 fail）。
+  Test fail 照樣令 run 轉紅＋通知，但文章已出咗街
 - 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
+  （**只喺由綠轉紅嗰下發一次**，連炒唔會洗版；持續斷更嘅提醒由 guardian 負責）
+
+### Guardian（`.github/workflows/guardian.yml`）
+
+跑喺 **GitHub-hosted ubuntu**（本機死咗都照行），每 30 分鐘（cron `7,37`）：
+1. **Cancel 卡死 run**：update.yml 有 run `in_progress` 超過 40 分鐘即 cancel
+   （job timeout 25 分鐘係 runner worker 自己執行，worker hang 咗冇人執法——
+   2026-06-08 一個 run 卡 6h41m，後面 58 個 run 喺 queue 互相取代 14 小時）
+2. **斷更偵測**：最新 data commit（`docs/data/articles.json`）超過 75 分鐘
+   → 自動補 dispatch update.yml（兼治 GitHub cron 漏拍同 wedge 善後）
+3. **告警去重**：由新鮮轉 stale 嗰下 Telegram 嗌一次（持續 stale 每 6 小時提一次），
+   恢復時發 🟢。State 經 Actions cache（`guardian-state-*` key）傳遞
 
 Secrets：`MINIMAX_API_KEY`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`
 
@@ -168,11 +183,10 @@ Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
   （`C:\Program Files\Python313`，python.org installer InstallAllUsers=1）。
   2026-06-11 切去 service 後正正係呢個位炒咗 80 個 run（舊 pin 指住
   `$env:LOCALAPPDATA\Microsoft\WindowsApps`，SYSTEM 下解析去 systemprofile）。
-- **Watchdog**：`C:\actions-runner\watchdog.ps1` — 每 5 分鐘檢查 listener，
-  死咗就重啟；idle 過耐就補 dispatch。有 singleton mutex guard。
-- **Keeper task**：`rss-news-watchdog-keeper`（Task Scheduler，每 15 分鐘）—
-  重新啟動 watchdog；如果已有 instance 持有 mutex 就即刻退出。
-  解決「watchdog 被殺之後永遠唔翻生」嘅問題（2026-06-10 根因）。
+- **Watchdog / keeper（已退役）**：`rss-news-watchdog` 同 `rss-news-watchdog-keeper`
+  task 已 Disabled（service 化之後冇存在價值）。Service 自帶 failure restart
+  （5s/10s/30s，reset 86400——`sc.exe qfailure` 可查）。卡死 run 由 guardian
+  workflow 負責 cancel，唔再靠本機 script。
 - **Dispatch task**：`rss-news-dispatch`（每 20 分鐘）— GitHub 原生 cron 唔可靠，
   用 `gh workflow run` 補位。
 - 診斷三步：`gh api repos/dllmdllm/rss-news/actions/runners`（offline?）→

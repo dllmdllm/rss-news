@@ -88,9 +88,6 @@ jobs:
           TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      - name: Run tests
-        run: python -m pytest tests -q
-
       - name: Commit & push if changed
         # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
         # picks up WSL bash first from PATH, which can't handle Windows
@@ -164,6 +161,15 @@ jobs:
           echo "push failed after 3 attempts — see output above"
           exit 1
 
+      - name: Run tests
+        # AFTER the push, deliberately. Tests guard code regressions, not the
+        # data; when they ran before the push a single broken unit test held
+        # every article hostage (2026-05-31: test_key_sentences_caps_at_two
+        # failed 73 consecutive runs — 20h frozen site while build.py was
+        # producing good data the whole time). A failure here still fails the
+        # run and fires the Telegram notify, but the articles already shipped.
+        run: python -m pytest tests -q
+
       - name: Daily heartbeat
         # Silence is ambiguous: "no failure notify" can mean "all green" OR
         # "watchdog crashed and nothing ran at all". Send one Telegram ping
@@ -206,9 +212,19 @@ jobs:
       - name: Notify Telegram on failure
         if: failure()
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: "1122095129"
         run: |
+          # Only alert on the green->red transition. An 80-message failure
+          # storm (observed 2026-06-11) is noise that gets muted; the guardian
+          # workflow owns ongoing-outage reminders. --repo avoids gh shelling
+          # out to git (dubious ownership under the LocalSystem service).
+          $prev = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status completed --limit 1 --json conclusion --jq '.[0].conclusion' 2>$null
+          if ($prev -eq "failure") {
+            Write-Host "notify skipped: previous run already failed ($prev)"
+            exit 0
+          }
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $text = "❌ rss-news build failed`nrun #$env:GITHUB_RUN_NUMBER on $env:GITHUB_REF_NAME`n$runUrl"
           $body = @{

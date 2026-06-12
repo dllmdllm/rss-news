@@ -1,0 +1,106 @@
+# Guardian: self-healing + alerting for the update pipeline, running on
+# GitHub-hosted ubuntu so it works even when the self-hosted box is dead.
+#
+# Every ~30 min it:
+#   1. cancels update.yml runs wedged in_progress >40 min (job timeout is 25,
+#      so anything older means the runner worker hung and nobody will ever
+#      enforce the timeout — observed 2026-06-08: one run hung 6h41m and 58
+#      queued runs superseded each other for 14h)
+#   2. checks the age of the last data commit; if >75 min it re-dispatches
+#      update.yml (covers GitHub cron drop-outs AND post-wedge recovery)
+#   3. Telegram-alerts on the fresh->stale transition (re-alert at most every
+#      6h while stale) and sends a recovery message on stale->fresh
+#
+# State (last status + last alert time) is carried between runs via the
+# Actions cache, restore-keys picking up the most recent entry.
+name: Guardian
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: guardian
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: "1122095129"
+      STALE_MIN: "75"
+      WEDGE_MIN: "40"
+      REALERT_SEC: "21600"
+    steps:
+      - name: Restore guardian state
+        uses: actions/cache/restore@v5
+        with:
+          path: state.json
+          key: guardian-state-${{ github.run_id }}
+          restore-keys: guardian-state-
+
+      - name: Inspect, heal, alert
+        run: |
+          set -uo pipefail
+          now=$(date -u +%s)
+
+          last_status="ok"; last_alert=0
+          if [ -f state.json ]; then
+            last_status=$(jq -r '.status // "ok"' state.json)
+            last_alert=$(jq -r '.last_alert // 0' state.json)
+          fi
+
+          tg() {
+            curl -fsS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d chat_id="${TG_CHAT}" --data-urlencode text="$1" >/dev/null \
+              || echo "::warning::telegram send failed"
+          }
+
+          # --- 1. cancel wedged runs --------------------------------------
+          cutoff=$(date -u -d "@$(( now - WEDGE_MIN * 60 ))" +%Y-%m-%dT%H:%M:%SZ)
+          wedged=$(gh run list -R "$GITHUB_REPOSITORY" --workflow update.yml \
+            --status in_progress --json databaseId,createdAt \
+            --jq "[.[] | select(.createdAt < \"$cutoff\") | .databaseId] | .[]")
+          for id in $wedged; do
+            echo "cancelling wedged run $id (in_progress since before $cutoff)"
+            gh run cancel -R "$GITHUB_REPOSITORY" "$id" || true
+            tg "🧹 rss-news guardian：cancel 咗卡死嘅 run ${id}（in_progress 超過 ${WEDGE_MIN} 分鐘）"
+          done
+
+          # --- 2. staleness of last data commit ---------------------------
+          last_commit=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/commits?path=docs/data/articles.json&per_page=1" \
+            --jq '.[0].commit.committer.date')
+          age_min=$(( (now - $(date -u -d "$last_commit" +%s)) / 60 ))
+          echo "last data commit ${last_commit} (${age_min} min ago); previous status: ${last_status}"
+
+          status="ok"
+          if [ "$age_min" -ge "$STALE_MIN" ]; then
+            status="stale"
+            echo "stale -> re-dispatching update.yml"
+            gh workflow run update.yml -R "$GITHUB_REPOSITORY" || true
+            if [ "$last_status" != "stale" ] || [ $(( now - last_alert )) -ge "$REALERT_SEC" ]; then
+              tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。Guardian 已自動補 dispatch；如持續，檢查 runner：Get-Service actions.runner.*"
+              last_alert=$now
+            fi
+          elif [ "$last_status" = "stale" ]; then
+            tg "🟢 rss-news 已恢復更新（最新 data commit ${age_min} 分鐘前）"
+          fi
+
+          jq -n --arg s "$status" --argjson a "$last_alert" \
+            '{status: $s, last_alert: $a}' > state.json
+
+      - name: Save guardian state
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: state.json
+          key: guardian-state-${{ github.run_id }}
