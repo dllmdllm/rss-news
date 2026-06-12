@@ -39,18 +39,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Pin Python interpreter
-        # Self-hosted runner inherits PATH from whatever process started it.
-        # If a sibling tool (hermes-agent venv etc.) gets prepended to User
-        # PATH, `python` resolves to a broken venv with no pip and every
-        # build fails on `Install dependencies`. Prepend the known-good MS
-        # Store Python dir to GITHUB_PATH so all subsequent steps see it
-        # first, regardless of what the runner inherited.
+        # Self-hosted runner inherits PATH from whatever process started it,
+        # and since 2026-06-11 it runs as a Windows service under LocalSystem,
+        # so per-user installs are invisible: the old MS Store Python pin
+        # resolved LOCALAPPDATA to systemprofile and every run died here in
+        # ~24s (observed 2026-06-11→12, 80 consecutive failures). Pin the
+        # all-users CPython at C:\Program Files\Python313 instead and prepend
+        # it to GITHUB_PATH so all later steps see the same interpreter
+        # regardless of inherited PATH or service account.
         run: |
-          $pyDir = "$env:LOCALAPPDATA\Microsoft\WindowsApps"
+          $pyDir = "C:\Program Files\Python313"
           if (-not (Test-Path "$pyDir\python.exe")) {
             Write-Error "python.exe missing at $pyDir"; exit 1
           }
           Add-Content -Path $env:GITHUB_PATH -Value $pyDir
+          Add-Content -Path $env:GITHUB_PATH -Value "$pyDir\Scripts"
           & "$pyDir\python.exe" -m pip --version
 
       - name: Cache pip downloads

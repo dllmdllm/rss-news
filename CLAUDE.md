@@ -161,7 +161,13 @@ Secrets：`MINIMAX_API_KEY`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`
 Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
 「網站冇 update」十居其九係呢層出事，唔係 build.py 本身：
 
-- **Runner**：`C:\actions-runner\run.cmd`，互動 process（未裝成 Windows service）
+- **Runner**：已裝成 Windows service `actions.runner.dllmdllm-rss-news.windows-home`
+  （2026-06-11 起，跑喺 **LocalSystem**，唔使 login 都會跑）。
+  ⚠️ LocalSystem 見唔到 per-user 嘢：MS Store Python / user PATH / user pip cache
+  全部唔存在。Workflow 嘅 Python 一定要用 all-users 安裝
+  （`C:\Program Files\Python313`，python.org installer InstallAllUsers=1）。
+  2026-06-11 切去 service 後正正係呢個位炒咗 80 個 run（舊 pin 指住
+  `$env:LOCALAPPDATA\Microsoft\WindowsApps`，SYSTEM 下解析去 systemprofile）。
 - **Watchdog**：`C:\actions-runner\watchdog.ps1` — 每 5 分鐘檢查 listener，
   死咗就重啟；idle 過耐就補 dispatch。有 singleton mutex guard。
 - **Keeper task**：`rss-news-watchdog-keeper`（Task Scheduler，每 15 分鐘）—
@@ -173,8 +179,9 @@ Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
   `Get-Process Runner.Listener`（死咗?）→ `C:\actions-runner\_diag\watchdog.log`
 - Runner 長時間 offline 後，queue 入面嘅 run 可能 wedge（online 咗都唔執）：
   cancel 晒 stuck runs 再 `gh workflow run update.yml` 即可
-- 治本選項（需 admin，一次過）：`C:\actions-runner\install-service.ps1`
-  將 runner 裝成 Windows service，唔使 login 都會跑
+- ~~治本選項~~（✅ 2026-06-11 已執行）：runner 已裝成 Windows service。
+  診斷改用 `Get-Service actions.runner.*`；watchdog / keeper task 係 service 化
+  之前嘅遺物，service 模式下唔再係主力
 
 ---
 
