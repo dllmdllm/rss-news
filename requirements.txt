@@ -7,3 +7,4 @@ python-dotenv==1.2.2
 cloudscraper==1.2.71
 sentence-transformers==3.4.1
 numpy
+pytest==9.0.3
