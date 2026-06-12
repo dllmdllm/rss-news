@@ -107,6 +107,14 @@ jobs:
           # default, which on Windows hosts turns git's stderr progress into
           # terminating ErrorRecords and kills the step before push completes.
           set +e
+          # Runner runs as a LocalSystem service since 2026-06-11, but _work
+          # was created by the old interactive runner under AzureAD\Nary, so
+          # git refuses to touch it ("dubious ownership", observed 2026-06-12;
+          # actions/checkout injects its own safe.directory, this step must
+          # too). Env-scoped config: no per-machine state to forget about.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=safe.directory
+          export GIT_CONFIG_VALUE_0='*'
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
