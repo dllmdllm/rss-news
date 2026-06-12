@@ -1,0 +1,33 @@
+# Temporary experiment: run the fetch+scrape probe from a GitHub-hosted
+# runner to find out which news sources block GitHub/Azure datacenter IPs.
+# Informs whether a hosted fallback build is viable when the self-hosted
+# runner is down. Compare against the same probe run on the self-hosted box.
+# Safe to delete once the fallback decision is made.
+name: Hosted IP Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install probe dependencies
+        # Deliberately NOT requirements.txt: the probe never embeds, and
+        # sentence-transformers drags in ~2 GB of torch.
+        run: pip install feedparser aiohttp trafilatura zhconv beautifulsoup4 python-dotenv cloudscraper
+
+      - name: Run probe
+        run: python tools/hosted_probe.py
