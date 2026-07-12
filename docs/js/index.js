@@ -632,6 +632,9 @@
     renderFeed(list);
     renderAiPanel(list);
     renderMobileSideHealth();
+    // 來源 chips 靠 state.sources——initial load 時 updateMobileSubUi 行先過
+    // data fetch，一定要喺 renderAll 度再 render 一次先會填到內容。
+    renderMobileSourceChips();
     renderVersionInfo();
     renderSearchStage();
     // Defer until layout settles, otherwise offsetHeight reads stale numbers.

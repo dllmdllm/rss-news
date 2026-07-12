@@ -3,7 +3,7 @@
 //   - HTML / docs data JSON : network-first (fall back to cache when offline)
 //   - content/*.json, images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v134";
+const CACHE   = "rss-news-v135";
 const SHELL   = [
   "./",
   "./index.html",
