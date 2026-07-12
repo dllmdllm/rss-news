@@ -392,11 +392,14 @@
         padding: 7px 10px;
         font-size: .88rem;
       }
+      /* 5 個掣用 flex-wrap 攤做 3+2 兩行（各自填滿行闊）——之前 repeat(4)
+         grid 令第五個 AI 掣孤伶伶自己一行。 */
       .toolbar-actions {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: wrap;
       }
       .tool {
+        flex: 1 1 30%;
         padding: 9px 6px;
         text-align: center;
       }
@@ -486,8 +489,12 @@
   <script>
     // Apply saved theme before first paint (shared rss_theme key;
     // "mobile.theme" is the legacy key from an older settings build).
+    // localStorage access 喺封鎖 cookies 環境會 throw，包 try 免成頁死。
     (() => {
-      const theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
+      let theme = null;
+      try {
+        theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
+      } catch (_) {}
       if (theme === "light") document.body.classList.add("theme-light");
     })();
   </script>
@@ -548,7 +555,7 @@
       </section>
     </aside>
   </div>
-  <script src="js/common.js?v=20260712-mobilefix"></script>
-  <script src="js/article.js?v=20260712-mobilefix"></script>
+  <script src="js/common.js?v=20260712-mobilefix2"></script>
+  <script src="js/article.js?v=20260712-mobilefix2"></script>
 </body>
 </html>

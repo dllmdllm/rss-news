@@ -277,8 +277,8 @@
       align-self: start;
     }
     .lead-media {
-      aspect-ratio: 16 / 7;
-      max-height: 220px;
+      aspect-ratio: 16 / 8;
+      max-height: 240px;
       background: #222831;
       overflow: hidden;
     }
@@ -953,8 +953,10 @@
       .feed.feed-grid { grid-template-columns: 1fr; }
     }
 
+    /* 170px：150px 減去 .side 左右 padding 得 122px 內容位，「🗂️ 全部 504」
+       會直排斷字（一字一行）。 */
     @media (max-width: 1180px) {
-      .app { grid-template-columns: 150px minmax(0, 1fr) 320px; }
+      .app { grid-template-columns: 170px minmax(0, 1fr) 320px; }
       .main { padding-inline: 16px; }
     }
 
@@ -980,9 +982,11 @@
       body.mobile-search .mode,
       body.mobile-search .mobile-sub,
       body.mobile-search .mobile-cat-chips { display: none; }
+      /* AI view 收埋 brief：內容同「優先排行」大幅重複，一頁兩份。
+         content-head 喺 home view 保留，畀用戶見到篇數 counter。 */
       body.mobile-ai .lead,
-      body.mobile-home .brief,
-      body.mobile-home .content-head { display: none; }
+      body.mobile-ai .brief,
+      body.mobile-home .brief { display: none; }
       body.mobile-home .app,
       body.mobile-ai .app,
       body.mobile-search .app,
@@ -997,7 +1001,6 @@
       body.mobile-ai .mobile-cat-chips { order: 2; }
       body.mobile-ai .ai { order: 3; }
       body.mobile-ai .main { order: 4; }
-      body.mobile-ai .main > .brief { order: 1; }
       body.mobile-ai .main > .content-head { order: 2; }
       body.mobile-ai .main > .feed { order: 3; }
       body.mobile-search .topbar { position: static; }
@@ -1182,23 +1185,30 @@
 
   <script>
     (() => {
+      // 讀寫 localStorage 全部包 try——封鎖 cookies / 私隱模式下 access 本身
+      // 都會 throw SecurityError，唔包嘅話成個 script 死，mobile class 加唔到
+      // 直接白畫面。
+      let theme = null;
+      let view = "home";
+      try {
+        theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
+        view = localStorage.getItem("mobile.view") || "home";
+      } catch (_) {}
       // Apply saved theme before first paint (key shared with article page
       // via common.js THEME_KEY; "mobile.theme" is the legacy key).
-      const theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
       if (theme === "light") document.body.classList.add("theme-light");
 
       // Mobile view classes only make sense under the mobile breakpoint.
       // Adding them on desktop used to blank the page whenever a stale
       // mobile.view survived in localStorage.
       if (!window.matchMedia("(max-width: 900px)").matches) return;
-      let view = localStorage.getItem("mobile.view") || "home";
       // Guard: if settings view is requested but the aside is missing
       // (e.g. iOS Safari serving stale cached HTML from before mobile-settings
       // was deployed), fall back to home to avoid the black-screen state where
       // .app is hidden and there's no aside to render.
       if (view === "settings" && !document.getElementById("mobileSettings")) {
         view = "home";
-        localStorage.setItem("mobile.view", "home");
+        try { localStorage.setItem("mobile.view", "home"); } catch (_) {}
       }
       document.body.classList.add(`mobile-${view}`);
     })();
@@ -1212,7 +1222,7 @@
       const view = button.dataset.view;
       document.body.classList.remove("mobile-home", "mobile-ai", "mobile-search", "mobile-settings");
       document.body.classList.add(`mobile-${view}`);
-      localStorage.setItem("mobile.view", view);
+      try { localStorage.setItem("mobile.view", view); } catch (_) {}
       document.querySelectorAll("#mobileTabs button").forEach((b) => b.classList.toggle("active", b === button));
       if (view === "search") document.getElementById("search")?.focus();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1226,7 +1236,7 @@
         if (!button) return;
         container.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === button));
         const storageKey = containerId === "mobileSubHome" ? "mobile.homeMode" : "mobile.aiMode";
-        localStorage.setItem(storageKey, button.getAttribute(attr));
+        try { localStorage.setItem(storageKey, button.getAttribute(attr)); } catch (_) {}
         const mode = button.getAttribute(attr);
         const isMobileHome = document.body.classList.contains("mobile-home");
         const isMobileAi = document.body.classList.contains("mobile-ai");
@@ -1247,9 +1257,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260712-mobilefix"></script>
-  <script src="js/common.js?v=20260712-mobilefix"></script>
-  <script src="js/index.js?v=20260712-mobilefix"></script>
+  <script src="vendor/fuse.min.js?v=20260712-mobilefix2"></script>
+  <script src="js/common.js?v=20260712-mobilefix2"></script>
+  <script src="js/index.js?v=20260712-mobilefix2"></script>
 </body>
 </html>
 

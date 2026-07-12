@@ -51,6 +51,12 @@
     "'": "&#39;",
   }[c]));
 
+  // localStorage 喺私隱模式／封鎖 cookies 環境可能 throw——寫入失敗唔應該
+  // 打斷 view 切換，靜默略過（讀取喺各 call site 自行 try/catch）。
+  const storageSet = (key, value) => {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  };
+
   // articleUrl, timeLabel, summaryIsTitleFallback, criticalScore live in
   // docs/js/common.js — shared with article-redesign.js.
 
@@ -284,6 +290,8 @@
   function renderCategorySections(perGroup = CATEGORY_BASE_PER_GROUP) {
     const sections = CATEGORY_GROUPS.map((group) => {
       const rows = sortedArticles(state.articles.filter((article) => {
+        // Lead 已經喺上面大卡顯示咗，唔好喺分類 section 再出一次。
+        if (feedLeadId && article.id === feedLeadId) return false;
         if (article.category !== group) return false;
         if (state.query) {
           const query = state.query.trim().toLowerCase();
@@ -344,7 +352,10 @@
 
   function renderFeedFlat(list) {
     const feed = $("feed");
-    const items = list.slice(state.topic ? 0 : 1);
+    // Lead 見到先至跳過第一篇；lead 藏起嘅 view（mobile AI）跳過會直接
+    // 冇咗嗰篇文。舊邏輯用 state.topic 做判斷，topic view 會 lead + feed
+    // 重複顯示同一單。
+    const items = feedLeadId ? list.slice(1) : list;
     feed.innerHTML = "";
     disconnectFeedObserver();
     let rendered = 0;
@@ -384,9 +395,19 @@
     appendBatch();
   }
 
+  // 而家個 feed 有冇 render lead 嗰篇（供 renderFeedFlat / sections 跳過用）。
+  let feedLeadId = null;
+
   function renderFeed(list) {
     const feed = $("feed");
-    const mobileFlat = state.mobile && state.mobile.view === "home";
+    // Lead 喺 desktop（任何 view）同 mobile 時間線先見到；mobile AI view
+    // 用 CSS 藏咗 lead。
+    const leadVisible = !isMobile() || state.mobile.view === "home";
+    feedLeadId = (leadVisible && list[0]) ? list[0].id : null;
+    // 「平鋪時間線 vs 分類重點」只應該由手機時間線 view 決定——一定要
+    // 加 isMobile() gate，唔係 desktop layout 會被殘留嘅 mobile.view 影響
+    // （mobile.view 預設 "home"，冇 gate 嘅話 desktop 永遠行平鋪）。
+    const mobileFlat = isMobile() && state.mobile.view === "home";
     if (!mobileFlat && !state.topic && state.category === "全部" && !state.source) {
       feed.classList.remove("feed-grid");
       disconnectFeedObserver();
@@ -617,7 +638,7 @@
     document.documentElement.style.fontSize = sizes[next];
     // rss_font_size 係同 article.html 共用嘅偏好；rss_home_font_size 係舊 key，
     // 讀返嚟做 migration（見 bindEvents）。
-    localStorage.setItem("rss_font_size", next);
+    storageSet("rss_font_size", next);
     document.querySelectorAll("#fontTools button, #mobileFontTools button").forEach((button) => {
       button.classList.toggle("active", button.dataset.font === next);
     });
@@ -669,12 +690,17 @@
     `).join("");
   }
 
+  // 每個 mobile view 記住自己嘅捲動位置——冇呢個嘅話切 tab 返嚟要由頭碌過。
+  const viewScroll = {};
+
   function switchMobileView(view) {
     const body = document.body;
+    const prev = state.mobile.view;
+    if (prev && prev !== view) viewScroll[prev] = window.scrollY || 0;
     body.classList.remove("mobile-home", "mobile-ai", "mobile-search", "mobile-settings");
     body.classList.add(`mobile-${view}`);
     state.mobile.view = view;
-    localStorage.setItem("mobile.view", view);
+    storageSet("mobile.view", view);
     document.querySelectorAll("#mobileTabs button").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.view === view);
     });
@@ -682,7 +708,7 @@
     syncStateFromMobile();
     updateMobileSubUi();
     renderAll();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: viewScroll[view] || 0, behavior: "auto" });
   }
 
   function applyTheme(theme) {
@@ -719,7 +745,7 @@
       const button = event.target.closest("button[data-time-mode]");
       if (!button) return;
       state.mobile.homeMode = button.dataset.timeMode;
-      localStorage.setItem("mobile.homeMode", state.mobile.homeMode);
+      storageSet("mobile.homeMode", state.mobile.homeMode);
       syncStateFromMobile();
       updateMobileSubUi();
       renderAll();
@@ -728,7 +754,7 @@
       const button = event.target.closest("button[data-ai-mode]");
       if (!button) return;
       state.mobile.aiMode = button.dataset.aiMode;
-      localStorage.setItem("mobile.aiMode", state.mobile.aiMode);
+      storageSet("mobile.aiMode", state.mobile.aiMode);
       syncStateFromMobile();
       updateMobileSubUi();
       renderAll();
@@ -739,10 +765,10 @@
       const cat = button.dataset.mobileCat;
       if (state.mobile.view === "ai") {
         state.mobile.aiCat = cat;
-        localStorage.setItem("mobile.aiCat", cat);
+        storageSet("mobile.aiCat", cat);
       } else {
         state.mobile.homeCat = cat;
-        localStorage.setItem("mobile.homeCat", cat);
+        storageSet("mobile.homeCat", cat);
       }
       syncStateFromMobile();
       updateMobileSubUi();
@@ -848,11 +874,11 @@
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(renderAll, 150);
     });
-    const commitSearch = () => saveRecentSearch(state.query);
+    // 只喺 Enter 先儲「最近搜尋」——blur 都儲嘅話，手機收鍵盤會將打咗
+    // 一半嘅 query 入晒紀錄。
     $("search").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") commitSearch();
+      if (event.key === "Enter") saveRecentSearch(state.query);
     });
-    $("search").addEventListener("blur", commitSearch);
 
     $("searchStage")?.addEventListener("click", (event) => {
       const setBtn = event.target.closest("button[data-search-set]");
