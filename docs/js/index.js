@@ -417,9 +417,13 @@
       renderFeedFlat(list);
     }
     $("resultCount").textContent = `${list.length} 篇`;
+    // 「分類重點」只喺真係 render sections 嗰陣先啱；手機時間線係平鋪，
+    // 叫返「最新新聞流」。
     $("feedTitle").textContent = state.source
       ? `${state.source}新聞流`
-      : (state.topic ? `${state.topic} · 話題` : (state.category === "全部" ? "分類重點" : `${state.category}新聞流`));
+      : (state.topic
+        ? `${state.topic} · 話題`
+        : (state.category === "全部" ? (mobileFlat ? "最新新聞流" : "分類重點") : `${state.category}新聞流`));
   }
 
   function renderAiPanel(filteredList) {
