@@ -485,6 +485,15 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "scrape_all", fake_scrape_all)
     monkeypatch.setattr(build, "analyse_all", fake_analyse_all)
     monkeypatch.setattr(build, "compute_embeddings", fake_compute_embeddings)
+    # main() 會行埋 panel digest / entity digest / breaking alert，呢啲 module
+    # 有自己嘅絕對輸出路徑（唔跟 build.DATA_DIR）——唔 patch 嘅話 dry run 會
+    # 直接改寫真嘅 docs/data/*.json（試過 wipe 咗 panel_digests.json）。
+    import src.panel_digest as panel_digest
+    import src.entity_digest as entity_digest
+    import src.breaking_alert as breaking_alert
+    monkeypatch.setattr(panel_digest, "CACHE_PATH", data_dir / "panel_digests.json")
+    monkeypatch.setattr(entity_digest, "OUTPUT_PATH", data_dir / "entities.json")
+    monkeypatch.setattr(breaking_alert, "STATE_PATH", data_dir / "breaking_alerts.json")
 
     asyncio.run(build.main())
 

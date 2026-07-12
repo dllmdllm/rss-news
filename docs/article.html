@@ -2,8 +2,10 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#101214">
+  <link rel="manifest" href="manifest.json">
   <title>新聞閱讀 Prototype</title>
   <style>
     :root {
@@ -246,7 +248,7 @@
       align-items: center;
       gap: 12px;
       padding: 8px 0 12px;
-      background: linear-gradient(var(--bg) 76%, rgba(16,18,20,0));
+      background: linear-gradient(var(--bg) 76%, transparent);
       color: var(--muted);
       font-size: calc(.86rem * var(--ui-scale));
     }
@@ -305,6 +307,32 @@
       padding: 18px;
       color: var(--muted);
     }
+
+    /* Light theme — mirrors index.html; body.theme-light comes from the
+       shared rss_theme preference (applied by the inline script below). */
+    body.theme-light {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --panel-2: #eceff3;
+      --line: #d9dee5;
+      --text: #1c232b;
+      --muted: #5c6773;
+      --subtle: #7e8894;
+    }
+    body.theme-light .side,
+    body.theme-light .ai {
+      background: #eef1f4;
+    }
+    body.theme-light .hero { background: #dfe4e9; }
+    body.theme-light .content { color: #2c353f; }
+    body.theme-light .dek,
+    body.theme-light .mini-summary { color: #454f5a; }
+    body.theme-light .summary-box ul,
+    body.theme-light .fact-list { color: #33404c; }
+    body.theme-light .chip { color: #0b7a5e; }
+    body.theme-light .priority { color: #b93f3f; }
+
     @media (max-width: 1180px) {
       :root {
         --side-width: 240px;
@@ -349,6 +377,9 @@
         border-bottom: 1px solid var(--line);
         background: rgba(16, 18, 20, .94);
         backdrop-filter: blur(14px);
+      }
+      body.theme-light .toolbar {
+        background: rgba(245, 246, 248, .94);
       }
       .mobile-back {
         display: inline-flex;
@@ -452,6 +483,14 @@
   </style>
 </head>
 <body class="fs-large">
+  <script>
+    // Apply saved theme before first paint (shared rss_theme key;
+    // "mobile.theme" is the legacy key from an older settings build).
+    (() => {
+      const theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
+      if (theme === "light") document.body.classList.add("theme-light");
+    })();
+  </script>
   <div class="app">
     <aside class="side">
       <div class="brand">
@@ -509,7 +548,7 @@
       </section>
     </aside>
   </div>
-  <script src="js/common.js?v=20260513-shared"></script>
-  <script src="js/article.js?v=20260513-shared"></script>
+  <script src="js/common.js?v=20260712-mobilefix"></script>
+  <script src="js/article.js?v=20260712-mobilefix"></script>
 </body>
 </html>

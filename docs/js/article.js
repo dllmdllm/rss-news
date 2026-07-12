@@ -13,9 +13,10 @@
 
   function summaryPoints(article, limit = 5) {
     if (summaryIsTitleFallback(article)) return [];
+    // 唔好用 "-" 做分隔符：會炒散「5-4 裁決」「e-sports」呢類內容。
     const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
-      .split(/\n|・|•|●|-/)
+      .split(/\n|・|•|●/)
       .map((line) => line.replace(/\s+/g, " ").trim())
       .filter(Boolean);
     if (points.length <= 1) {
@@ -137,12 +138,24 @@
 
   function bindToolbar() {
     const buttons = [$("fontSmall"), $("fontNormal"), $("fontLarge")];
+    // rss_font_size 係同 index.html 共用嘅偏好（small / normal / large）；
+    // rss_home_font_size 係舊 key。冇儲過就維持本頁預設「大」。
+    const FONT_KEY = "rss_font_size";
+    const FONT_BUTTON_ID = { small: "fontSmall", normal: "fontNormal", large: "fontLarge" };
+    function applyFontSize(size) {
+      const next = FONT_BUTTON_ID[size] ? size : "large";
+      document.body.classList.remove("fs-small", "fs-large");
+      if (next === "small") document.body.classList.add("fs-small");
+      if (next === "large") document.body.classList.add("fs-large");
+      buttons.forEach((b) => b.classList.toggle("active", b.id === FONT_BUTTON_ID[next]));
+      return next;
+    }
+    applyFontSize(localStorage.getItem(FONT_KEY) || localStorage.getItem("rss_home_font_size") || "large");
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
-        document.body.classList.remove("fs-small", "fs-large");
-        if (button.id === "fontSmall") document.body.classList.add("fs-small");
-        if (button.id === "fontLarge") document.body.classList.add("fs-large");
-        buttons.forEach((b) => b.classList.toggle("active", b === button));
+        const size = Object.keys(FONT_BUTTON_ID).find((key) => FONT_BUTTON_ID[key] === button.id);
+        const applied = applyFontSize(size);
+        try { localStorage.setItem(FONT_KEY, applied); } catch (_) {}
       });
     });
     $("textOnly").addEventListener("click", () => {
@@ -167,10 +180,11 @@
   async function load() {
     bindToolbar();
     const id = new URLSearchParams(location.search).get("id");
-    const ts = Date.now();
+    // cache: "no-cache" 行 ETag revalidation（304 唔使重新下載）；
+    // 舊做法 ?Date.now() + no-store 每次都全量拉成個 articles.json。
     const [metaRes, contentRes] = await Promise.all([
-      fetch(`data/articles.json?${ts}`, { cache: "no-store" }),
-      fetch(`data/content/${encodeURIComponent(id)}.json?${ts}`, { cache: "no-store" }),
+      fetch("data/articles.json", { cache: "no-cache" }),
+      fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }),
     ]);
     if (!metaRes.ok) throw new Error("讀取文章列表失敗");
     const data = await metaRes.json();
@@ -246,4 +260,6 @@
     $("title").textContent = "載入失敗";
     $("content").innerHTML = `<div class="error">${esc(err.message)}</div>`;
   });
+
+  registerServiceWorker();
 }());

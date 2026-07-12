@@ -2,8 +2,10 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#101214">
+  <link rel="manifest" href="manifest.json">
   <title>新聞控制台</title>
   <style>
     :root {
@@ -198,7 +200,7 @@
       gap: 14px;
       align-items: center;
       padding: 0 0 16px;
-      background: linear-gradient(var(--bg) 78%, rgba(16,18,20,0));
+      background: linear-gradient(var(--bg) 78%, transparent);
     }
 
     .search {
@@ -685,7 +687,7 @@
     .mobile-tabs button,
     .mobile-sub button,
     .mobile-cat-chips button,
-    .mobile-settings button,
+    .mobile-settings-panel button,
     .mode button,
     .font-tools button {
       touch-action: manipulation;
@@ -717,7 +719,11 @@
     .mobile-tabs button[data-view="search"]::before { content: "🔍"; }
     .mobile-tabs button[data-view="settings"]::before { content: "⚙️"; }
 
-    .mobile-sub, .mobile-cat-chips, .mobile-settings { display: none; }
+    /* NOTE: the settings panel class must NOT be "mobile-settings" — the body
+       view-state class is `mobile-${view}` which produces the same token for
+       the settings view, and a bare `.mobile-settings { display: none }` then
+       hides <body> itself (the black-screen bug). Keep the -panel suffix. */
+    .mobile-sub, .mobile-cat-chips, .mobile-settings-panel { display: none; }
 
     .mobile-sub {
       gap: 6px;
@@ -765,7 +771,7 @@
       color: var(--text);
     }
 
-    .mobile-settings {
+    .mobile-settings-panel {
       padding: 14px;
       gap: 12px;
       flex-direction: column;
@@ -851,13 +857,13 @@
       color: var(--muted);
       font-size: .78rem;
     }
-    .mobile-settings .ai-block {
+    .mobile-settings-panel .ai-block {
       margin-bottom: 0;
       background: var(--panel-2);
       border-color: rgba(70, 194, 166, .28);
     }
-    .mobile-settings .mobile-font-tools { display: flex; gap: 6px; }
-    .mobile-settings .mobile-font-tools button {
+    .mobile-settings-panel .mobile-font-tools { display: flex; gap: 6px; }
+    .mobile-settings-panel .mobile-font-tools button {
       flex: 1;
       width: auto;
       height: 38px;
@@ -866,7 +872,7 @@
       color: var(--muted);
       border-radius: 6px;
     }
-    .mobile-settings .mobile-font-tools button.active {
+    .mobile-settings-panel .mobile-font-tools button.active {
       background: #18352f;
       color: var(--text);
       border-color: #3d5f59;
@@ -891,20 +897,76 @@
       color: #08110f;
     }
 
+    /* Light theme — variables cover most of the UI; the rules below patch
+       the hardcoded dark colours. Toggled from 設定 (body.theme-light,
+       persisted under rss_theme; categories.css reads the same class). */
+    body.theme-light {
+      color-scheme: light;
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --panel-2: #eceff3;
+      --line: #d9dee5;
+      --text: #1c232b;
+      --muted: #5c6773;
+      --subtle: #7e8894;
+    }
+    body.theme-light .side,
+    body.theme-light .ai {
+      background: #eef1f4;
+    }
+    body.theme-light .nav button.active,
+    body.theme-light .mobile-cat-chips button.active {
+      background: #d9efe9;
+      border-color: #9fcfc2;
+    }
+    body.theme-light .font-tools button.active,
+    body.theme-light .mobile-settings-panel .mobile-font-tools button.active {
+      background: #d9efe9;
+      border-color: #9fcfc2;
+    }
+    body.theme-light .lead-media,
+    body.theme-light .thumb {
+      background: #dfe4e9;
+    }
+    body.theme-light .summary { color: #454f5a; }
+    body.theme-light .lead-points,
+    body.theme-light .card-points,
+    body.theme-light .brief-points { color: #3f4a55; }
+    body.theme-light .card-summary { color: #4a555f; }
+    body.theme-light .priority-badge { color: #0b7a5e; }
+    body.theme-light .priority-badge.high { color: #b93f3f; }
+    body.theme-light .priority-badge.mid { color: #8f6c14; }
+    body.theme-light .mobile-tabs {
+      background: rgba(248, 249, 250, .96);
+      box-shadow: 0 -10px 28px rgba(0, 0, 0, .12);
+    }
+
+    /* 901–1280px（細 laptop / iPad landscape）：唔夠位擺 brief 側欄，
+       .main 收成單欄兼藏起 brief（內容同 feed 重複）。Scoped 至 901px 以上，
+       因為 mobile AI view 會重用 .brief。 */
+    @media (min-width: 901px) and (max-width: 1280px) {
+      .main { grid-template-columns: minmax(0, 1fr); }
+      .main > .brief { display: none; }
+    }
+    @media (min-width: 901px) and (max-width: 1080px) {
+      .category-section,
+      .feed.feed-grid { grid-template-columns: 1fr; }
+    }
+
     @media (max-width: 1180px) {
       .app { grid-template-columns: 150px minmax(0, 1fr) 320px; }
       .main { padding-inline: 16px; }
     }
 
     @media (max-width: 900px) {
-      body { padding-bottom: 54px; }
+      body { padding-bottom: calc(54px + env(safe-area-inset-bottom)); }
       .app { display: block; }
       .side, .ai, .main { display: none; }
       body.mobile-home .main,
       body.mobile-search .main,
       body.mobile-ai .ai,
       body.mobile-ai .main { display: block; }
-      body.mobile-settings .mobile-settings { display: flex; }
+      body.mobile-settings .mobile-settings-panel { display: flex; }
       body.mobile-home .mobile-sub-home,
       body.mobile-ai .mobile-sub-ai { display: flex; }
       body.mobile-home.cat-chips-on .mobile-cat-chips,
@@ -974,13 +1036,6 @@
         border-top: 1px solid var(--line);
         padding: 12px;
         overflow: visible;
-      }
-      .side {
-        position: static;
-        height: auto;
-        min-height: calc(100vh - 54px);
-        border-right: 0;
-        padding: 14px;
       }
       .card {
         grid-template-columns: 92px minmax(0, 1fr);
@@ -1076,7 +1131,7 @@
         <span id="aiUpdated">同步中</span>
       </div>
       <section class="ai-block ai-block-collapse">
-        <details>
+        <details open>
           <summary><h2>優先排行 <span id="priorityRange"></span></h2></summary>
           <div id="criticalList"></div>
         </details>
@@ -1088,7 +1143,7 @@
     </aside>
   </div>
 
-  <aside class="mobile-settings" id="mobileSettings">
+  <aside class="mobile-settings-panel" id="mobileSettings">
     <div class="mobile-settings-head">
       <h1>⚙️ 設定</h1>
       <span>個人化你嘅閱讀</span>
@@ -1127,6 +1182,15 @@
 
   <script>
     (() => {
+      // Apply saved theme before first paint (key shared with article page
+      // via common.js THEME_KEY; "mobile.theme" is the legacy key).
+      const theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
+      if (theme === "light") document.body.classList.add("theme-light");
+
+      // Mobile view classes only make sense under the mobile breakpoint.
+      // Adding them on desktop used to blank the page whenever a stale
+      // mobile.view survived in localStorage.
+      if (!window.matchMedia("(max-width: 900px)").matches) return;
       let view = localStorage.getItem("mobile.view") || "home";
       // Guard: if settings view is requested but the aside is missing
       // (e.g. iOS Safari serving stale cached HTML from before mobile-settings
@@ -1183,9 +1247,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260513-shared"></script>
-  <script src="js/common.js?v=20260513-shared"></script>
-  <script src="js/index.js?v=20260513-shared"></script>
+  <script src="vendor/fuse.min.js?v=20260712-mobilefix"></script>
+  <script src="js/common.js?v=20260712-mobilefix"></script>
+  <script src="js/index.js?v=20260712-mobilefix"></script>
 </body>
 </html>
 

@@ -555,14 +555,26 @@ def save_json(articles: list, source_stats: dict):
     meta_kb = meta_path.stat().st_size // 1024
     print(f"[build] articles.json {meta_kb} KB, {len(articles)} articles")
 
-    # Slim index for graph.html — needs only id/title/source/date/category to
-    # render sidebar links. Pulling articles.json there forces ~750 KB just to
-    # build a Map of 5 fields per row.
+    # Slim payload for the homepage (docs/js/index.js) — everything the list
+    # view / search / AI panel needs, but without the heavy per-article fields
+    # (key_sentences 31%, entities 10%, url 10%, content_quality 6% …), which
+    # roughly halves the transfer vs articles.json. graph.html / entities.html
+    # also read this file and only need id/title/source/date/category, so the
+    # extra fields are a superset of their old schema. index.js checks for
+    # `summary` + top-level `sources` before trusting it (falls back to
+    # articles.json against a stale copy from an older build).
     index_path = DATA_DIR / "articles_index.json"
     index_payload = {
+        "updated": payload["updated"],
+        "sources": source_stats,
+        "trending_topics": payload["trending_topics"],
         "articles": [
             {"id": a["id"], "title": a.get("title"), "source": a.get("source"),
-             "date": a.get("date"), "category": a.get("category")}
+             "date": a.get("date"), "category": a.get("category"),
+             "thumbnail": a.get("thumbnail"), "summary": a.get("summary"),
+             "score": a.get("score"), "tags": a.get("tags"),
+             "topic": a.get("topic"), "cluster_size": a.get("cluster_size"),
+             "event_type": a.get("event_type")}
             for a in articles
         ],
     }

@@ -65,9 +65,10 @@
   function summaryPoints(article, limit = 5) {
     if (summaryIsTitleFallback(article)) return [];
     // MiniMax 偶爾儲咗 literal "\n"（backslash + n），先 normalize 至真 newline。
+    // 唔好用 "-" 做分隔符：會炒散「5-4 裁決」「e-sports」呢類內容。
     const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
-      .split(/\n|・|•|●|-/)
+      .split(/\n|・|•|●/)
       .map((line) => line.replace(/\s+/g, " ").trim())
       .filter(Boolean);
     if (points.length <= 1) {
@@ -614,7 +615,9 @@
     const sizes = { small: "16px", normal: "18px", large: "20px" };
     const next = sizes[size] ? size : "normal";
     document.documentElement.style.fontSize = sizes[next];
-    localStorage.setItem("rss_home_font_size", next);
+    // rss_font_size 係同 article.html 共用嘅偏好；rss_home_font_size 係舊 key，
+    // 讀返嚟做 migration（見 bindEvents）。
+    localStorage.setItem("rss_font_size", next);
     document.querySelectorAll("#fontTools button, #mobileFontTools button").forEach((button) => {
       button.classList.toggle("active", button.dataset.font === next);
     });
@@ -684,7 +687,12 @@
 
   function applyTheme(theme) {
     document.body.classList.toggle("theme-light", theme === "light");
-    localStorage.setItem("mobile.theme", theme);
+    // THEME_KEY ("rss_theme") 定義喺 common.js，同 article / entities /
+    // upcoming 頁共用；mobile.theme 係舊 key，寫新 key 時順手清走。
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+      localStorage.removeItem("mobile.theme");
+    } catch (_) {}
   }
 
   function renderMobileSideHealth() {
@@ -750,20 +758,34 @@
       applyTheme(next);
     });
     $("resetMobile")?.addEventListener("click", () => {
-      ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat", "mobile.theme", "rss_home_font_size"]
+      ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat",
+       "mobile.theme", "rss_theme", "rss_home_font_size", "rss_font_size"]
         .forEach((k) => localStorage.removeItem(k));
       location.reload();
     });
-    applyTheme(localStorage.getItem("mobile.theme") || "dark");
+    applyTheme(localStorage.getItem(THEME_KEY) || localStorage.getItem("mobile.theme") || "dark");
     if (isMobile()) {
       switchMobileView(state.mobile.view);
     } else {
       updateMobileSubUi();
     }
+    // 跨過 900px breakpoint 時同步 mobile view class：desktop → mobile 冇呢步
+    // 嘅話三欄全部 display:none，成頁空白直到 reload。
+    const mq = window.matchMedia && window.matchMedia("(max-width: 900px)");
+    if (mq && typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", (event) => {
+        if (event.matches) {
+          switchMobileView(state.mobile.view);
+        } else {
+          document.body.classList.remove("mobile-home", "mobile-ai", "mobile-search", "mobile-settings");
+          renderAll();
+        }
+      });
+    }
   }
 
   function bindEvents() {
-    applyFontSize(localStorage.getItem("rss_home_font_size") || "normal");
+    applyFontSize(localStorage.getItem("rss_font_size") || localStorage.getItem("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
       const sourceButton = event.target.closest("button[data-source]");
       if (sourceButton) {
@@ -818,9 +840,13 @@
       if (!button) return;
       applyFontSize(button.dataset.font);
     });
+    // Debounce：renderAll 會全頁重砌（nav / lead / feed / AI panel），
+    // 500+ 篇文加 Fuse 每個 keystroke 跑一次會令手機打字窒。
+    let searchDebounce = null;
     $("search").addEventListener("input", (event) => {
       state.query = event.target.value;
-      renderAll();
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(renderAll, 150);
     });
     const commitSearch = () => saveRecentSearch(state.query);
     $("search").addEventListener("keydown", (event) => {
@@ -857,10 +883,31 @@
     bindMobileShell();
   }
 
+  // 列表頁用 slim payload（articles_index.json，冇 key_sentences / entities /
+  // url 等重 field，體積係 articles.json 一半以下）。舊 schema（得 5 個 field，
+  // graph.html 專用年代）或者 fetch 失敗就 fallback 返 articles.json。
+  // cache: "no-cache" 行 ETag revalidation——內容冇變時 304，唔使成個 payload
+  // 重新下載（舊做法 ?Date.now() + no-store 係每次全量）。
+  function payloadIsComplete(payload) {
+    if (!payload || !Array.isArray(payload.articles) || !payload.sources || !payload.trending_topics) return false;
+    return !payload.articles.length || "summary" in payload.articles[0];
+  }
+
+  async function fetchArticleData() {
+    try {
+      const res = await fetch("data/articles_index.json", { cache: "no-cache" });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payloadIsComplete(payload)) return payload;
+      }
+    } catch (_) {}
+    const res = await fetch("data/articles.json", { cache: "no-cache" });
+    return res.json();
+  }
+
   async function load() {
     bindEvents();
-    const res = await fetch(`data/articles.json?${Date.now()}`, { cache: "no-store" });
-    const data = await res.json();
+    const data = await fetchArticleData();
     state.articles = data.articles || [];
     state.topics = data.trending_topics || [];
     state.sources = data.sources || {};
@@ -874,4 +921,6 @@
   load().catch((err) => {
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
   });
+
+  registerServiceWorker();
 }());
