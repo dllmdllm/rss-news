@@ -39,6 +39,8 @@
       aiMode: localStorage.getItem("mobile.aiMode") || "priority",
       homeCat: localStorage.getItem("mobile.homeCat") || "全部",
       aiCat: localStorage.getItem("mobile.aiCat") || "全部",
+      homeSource: localStorage.getItem("mobile.homeSource") || "",
+      aiSource: localStorage.getItem("mobile.aiSource") || "",
     },
   };
 
@@ -654,16 +656,17 @@
   }
 
   function syncStateFromMobile() {
+    // 來源篩選只喺「分類」mode 生效——「最新」mode 係全部來源嘅時間線。
     if (state.mobile.view === "ai") {
       state.mode = "critical";
-      state.source = "";
       state.topic = "";
       state.category = state.mobile.aiMode === "category" ? state.mobile.aiCat : "全部";
+      state.source = state.mobile.aiMode === "category" ? state.mobile.aiSource : "";
     } else if (state.mobile.view === "home") {
       state.mode = "latest";
-      state.source = "";
       state.topic = "";
       state.category = state.mobile.homeMode === "category" ? state.mobile.homeCat : "全部";
+      state.source = state.mobile.homeMode === "category" ? state.mobile.homeSource : "";
     }
   }
 
@@ -683,6 +686,7 @@
       (state.mobile.view === "ai" && state.mobile.aiMode === "category");
     document.body.classList.toggle("cat-chips-on", showChips);
     renderMobileCatChips();
+    renderMobileSourceChips();
   }
 
   function renderMobileCatChips() {
@@ -692,6 +696,28 @@
     host.innerHTML = categories.map((cat) => `
       <button data-mobile-cat="${esc(cat)}" class="${cat === activeCat ? "active" : ""}" type="button">${esc(categoryEmoji[cat] || "")} ${esc(cat)}</button>
     `).join("");
+  }
+
+  // 分類 chips 下面嗰行來源 chips——手機版做 per-source 篩選嘅入口
+  //（桌面版對應功能係左側 tree nav）。
+  function renderMobileSourceChips() {
+    const host = $("mobileSourceChips");
+    if (!host) return;
+    const isAi = state.mobile.view === "ai";
+    const activeCat = isAi ? state.mobile.aiCat : state.mobile.homeCat;
+    const activeSource = isAi ? state.mobile.aiSource : state.mobile.homeSource;
+    const sources = Object.entries(state.sources || {})
+      .filter(([, src]) => activeCat === "全部" || src.category === activeCat)
+      .sort((a, b) => Number(b[1].effective_count ?? b[1].count ?? 0) - Number(a[1].effective_count ?? a[1].count ?? 0));
+    if (!sources.length) {
+      host.innerHTML = "";
+      return;
+    }
+    const chips = [`<button data-mobile-source="" class="${activeSource ? "" : "active"}" type="button">全部來源</button>`];
+    for (const [name, src] of sources) {
+      chips.push(`<button data-mobile-source="${esc(name)}" class="${name === activeSource ? "active" : ""}" type="button">${esc(name)} <span class="chip-count">${Number(src.effective_count ?? src.count ?? 0)}</span></button>`);
+    }
+    host.innerHTML = chips.join("");
   }
 
   // 每個 mobile view 記住自己嘅捲動位置——冇呢個嘅話切 tab 返嚟要由頭碌過。
@@ -767,12 +793,32 @@
       const button = event.target.closest("button[data-mobile-cat]");
       if (!button) return;
       const cat = button.dataset.mobileCat;
+      // 轉分類就清走來源篩選——上一個分類嘅來源喺新分類下多數係空 feed。
       if (state.mobile.view === "ai") {
         state.mobile.aiCat = cat;
+        state.mobile.aiSource = "";
         storageSet("mobile.aiCat", cat);
+        storageSet("mobile.aiSource", "");
       } else {
         state.mobile.homeCat = cat;
+        state.mobile.homeSource = "";
         storageSet("mobile.homeCat", cat);
+        storageSet("mobile.homeSource", "");
+      }
+      syncStateFromMobile();
+      updateMobileSubUi();
+      renderAll();
+    });
+    $("mobileSourceChips")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-mobile-source]");
+      if (!button) return;
+      const source = button.dataset.mobileSource || "";
+      if (state.mobile.view === "ai") {
+        state.mobile.aiSource = source;
+        storageSet("mobile.aiSource", source);
+      } else {
+        state.mobile.homeSource = source;
+        storageSet("mobile.homeSource", source);
       }
       syncStateFromMobile();
       updateMobileSubUi();
@@ -789,6 +835,7 @@
     });
     $("resetMobile")?.addEventListener("click", () => {
       ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat",
+       "mobile.homeSource", "mobile.aiSource",
        "mobile.theme", "rss_theme", "rss_home_font_size", "rss_font_size"]
         .forEach((k) => localStorage.removeItem(k));
       location.reload();

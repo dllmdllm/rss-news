@@ -687,6 +687,7 @@
     .mobile-tabs button,
     .mobile-sub button,
     .mobile-cat-chips button,
+    .mobile-source-chips button,
     .mobile-settings-panel button,
     .mode button,
     .font-tools button {
@@ -723,7 +724,7 @@
        view-state class is `mobile-${view}` which produces the same token for
        the settings view, and a bare `.mobile-settings { display: none }` then
        hides <body> itself (the black-screen bug). Keep the -panel suffix. */
-    .mobile-sub, .mobile-cat-chips, .mobile-settings-panel { display: none; }
+    .mobile-sub, .mobile-cat-chips, .mobile-source-chips, .mobile-settings-panel { display: none; }
 
     .mobile-sub {
       gap: 6px;
@@ -747,14 +748,17 @@
       color: var(--text);
     }
 
-    .mobile-cat-chips {
+    .mobile-cat-chips,
+    .mobile-source-chips {
       gap: 6px;
       overflow-x: auto;
       padding: 2px 0 6px;
       -webkit-overflow-scrolling: touch;
     }
-    .mobile-cat-chips::-webkit-scrollbar { display: none; }
-    .mobile-cat-chips button {
+    .mobile-cat-chips::-webkit-scrollbar,
+    .mobile-source-chips::-webkit-scrollbar { display: none; }
+    .mobile-cat-chips button,
+    .mobile-source-chips button {
       flex: 0 0 auto;
       border: 1px solid var(--line);
       background: var(--panel);
@@ -765,10 +769,15 @@
       cursor: pointer;
       white-space: nowrap;
     }
-    .mobile-cat-chips button.active {
+    .mobile-cat-chips button.active,
+    .mobile-source-chips button.active {
       background: #17312d;
       border-color: #3d5f59;
       color: var(--text);
+    }
+    .mobile-source-chips .chip-count {
+      color: var(--subtle);
+      font-size: .76rem;
     }
 
     .mobile-settings-panel {
@@ -915,7 +924,8 @@
       background: #eef1f4;
     }
     body.theme-light .nav button.active,
-    body.theme-light .mobile-cat-chips button.active {
+    body.theme-light .mobile-cat-chips button.active,
+    body.theme-light .mobile-source-chips button.active {
       background: #d9efe9;
       border-color: #9fcfc2;
     }
@@ -972,7 +982,9 @@
       body.mobile-home .mobile-sub-home,
       body.mobile-ai .mobile-sub-ai { display: flex; }
       body.mobile-home.cat-chips-on .mobile-cat-chips,
-      body.mobile-ai.cat-chips-on .mobile-cat-chips { display: flex; }
+      body.mobile-ai.cat-chips-on .mobile-cat-chips,
+      body.mobile-home.cat-chips-on .mobile-source-chips,
+      body.mobile-ai.cat-chips-on .mobile-source-chips { display: flex; }
       body.mobile-home .topbar,
       body.mobile-ai .topbar { display: none; }
       body.mobile-search .lead,
@@ -995,10 +1007,12 @@
         flex-direction: column;
       }
       body.mobile-home .mobile-sub-home { order: 1; }
-      body.mobile-home .mobile-cat-chips { order: 2; }
+      body.mobile-home .mobile-cat-chips,
+      body.mobile-home .mobile-source-chips { order: 2; }
       body.mobile-home .main { order: 3; }
       body.mobile-ai .mobile-sub-ai { order: 1; }
-      body.mobile-ai .mobile-cat-chips { order: 2; }
+      body.mobile-ai .mobile-cat-chips,
+      body.mobile-ai .mobile-source-chips { order: 2; }
       body.mobile-ai .ai { order: 3; }
       body.mobile-ai .main { order: 4; }
       body.mobile-ai .main > .content-head { order: 2; }
@@ -1006,8 +1020,8 @@
       body.mobile-search .topbar { position: static; }
       body.mobile-search .search-stage { display: flex; }
       body.mobile-settings .app { display: none; }
-      .mobile-sub, .mobile-cat-chips { margin: 12px; }
-      .mobile-cat-chips { margin-top: 0; }
+      .mobile-sub, .mobile-cat-chips, .mobile-source-chips { margin: 12px; }
+      .mobile-cat-chips, .mobile-source-chips { margin-top: 0; }
       .main { padding: 12px; }
       .topbar {
         grid-template-columns: 1fr;
@@ -1127,6 +1141,7 @@
       <button data-ai-mode="category" type="button">📂 分類重點</button>
     </div>
     <div class="mobile-cat-chips" id="mobileCatChips"></div>
+    <div class="mobile-source-chips" id="mobileSourceChips"></div>
 
     <aside class="ai">
       <div class="ai-title">
@@ -1257,9 +1272,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260712-mobilefix2"></script>
-  <script src="js/common.js?v=20260712-mobilefix2"></script>
-  <script src="js/index.js?v=20260712-mobilefix2"></script>
+  <script src="vendor/fuse.min.js?v=20260712-srcchips"></script>
+  <script src="js/common.js?v=20260712-srcchips"></script>
+  <script src="js/index.js?v=20260712-srcchips"></script>
 </body>
 </html>
 
