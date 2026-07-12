@@ -136,6 +136,33 @@
     </a>`;
   }
 
+  // 各媒體點講：panel_digests.json 以 cluster_id 做 key，內含共識／各報
+  // 角度／矛盾點（build-time 由 MiniMax 生成，之前只有 index AI tab 用）。
+  function renderPanelDigest(panelMap, article) {
+    const host = $("panelBlock");
+    if (!host) return;
+    const entry = article.cluster_id && panelMap ? panelMap[article.cluster_id] : null;
+    const digest = entry && entry.digest;
+    if (!digest || (!digest.consensus && !(digest.angles || []).length)) {
+      host.hidden = true;
+      return;
+    }
+    const angles = (digest.angles || []).slice(0, 4).map((angle) => `
+      <div class="panel-angle">
+        <strong>${esc(angle.label || "")}</strong>
+        <span class="panel-angle-src">${esc((angle.sources || []).join("、"))}</span>
+        <p>${esc(angle.detail || "")}</p>
+      </div>`).join("");
+    const contradictions = (digest.contradictions || []).slice(0, 3).map((row) => `
+      <li><span class="src">${esc(row.source_a || "")}</span>：${esc(row.claim_a || "")}<br>
+          <span class="src">${esc(row.source_b || "")}</span>：${esc(row.claim_b || "")}</li>`).join("");
+    host.hidden = false;
+    host.innerHTML = `<h2>各媒體點講</h2>`
+      + (digest.consensus ? `<p class="panel-consensus">${esc(digest.consensus)}</p>` : "")
+      + angles
+      + (contradictions ? `<h3 class="panel-sub">⚡ 各報矛盾位</h3><ul class="panel-contra">${contradictions}</ul>` : "");
+  }
+
   function bindToolbar() {
     const buttons = [$("fontSmall"), $("fontNormal"), $("fontLarge")];
     // rss_font_size 係同 index.html 共用嘅偏好（small / normal / large）；
@@ -182,9 +209,11 @@
     const id = new URLSearchParams(location.search).get("id");
     // cache: "no-cache" 行 ETag revalidation（304 唔使重新下載）；
     // 舊做法 ?Date.now() + no-store 每次都全量拉成個 articles.json。
-    const [metaRes, contentRes] = await Promise.all([
+    // panel_digests 係 optional enrichment——fetch 失敗唔可以拖冧成頁。
+    const [metaRes, contentRes, panelRes] = await Promise.all([
       fetch("data/articles.json", { cache: "no-cache" }),
       fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }),
+      fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
     ]);
     if (!metaRes.ok) throw new Error("讀取文章列表失敗");
     const data = await metaRes.json();
@@ -195,13 +224,21 @@
       if (contentData && contentData.content) article.content = contentData.content;
     }
 
+    let panelMap = null;
+    if (panelRes && panelRes.ok) {
+      try { panelMap = await panelRes.json(); } catch (_) {}
+    }
+
     document.title = `${article.title || "新聞"} · 新聞控制台`;
     $("updated").textContent = data.updated || "";
+    const clickbait = Number.isInteger(article.headline_fit) && article.headline_fit <= 3
+      ? `<span class="clickbait" title="AI 評估標題同內文相符度 ${article.headline_fit}/10">⚠️ 標題誇大</span>`
+      : "";
     $("eyebrow").innerHTML = `
       <span class="chip">${esc(article.category || "未分類")}</span>
       <span>${esc(article.source || "")}</span>
       <span>${esc(timeLabel(article))}</span>
-      <span class="priority">${esc(priorityLabel(article))}</span>`;
+      <span class="priority">${esc(priorityLabel(article))}</span>${clickbait}`;
     $("title").textContent = article.title || "";
     // AI 摘要全部入 summaryBox，唔再揀一點上 dek 做副題，避免「dek 一行像
     // article lead，summaryBox 又有同一句」嘅 user confusion。Dek slot 收起。
@@ -248,6 +285,8 @@
     const baseScore = Number(article.score || 0);
     $("priorityNote").innerHTML = `
       <div class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${baseScore}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</div>`;
+
+    renderPanelDigest(panelMap, article);
 
     const facts = (article.key_sentences && article.key_sentences.length)
       ? article.key_sentences

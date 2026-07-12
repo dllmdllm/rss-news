@@ -36,6 +36,7 @@ SYSTEM_PROMPT = (
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'
+    '"headline_fit":整數0到10（標題同內文相符程度：10=完全相符，5=標題有啲誇大或斷章取義，0=標題黨、內文完全唔支持標題）,'
     '"topic":"標準化話題名稱，唔超過10字",'
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
@@ -223,11 +224,18 @@ def _normalise_parsed(data: dict) -> dict | None:
         summary = _normalise_summary(data.get("summary"))
         if looks_like_prompt_schema_summary(summary):
             return None
+        # headline_fit 係 optional——舊 cache entry / 模型漏答就係 None，
+        # 前端 None 唔顯示 badge。
+        try:
+            headline_fit = max(0, min(10, int(data.get("headline_fit"))))
+        except (TypeError, ValueError):
+            headline_fit = None
         return {
             "summary":   summary,
             "score":     score,
             "tags":      [str(t).strip().lstrip("#") for t in tags_raw[:3] if str(t).strip()],
             "sentiment": sentiment,
+            "headline_fit": headline_fit,
             "topic":     str(data.get("topic", "")).strip()[:20],
             "event_type": str(data.get("event_type", "")).strip()[:12],
             "entities":  _normalise_entities(data.get("entities")),
@@ -343,6 +351,7 @@ async def _apply_results(
         a["score"]     = p["score"]
         a["tags"]      = p["tags"]
         a["sentiment"] = p["sentiment"]
+        a["headline_fit"] = p.get("headline_fit")
         a["topic"]     = p["topic"]
         a["event_type"] = p.get("event_type", "")
         a["entities"]   = p.get("entities", _normalise_entities({}))
@@ -516,6 +525,8 @@ def _ensure_analysis_defaults(articles: list) -> None:
             a["tags"] = []
         if a.get("sentiment") not in ("positive", "negative", "neutral"):
             a["sentiment"] = "neutral"
+        if not isinstance(a.get("headline_fit"), int):
+            a["headline_fit"] = None
         if not isinstance(a.get("topic"), str):
             a["topic"] = ""
         if not isinstance(a.get("event_type"), str):
@@ -543,6 +554,7 @@ async def analyse_all(articles: list) -> list:
             a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
+            a["headline_fit"] = c.get("headline_fit")
             a["topic"]     = c.get("topic", "")
             a["event_type"] = c.get("event_type", "")
             a["entities"]   = _normalise_entities(c.get("entities"))

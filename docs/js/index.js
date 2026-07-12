@@ -145,6 +145,13 @@
     return "";
   }
 
+  // headline_fit：AI 評估標題同內文相符度（0-10），<=3 先掛 badge——
+  // 寧願放走幾單都唔好冤枉正常標題。null／undefined（舊 cache）唔顯示。
+  function clickbaitBadge(article) {
+    if (!Number.isInteger(article.headline_fit) || article.headline_fit > 3) return "";
+    return `<span class="priority-badge clickbait" title="AI 評估標題同內文相符度 ${article.headline_fit}/10">⚠️ 標題誇大</span>`;
+  }
+
   const SORT_CATEGORY_ORDER = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
   function categoryRank(cat) {
     const idx = SORT_CATEGORY_ORDER.indexOf(cat);
@@ -235,6 +242,7 @@
             <span>${esc(lead.source || "")}</span>
             <span>${esc(timeLabel(lead))}</span>
             ${priorityBadge(lead)}
+            ${clickbaitBadge(lead)}
           </div>
           <h1>${esc(lead.title || "")}</h1>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
@@ -278,6 +286,7 @@
           <span>${esc(article.source || "")}</span>
           <span>${esc(timeLabel(article))}</span>
           ${priorityBadge(article)}
+          ${clickbaitBadge(article)}
         </div>
         <h3>${esc(article.title || "")}</h3>
         ${cardSummaryBlock(article)}
@@ -985,6 +994,62 @@
     return res.json();
   }
 
+  // ── 今日早報（daily_brief.json）──
+  function renderMorningBrief(brief) {
+    const host = $("morningBrief");
+    if (!host || !brief || !brief.text || !brief.date) return;
+    // 顯示當日或前一日（凌晨新一份未生成時繼續顯示尋日嗰份）
+    const age = Date.now() - new Date(`${brief.date}T00:00:00+08:00`).getTime();
+    if (!(age >= 0 && age < 2 * 86400000)) return;
+    const parts = String(brief.date).split("-");
+    const dateLabel = `${Number(parts[1])}月${Number(parts[2])}日`;
+    const highlights = (brief.highlights || []).map((h) => h.id
+      ? `<li><a href="article.html?id=${encodeURIComponent(h.id)}">${esc(h.point)}</a></li>`
+      : `<li>${esc(h.point)}</li>`).join("");
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="morning-brief-head">
+        <strong>🌅 今日早報 · ${dateLabel}</strong>
+        <button class="morning-brief-tts" id="briefTts" type="button">🔊 聽早報</button>
+      </div>
+      ${brief.title ? `<strong class="morning-brief-title">${esc(brief.title)}</strong>` : ""}
+      <p>${esc(brief.text)}</p>
+      ${highlights ? `<ul>${highlights}</ul>` : ""}`;
+    $("briefTts")?.addEventListener("click", () => toggleBriefTts(brief));
+  }
+
+  function toggleBriefTts(brief) {
+    if (!("speechSynthesis" in window)) return;
+    const btn = $("briefTts");
+    const resetBtn = () => {
+      btn?.classList.remove("active");
+      if (btn) btn.textContent = "🔊 聽早報";
+    };
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      resetBtn();
+      return;
+    }
+    const text = [brief.title, brief.text, ...(brief.highlights || []).map((h) => h.point)]
+      .filter(Boolean).join("。");
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "zh-HK";
+    utterance.rate = 1.05;
+    utterance.onend = resetBtn;
+    utterance.onerror = resetBtn;
+    window.speechSynthesis.speak(utterance);
+    btn?.classList.add("active");
+    if (btn) btn.textContent = "⏹ 停止";
+  }
+
+  async function loadMorningBrief() {
+    try {
+      const res = await fetch("data/daily_brief.json", { cache: "no-cache" });
+      if (!res || !res.ok) return;
+      renderMorningBrief(await res.json());
+    } catch (_) {}
+  }
+
   async function load() {
     bindEvents();
     const data = await fetchArticleData();
@@ -1001,6 +1066,7 @@
   load().catch((err) => {
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
   });
+  loadMorningBrief();
 
   registerServiceWorker();
 }());

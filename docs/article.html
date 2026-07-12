@@ -157,7 +157,7 @@
       font-size: calc(.9rem * var(--ui-scale));
       margin-bottom: 10px;
     }
-    .chip, .priority {
+    .chip, .priority, .clickbait {
       display: inline-flex;
       align-items: center;
       min-height: 22px;
@@ -167,6 +167,11 @@
       font-weight: 800;
       line-height: 1.1;
       white-space: nowrap;
+    }
+    .clickbait {
+      border: 1px solid rgba(242, 193, 78, .55);
+      background: rgba(242, 193, 78, .14);
+      color: #f7d36a;
     }
     .chip {
       border: 1px solid rgba(70, 194, 166, .45);
@@ -308,6 +313,45 @@
       color: var(--muted);
     }
 
+    /* 各媒體點講（panel digest per cluster） */
+    .panel-consensus {
+      margin: 0 0 10px;
+      color: #c8d0d8;
+      font-size: calc(.9rem * var(--ui-scale));
+      line-height: 1.55;
+    }
+    .panel-angle {
+      padding: 8px 0 0;
+      border-top: 1px solid var(--line);
+    }
+    .panel-angle strong { font-size: calc(.9rem * var(--ui-scale)); }
+    .panel-angle-src {
+      display: block;
+      color: var(--subtle);
+      font-size: calc(.78rem * var(--ui-scale));
+      margin: 2px 0 4px;
+    }
+    .panel-angle p {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: calc(.84rem * var(--ui-scale));
+      line-height: 1.5;
+    }
+    .panel-sub {
+      margin: 10px 0 6px;
+      font-size: calc(.88rem * var(--ui-scale));
+      color: var(--accent-2);
+    }
+    .panel-contra {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: calc(.82rem * var(--ui-scale));
+      line-height: 1.5;
+    }
+    .panel-contra li + li { margin-top: 6px; }
+    .panel-contra .src { color: var(--text); font-weight: 700; }
+
     /* Light theme — mirrors index.html; body.theme-light comes from the
        shared rss_theme preference (applied by the inline script below). */
     body.theme-light {
@@ -332,6 +376,8 @@
     body.theme-light .fact-list { color: #33404c; }
     body.theme-light .chip { color: #0b7a5e; }
     body.theme-light .priority { color: #b93f3f; }
+    body.theme-light .clickbait { color: #8f6c14; }
+    body.theme-light .panel-consensus { color: #454f5a; }
 
     @media (max-width: 1180px) {
       :root {
@@ -545,6 +591,7 @@
         <h2>AI 工作台</h2>
         <div class="ai-note" id="priorityNote"></div>
       </section>
+      <section class="ai-block" id="panelBlock" hidden></section>
       <section class="ai-block">
         <h2>關鍵句</h2>
         <ul class="fact-list" id="facts"></ul>
@@ -555,7 +602,7 @@
       </section>
     </aside>
   </div>
-  <script src="js/common.js?v=20260712-mobilefix2"></script>
-  <script src="js/article.js?v=20260712-mobilefix2"></script>
+  <script src="js/common.js?v=20260713-aibrief"></script>
+  <script src="js/article.js?v=20260713-aibrief"></script>
 </body>
 </html>

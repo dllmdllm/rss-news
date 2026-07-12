@@ -18,6 +18,7 @@ rss-news/
 │   ├── panel_digest.py   # 話題聚焦：共識 / 各媒體角度 / 張力（MiniMax）
 │   ├── embed.py          # 語義向量：計算 embeddings → similar.json
 │   ├── breaking_alert.py # 突發通知：Telegram bot 推送
+│   ├── daily_brief.py    # 每日早報：HKT 06:00 後首個 build 綜合 24h top stories（MiniMax）→ daily_brief.json + Telegram
 │   ├── entity_digest.py  # 實體摘要：聚合人物 / 機構 → entities.json
 │   ├── minimax_client.py # MiniMax API thin wrapper（共用 HTTP shape + thinking 參數）
 │   └── feeds.py          # RSS 來源定義及常數
@@ -44,6 +45,7 @@ rss-news/
 │       ├── embeddings.bin      # 向量數據（binary）
 │       ├── embeddings_meta.json
 │       ├── breaking_alerts.json
+│       ├── daily_brief.json    # 今日早報（index 頁早報卡 + TTS）
 │       ├── feed_http_cache.json  # HTTP 304 cache
 │       └── content/            # 各文章完整 HTML（{id}.json）
 ├── CLAUDE.md             # 本文件（同時作 AGENTS.md 使用）

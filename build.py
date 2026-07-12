@@ -40,6 +40,7 @@ from src.analyse import (
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
+from src.daily_brief import generate_daily_brief
 from src.entity_digest import generate_entity_digests
 
 DOCS_DIR    = ROOT / "docs"
@@ -574,7 +575,8 @@ def save_json(articles: list, source_stats: dict):
              "thumbnail": a.get("thumbnail"), "summary": a.get("summary"),
              "score": a.get("score"), "tags": a.get("tags"),
              "topic": a.get("topic"), "cluster_size": a.get("cluster_size"),
-             "event_type": a.get("event_type")}
+             "event_type": a.get("event_type"),
+             "headline_fit": a.get("headline_fit")}
             for a in articles
         ],
     }
@@ -1066,6 +1068,16 @@ async def main():
         _tlog(f"breaking_alert: {exc!r}")
         mark_step("breaking_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"breaking done {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic()
+    _tlog("daily_brief start")
+    try:
+        await asyncio.wait_for(generate_daily_brief(articles), timeout=90)
+        mark_step("daily_brief", seconds=time.monotonic() - t)
+    except Exception as exc:
+        _tlog(f"daily_brief: {exc!r}")
+        mark_step("daily_brief", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+    _tlog(f"daily_brief done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("entity_digest start")

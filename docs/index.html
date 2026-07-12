@@ -180,6 +180,7 @@
       align-items: start;
     }
     .main > .topbar { grid-column: 1 / -1; }
+    .main > .morning-brief,
     .main > .lead,
     .main > .content-head,
     .main > .feed { grid-column: 1; }
@@ -340,6 +341,70 @@
       background: rgba(242, 193, 78, .14);
       color: #f7d36a;
     }
+    .priority-badge.clickbait {
+      border-color: rgba(242, 193, 78, .55);
+      background: rgba(242, 193, 78, .14);
+      color: #f7d36a;
+    }
+
+    /* 今日早報（daily_brief.json，每朝 build-time 生成一次） */
+    .morning-brief {
+      border: 1px solid rgba(70, 194, 166, .4);
+      border-left: 4px solid var(--accent);
+      background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .morning-brief-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .morning-brief-head strong { font-size: 1.02rem; }
+    .morning-brief-tts {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: .85rem;
+      white-space: nowrap;
+      touch-action: manipulation;
+    }
+    .morning-brief-tts.active {
+      color: var(--text);
+      border-color: rgba(70, 194, 166, .5);
+      background: rgba(70, 194, 166, .12);
+    }
+    .morning-brief-title {
+      display: block;
+      margin: 0 0 6px;
+      font-size: 1.05rem;
+    }
+    .morning-brief p {
+      margin: 0 0 10px;
+      color: #c8d0d8;
+      line-height: 1.6;
+      font-size: .95rem;
+    }
+    .morning-brief ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #d1d8df;
+      font-size: .92rem;
+      line-height: 1.55;
+    }
+    .morning-brief li + li { margin-top: 3px; }
+    .morning-brief a {
+      text-decoration: underline;
+      text-decoration-color: rgba(70, 194, 166, .45);
+      text-underline-offset: 3px;
+    }
+    body.theme-light .morning-brief p { color: #454f5a; }
+    body.theme-light .morning-brief ul { color: #33404c; }
     .cat-news { --cat-color: #4da3ff; }
     .cat-world { --cat-color: #a78bfa; }
     .cat-ent { --cat-color: #f472b6; }
@@ -998,6 +1063,8 @@
          content-head 喺 home view 保留，畀用戶見到篇數 counter。 */
       body.mobile-ai .lead,
       body.mobile-ai .brief,
+      body.mobile-ai .morning-brief,
+      body.mobile-search .morning-brief,
       body.mobile-home .brief { display: none; }
       body.mobile-home .app,
       body.mobile-ai .app,
@@ -1100,6 +1167,7 @@
         </div>
       </div>
 
+      <section class="morning-brief" id="morningBrief" hidden></section>
       <article class="lead" id="leadStory"></article>
       <aside class="brief">
         <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
@@ -1272,9 +1340,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260712-srcchips"></script>
-  <script src="js/common.js?v=20260712-srcchips"></script>
-  <script src="js/index.js?v=20260712-srcchips"></script>
+  <script src="vendor/fuse.min.js?v=20260713-aibrief"></script>
+  <script src="js/common.js?v=20260713-aibrief"></script>
+  <script src="js/index.js?v=20260713-aibrief"></script>
 </body>
 </html>
 
