@@ -369,6 +369,28 @@ img.referrerPolicy = "no-referrer";
 - `topic` 用於 `cluster_articles()`：相同 topic 歸為一組
 - `key_sentences` 用於文章閱讀頁高亮顯示
 
+### Mobile view class 命名（`docs/index.html`）
+
+Body 嘅 view state class 係 `mobile-${view}`（`mobile-home` / `mobile-ai` / `mobile-search` /
+`mobile-settings`），所以**設定面板嘅 class 一定要係 `.mobile-settings-panel`，唔可以係
+`.mobile-settings`**——settings view 時 body 都有 `mobile-settings` token，一條 bare
+`.mobile-settings { display: none }` 會連 body 一齊藏，成頁黑屏兼經 localStorage persist
+（2026-07-12 修復；之前一直誤當 SW stale cache 醫）。Inline script 亦只會喺
+`max-width: 900px` 先加 mobile class，desktop 唔受舊 localStorage 影響。
+
+### articles_index.json 係 homepage payload
+
+`docs/js/index.js` 讀 `articles_index.json`（slim：冇 key_sentences / entities / url），
+schema 唔齊（舊 build）會 fallback `articles.json`。改 build.py 嗰段 index_payload 時
+記住 index.js 嘅 `payloadIsComplete()` 檢查 `summary` + `sources` + `trending_topics`。
+兩頁 fetch 都改咗用 `cache: "no-cache"`（ETag 304），唔好加返 `?${Date.now()}`。
+
+### 測試唔可以寫真 docs/data/
+
+`src/panel_digest.py` / `src/entity_digest.py` / `src/breaking_alert.py` 各自有
+module-level 絕對輸出路徑（唔跟 `build.DATA_DIR`）。任何跑 `build.main()` 嘅 test
+必須 monkeypatch 晒呢啲路徑，否則 dry run 會改寫真數據（試過 wipe `panel_digests.json`）。
+
 ### 分類色彩系統（`docs/css/categories.css`）
 
 ```css
