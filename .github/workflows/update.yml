@@ -117,6 +117,9 @@ jobs:
           stage_outputs() {
             git add docs/data/articles.json docs/data/articles_index.json docs/data/analyses.json docs/data/feed.xml docs/data/feed_http_cache.json docs/data/content docs/data/graph.json docs/data/upcoming.json docs/data/panel_digests.json docs/data/embeddings.bin docs/data/embeddings_meta.json docs/data/similar.json docs/data/entities.json docs/data/build_status.json
             git add docs/data/breaking_alerts.json 2>/dev/null || true
+            # daily_brief.json 唔 stage 嘅話會永遠 untracked：下個 checkout 清走佢，
+            # 日期 gate 失效，每 20 分鐘重新生成兼重發 Telegram。
+            git add docs/data/daily_brief.json 2>/dev/null || true
           }
 
           stage_outputs
