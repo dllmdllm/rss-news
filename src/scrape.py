@@ -69,6 +69,10 @@ def _is_nowsnews_url(url: str) -> bool:
     return "news.now.com" in (url or "").lower()
 
 
+def _is_am730_url(url: str) -> bool:
+    return "am730.com.hk" in (url or "").lower()
+
+
 def _hk01_tokens_to_text(tokens: list) -> str:
     """Flatten HK01 htmlTokens paragraphs into plain text.
     Only 'text' tokens observed in practice; unknown types fall back to content."""
@@ -354,9 +358,15 @@ def _build_oncc_content(html: str, url: str) -> str | None:
                 emit_text(node.get_text(" ", strip=True))
                 return
         if node.name in {"div", "section"}:
+            # recursive=True (any descendant, not just direct children) —
+            # the root container (e.g. #centerCTN.news_content) wraps several
+            # levels of layout <div>s before reaching the real <p>/<img> nodes,
+            # so a direct-children-only check saw none, matched the "content"
+            # substring in its own id, and flattened the whole subtree via
+            # get_text() before ever recursing down to the inline images.
             has_nested_blocks = node.find(
                 ["p", "h2", "h3", "blockquote", "li", "figure", "img"],
-                recursive=False,
+                recursive=True,
             )
             token = _node_token(node)
             if not has_nested_blocks and _ONCC_TEXT_HINT_RE.search(token):
@@ -377,56 +387,79 @@ def _build_oncc_content(html: str, url: str) -> str | None:
     return "<html><body>" + "".join(parts) + "</body></html>"
 
 
-def _build_tvb_content(html: str) -> str | None:
-    """Extract TVB News article from __NEXT_DATA__ JSON.
+# Nuxt 3's payload format ("devalue"): the array is a flat pool of values;
+# objects/arrays reference sibling values by index instead of embedding them,
+# so a plain json.loads() gives back index numbers where the real value is
+# expected. _nuxt_deref walks a raw index into its resolved value, unwrapping
+# the reactivity wrapper tuples Nuxt injects (["ShallowReactive", <idx>] etc).
+_NUXT_REACTIVE_MARKERS = {"ShallowReactive", "Reactive", "Ref", "ShallowRef"}
 
-    TVB News is a Next.js app; the article text lives in
-    pageProps.newsItems.desc (plain text, newline-separated paragraphs).
-    Images are in pageProps.newsItems.media.image list.
-    trafilatura sees almost nothing because the body is hydrated client-side.
+
+def _nuxt_deref(raw: list, i, depth: int = 0):
+    if depth > 40 or not isinstance(i, int) or i < 0 or i >= len(raw):
+        return i
+    val = raw[i]
+    if val is None or isinstance(val, (str, int, float, bool)):
+        return val
+    if isinstance(val, list):
+        if val and isinstance(val[0], str) and val[0] in _NUXT_REACTIVE_MARKERS:
+            return _nuxt_deref(raw, val[1], depth + 1)
+        if val and isinstance(val[0], str) and val[0] == "Set":
+            return [_nuxt_deref(raw, j, depth + 1) for j in val[1:]]
+        return [_nuxt_deref(raw, j, depth + 1) for j in val]
+    if isinstance(val, dict):
+        return {k: _nuxt_deref(raw, v, depth + 1) for k, v in val.items()}
+    return val
+
+
+def _build_tvb_content(html: str) -> str | None:
+    """Extract TVB News article from its Nuxt __NUXT_DATA__ payload.
+
+    TVB migrated from Next.js to Nuxt sometime around 2026-07 — the old
+    __NEXT_DATA__-based parser silently stopped matching anything and every
+    TVB article fell through to bare trafilatura against the SPA shell
+    (near-empty text, no images). The article now lives in Nuxt's SSR state
+    cache under a "article-detail-{id}-tc" key; `content`/`content_hk` is
+    already fully-formed HTML with inline <img> in reading position, so this
+    parser is mostly just: find that key, lightly wrap it, done.
     """
     m = re.search(
-        r'<script id="__NEXT_DATA__"[^>]*>(.+?)</script>',
+        r'<script[^>]*\bid="__NUXT_DATA__"[^>]*>(.+?)</script>',
         html,
         re.DOTALL,
     )
     if not m:
         return None
     try:
-        data = json.loads(m.group(1))
+        raw = json.loads(m.group(1))
+        if not isinstance(raw, list) or len(raw) < 2:
+            return None
+        state = _nuxt_deref(raw, 1)
+        data_obj = state.get("data") if isinstance(state, dict) else None
+        if not isinstance(data_obj, dict):
+            return None
+        article = next(
+            (v for k, v in data_obj.items() if "article" in k and isinstance(v, dict)),
+            None,
+        )
     except Exception:
         return None
-
-    ni = data.get("props", {}).get("pageProps", {}).get("newsItems") or {}
-    if not isinstance(ni, dict):
+    if not article:
         return None
 
-    desc = (ni.get("desc") or "").strip()
-    if not desc:
+    body_html = (article.get("content") or article.get("content_hk") or "").strip()
+    if not body_html:
         return None
 
     parts: list[str] = []
-
-    # Pick best cover image: first with default=True, else first item
-    images = ni.get("media", {}).get("image") or []
-    cover_url = ""
-    for img in images:
-        if img.get("default"):
-            cover_url = img.get("big") or img.get("medium") or img.get("thumbnail") or ""
-            break
-    if not cover_url and images:
-        cover_url = images[0].get("big") or images[0].get("medium") or images[0].get("thumbnail") or ""
-    if cover_url:
+    cover = article.get("cover") or []
+    cover_url = (cover[0].get("url") or "").strip() if cover and isinstance(cover[0], dict) else ""
+    # Skip the cover if it's already the first image inline in body_html —
+    # same duplicate-hero-image concern _add_featured_image guards against
+    # elsewhere, just checked here since this parser supplies both directly.
+    if cover_url and cover_url not in body_html:
         parts.append(f'<img src="{_html_escape(cover_url, quote=True)}">')
-
-    # Paragraph text
-    for para in re.split(r'\n+', desc):
-        para = para.strip()
-        if para:
-            parts.append(f"<p>{_html_escape(para)}</p>")
-
-    if not parts:
-        return None
+    parts.append(body_html)
     return "<html><body>" + "".join(parts) + "</body></html>"
 
 
@@ -568,6 +601,61 @@ def _build_skypost_content(html: str, url: str) -> str | None:
         return None
     content = "<html><body>" + "".join(parts) + "</body></html>"
     return content
+
+
+# am730 has no RSS body/description and no client-hydrated JSON payload
+# (unlike HK01/TVB) — the real article text is genuinely there in server HTML
+# under .article__body, but generic trafilatura extraction (317 chars in
+# live testing) comes out far thinner than the ~350-500 chars actually
+# present, apparently confused by the ad slots / related-listing gallery
+# interleaved with the real paragraphs. Targeting the container directly and
+# skipping known junk siblings (ads, "相關新聞" asides, unrelated property
+# listing thumbnails) is more reliable than tuning trafilatura's heuristics.
+_AM730_SKIP_CLASS_RE = re.compile(
+    r"(adbox|custom_content|newsflash|picset|sharebar|article__foot|article__head)",
+    re.IGNORECASE,
+)
+
+
+def _build_am730_content(html: str) -> str | None:
+    soup = BeautifulSoup(html or "", "html.parser")
+    body = soup.select_one(".article__body")
+    if not body:
+        return None
+
+    parts: list[str] = []
+    for child in list(body.find_all(recursive=False)):
+        if getattr(child, "name", None) is None:
+            continue
+        token = " ".join(child.get("class") or []) + " " + (child.get("id") or "")
+        if _AM730_SKIP_CLASS_RE.search(token):
+            continue
+        if child.name == "figure":
+            img = child.find("img")
+            if not img:
+                continue
+            src = (img.get("src") or img.get("data-src") or "").strip()
+            if not src:
+                continue
+            safe_src = _html_escape(src, quote=True)
+            caption = _normalise_oncc_text(child.get_text(" ", strip=True))
+            if caption:
+                parts.append(
+                    f'<figure><img src="{safe_src}"><figcaption>{_html_escape(caption)}</figcaption></figure>'
+                )
+            else:
+                parts.append(f'<img src="{safe_src}">')
+            continue
+        text = _normalise_oncc_text(child.get_text(" ", strip=True))
+        if text and len(text) >= 6:
+            parts.append(f"<p>{_html_escape(text)}</p>")
+
+    if not parts:
+        return None
+    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)))
+    if text_chars < 40:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
 
 
 def _extra_headers_for_url(url: str) -> dict:
@@ -1032,6 +1120,8 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
         content = _build_oncc_content(html, url)
     elif _is_skypost_url(url):
         content = _build_skypost_content(html, url)
+    elif _is_am730_url(url):
+        content = _build_am730_content(html)
 
     if content is None:
         content = trafilatura.extract(
@@ -1125,6 +1215,17 @@ async def _scrape_one(
                     need_og,
                 )
 
+                # Must run before _add_featured_image below — that call reads
+                # article["thumbnail"] to decide the fallback image, so the
+                # og:image discovered by this scrape has to land in the field
+                # first. Doing it after (the previous order) meant any source
+                # whose RSS carries no thumbnail (RTHK, 9to5Mac, GoTrip, HKEPC,
+                # Unwire, WeekendHK …) never got its trafilatura-derived
+                # og:image embedded in the article body — only the listing
+                # card (which reads thumbnail directly) showed an image.
+                if og_image and not article.get("thumbnail"):
+                    article["thumbnail"] = og_image
+
                 if content:
                     content = _fix_graphic_tags(content)
                     content = _remove_relative_images(content)
@@ -1142,9 +1243,6 @@ async def _scrape_one(
                 else:
                     if _rss_fallback_content(article, fallback="rss-empty", allow_minimal=True):
                         print(f"[FALLBACK] {article['source']} — trafilatura returned no content; used RSS")
-
-                if og_image and not article.get("thumbnail"):
-                    article["thumbnail"] = og_image
 
                 return article  # success, no retry needed
 

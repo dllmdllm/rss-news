@@ -1,6 +1,39 @@
 import asyncio
+import json
 
 from src import scrape
+
+
+def _nuxt_html(raw_array: list) -> str:
+    """Wrap a devalue-style array as the __NUXT_DATA__ script TVB pages ship."""
+    payload = json.dumps(raw_array, ensure_ascii=False)
+    return (
+        "<html><body>"
+        f'<script type="application/json" data-nuxt-data="nuxt-app" data-ssr="true" '
+        f'id="__NUXT_DATA__">{payload}</script>'
+        "</body></html>"
+    )
+
+
+# Minimal devalue array matching TVB's real shape: index 1 is the SSR state
+# ({"data": <idx>}), which points to a dict keyed "article-detail-{id}-tc"
+# whose value is the article dict (field name -> index of its resolved value).
+def _tvb_article_html(article_fields: dict) -> str:
+    pool = [
+        ["ShallowReactive", 1],
+        None,  # placeholder for index 1, filled below
+        ["ShallowReactive", 3],
+        None,  # placeholder for index 3
+        None,  # placeholder for index 4 (article dict)
+    ]
+    field_map = {}
+    for key, value in article_fields.items():
+        pool.append(value)
+        field_map[key] = len(pool) - 1
+    pool[1] = {"data": 2}
+    pool[3] = {"article-detail-123-tc": 4}
+    pool[4] = field_map
+    return _nuxt_html(pool)
 
 
 def _article(**overrides):
@@ -150,6 +183,33 @@ def test_scrape_one_keeps_english_content_untranslated(monkeypatch):
     assert "Hello world from source." in out["content"]
 
 
+def test_scrape_one_embeds_og_image_fallback_into_content(monkeypatch):
+    # Regression: article["thumbnail"] must be updated from the trafilatura
+    # og:image fallback BEFORE _add_featured_image runs, otherwise sources
+    # whose RSS carries no thumbnail (RTHK, 9to5Mac, GoTrip, HKEPC, Unwire,
+    # WeekendHK …) get a card thumbnail but no image at all in the article
+    # body — _add_featured_image would have read the still-empty field.
+    class FakeMeta:
+        image = "https://example.com/og-fallback.jpg"
+
+    async def fake_fetch_html(session, url):
+        return "<html><body><article><p>No inline image here.</p></article></body></html>"
+
+    monkeypatch.setattr(scrape, "_fetch_html", fake_fetch_html)
+    monkeypatch.setattr(
+        scrape.trafilatura,
+        "extract",
+        lambda *args, **kwargs: "<body><p>No inline image here.</p></body>",
+    )
+    monkeypatch.setattr(scrape.trafilatura, "extract_metadata", lambda *args, **kwargs: FakeMeta())
+
+    article = _article(thumbnail=None)
+    out = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
+
+    assert out["thumbnail"] == "https://example.com/og-fallback.jpg"
+    assert 'src="https://example.com/og-fallback.jpg"' in out["content"]
+
+
 def test_restore_intro_from_description_uses_og_description_prefix_for_weekendhk():
     html = """
     <html>
@@ -192,6 +252,53 @@ def test_restore_intro_from_description_uses_og_description_prefix_for_gotrip():
     assert "\u7b2c\u4e00\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002" in out
     assert out.index("\u7b2c\u4e00\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002") < out.index("\u7b2c\u4e00\u500b\u6a19\u984c")
     assert out.count("\u7b2c\u4e00\u6bb5\u524d\u8a00\u3002\u7b2c\u4e8c\u6bb5\u524d\u8a00\u3002") == 1
+
+
+def test_build_am730_content_extracts_body_and_skips_ads_and_related():
+    # Real am730 markup interleaves ad slots (.adbox), a related-listings
+    # gallery (.picset), and a related-news aside (.newsflash) inside
+    # .article__body alongside the genuine paragraphs/lead photo — generic
+    # trafilatura extraction came out thinner than the real text because of
+    # this noise. The custom parser targets .article__body directly and
+    # skips known junk siblings by class name.
+    html = """
+    <html><body>
+      <article class="article">
+        <header class="article__head">頭條 出版時間</header>
+        <div class="sharebar">分享：</div>
+        <div class="article__body">
+          <link>
+          <figure class="picsolo picosolo_first_img">
+            <img src="https://cdn3.am730.com.hk/photo1.jpg">
+            圖片說明文字。
+          </figure>
+          <div class="adbox"><img src="https://ads.example.com/a.jpg"></div>
+          <div>真正嘅新聞內文段落，講述事件經過同細節，並補充多一句背景資料令內容長度足夠通過最低字數門檻。</div>
+          <div class="adbox"><img src="https://ads.example.com/b.jpg"></div>
+          <figure class="picset picset--w5">
+            <img src="https://cdn3.am730.com.hk/related1.jpg">
+            <img src="https://cdn3.am730.com.hk/related2.jpg">
+          </figure>
+          <aside class="newsflash">相關新聞：其他報導標題</aside>
+        </div>
+        <footer class="article__foot">相關 標籤</footer>
+      </article>
+    </body></html>
+    """
+
+    content = scrape._build_am730_content(html)
+
+    assert content is not None
+    assert "photo1.jpg" in content
+    assert "真正嘅新聞內文段落" in content
+    assert "ads.example.com" not in content
+    assert "related1.jpg" not in content
+    assert "相關新聞" not in content
+    assert "分享" not in content
+
+
+def test_build_am730_content_returns_none_without_article_body():
+    assert scrape._build_am730_content("<html><body><p>no article body here</p></body></html>") is None
 
 
 def test_build_skypost_content_preserves_inline_image_order():
@@ -253,6 +360,47 @@ def test_build_oncc_content_preserves_text_image_order():
     assert first < photo1 < second < photo2
     assert "第一張圖說明。" in content
     assert "第二張圖說明。" in content
+
+
+def test_build_oncc_content_finds_deeply_nested_image_in_root_container():
+    # Regression for a real bkn page: the selected root container's id
+    # ("centerCTN") matches the text-hint regex via the substring "content"
+    # its own class, but none of its DIRECT children are p/img/figure — the
+    # real image sits several <div> layers down (div > div > div > img, as
+    # seen on-site: photo > photoCTN > photo > img). A recursive=False check
+    # for nested blocks wrongly treated this as a flat leaf and flattened it
+    # via get_text(), skipping the walk that would have found the image.
+    html = """
+    <html><body>
+      <div id="centerCTN" class="news_content">
+        <p>第一段文字。</p>
+        <div class="divSect upper">
+          <div class="leftSide">
+            <div>
+              <div class="photo hPhoto">
+                <div class="photoCTN">
+                  <div class="photo">
+                    <img src="/hk/bkn/cnt/news/20260713/photo/deep.jpg">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p>第二段文字。</p>
+      </div>
+    </body></html>
+    """
+
+    content = scrape._build_oncc_content(
+        html,
+        "https://hk.on.cc/hk/bkn/cnt/news/20260713/bkn-20260713204405560-0713_00822_001.html",
+    )
+
+    assert content is not None
+    assert "deep.jpg" in content
+    assert "第一段文字" in content
+    assert "第二段文字" in content
 
 
 def test_build_oncc_content_splits_blob_text_into_paragraphs():
@@ -370,3 +518,40 @@ def test_build_hk01_content_keeps_description_when_distinct_from_blocks():
     out = scrape._build_hk01_content(html)
     assert "獨家專訪" in out
     assert "事件起因要追溯" in out
+
+
+def test_build_tvb_content_extracts_nuxt_payload_with_cover_image():
+    # TVB migrated to Nuxt in 2026-07; article now lives in a devalue-encoded
+    # __NUXT_DATA__ array under state.data["article-detail-{id}-tc"].
+    html = _tvb_article_html({
+        "content": "<p>正文第一段。</p><p>正文第二段。</p>",
+        "cover": [{"url": "https://example.com/cover.jpg", "title": "封面圖"}],
+    })
+    content = scrape._build_tvb_content(html)
+    assert content is not None
+    assert 'src="https://example.com/cover.jpg"' in content
+    assert "正文第一段" in content
+    assert content.index("cover.jpg") < content.index("正文第一段")
+
+
+def test_build_tvb_content_skips_duplicate_cover_image():
+    # If the cover photo is already inline in the body (as TVB's real
+    # articles do for their other embedded photos), don't prepend it again.
+    html = _tvb_article_html({
+        "content": '<p>開首。</p><img src="https://example.com/cover.jpg"><p>結尾。</p>',
+        "cover": [{"url": "https://example.com/cover.jpg", "title": "封面圖"}],
+    })
+    content = scrape._build_tvb_content(html)
+    assert content is not None
+    assert content.count("cover.jpg") == 1
+
+
+def test_build_tvb_content_falls_back_to_content_hk_when_content_empty():
+    html = _tvb_article_html({"content": "", "content_hk": "<p>備用內文。</p>", "cover": []})
+    content = scrape._build_tvb_content(html)
+    assert content is not None
+    assert "備用內文" in content
+
+
+def test_build_tvb_content_returns_none_without_nuxt_script():
+    assert scrape._build_tvb_content("<html><body><p>no nuxt data here</p></body></html>") is None

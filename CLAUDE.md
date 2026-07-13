@@ -242,10 +242,18 @@ Header: anthropic-version: 2023-06-01
 - Response 格式：`data["content"][0]["text"]`（要篩 `type == "text"` 嘅 block，因為 M2.7 會前置 thinking block）
 - 錯誤碼 `overloaded_error`（529）需 retry，10s/20s backoff
 - Rate limit 1002 → 調低 `ANALYSE_CONCURRENCY`（目前 5，安全上限約 500 RPM）
-- **thinking 參數**：所有 structured-output 調用（translate / analyse / panel / entity）
-  都傳 `thinking={"type": "disabled"}` — M3 預設開 thinking，reasoning tokens 會食
-  `max_tokens` 令 JSON 答案被截斷；M2.7 接受呢個參數但無視佢（2026-06-10 probe 確認），
-  所以傳咗都安全。遷移去 M3 時唔使再改
+- **thinking 參數**：所有 structured-output 調用（translate / analyse / panel / entity /
+  daily_brief）都傳 `thinking={"type": "disabled"}`——reasoning tokens 會食
+  `max_tokens` 令 JSON 答案被截斷。M2.7：呢個參數接受但無視，thinking 本身冧唔到、永遠
+  開住（2026-06-10 probe 確認）。**M3**（官方文件 2026-07 核實）：預設**關**，
+  `disabled` 明確保持關閉、`adaptive` 先會開——同之前 CLAUDE.md 記錄嘅「M3 預設開」
+  方向相反（可能係 preview 階段改咗預設值），但兩個方向代碼都安全，因為已經明確傳
+  `disabled`，唔使因為呢次修正而改 code
+- **遷移去 M3**：淨係改 `MINIMAX_MODEL` 環境變數（`.env` / GitHub secret），四個
+  AI 模組零改動；已用真實 API A/B 測試過 analyse 嘅 prompt，M3 輸出格式正確、
+  用字更穩（M2.7 出過簡體字「地区」漏網）。Pricing 兩個 model 一樣（$0.30/$1.20
+  每百萬 input/output tokens，M3 淨係輸入超過 512K tokens 先加價，遠超呢個 project
+  用量）。2026-07-13 已切換
 
 ### scrape 超時架構
 

@@ -85,6 +85,7 @@ jobs:
         run: python build.py
         env:
           MINIMAX_API_KEY:      ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_MODEL:        ${{ secrets.MINIMAX_MODEL }}
           TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
 

@@ -37,6 +37,7 @@ from src.analyse import (
     analyse_all,
     looks_like_prompt_schema_summary,
 )
+from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
@@ -997,6 +998,27 @@ async def main():
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("scrape outer timeout — using partial")
     _tlog(f"scrape done {time.monotonic()-t:.1f}s")
+
+    # --- translate English source bodies (hard cap 90s) ---
+    # Must run before analyse: analyse's key_sentences are quoted verbatim
+    # from article["content"], and the frontend highlights those quotes by
+    # substring match against the displayed body — translating content after
+    # analyse would leave English key_sentences that can never match a
+    # now-Chinese body. Only ~7-14 articles/build come from ENGLISH_SOURCES,
+    # cached by article id so an article scraped many builds in a row (its
+    # 30h RSS window) is translated once, not re-billed every 20 minutes.
+    t = time.monotonic()
+    _tlog("translate start")
+    try:
+        await asyncio.wait_for(translate_english_content(articles), timeout=90)
+        mark_step("translate", seconds=time.monotonic() - t)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("translate timed out — using partial (untranslated) content")
+        mark_step("translate", ok=False, error="timeout 90s", seconds=time.monotonic() - t)
+    except Exception as exc:
+        _tlog(f"translate: {exc!r}")
+        mark_step("translate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+    _tlog(f"translate done {time.monotonic()-t:.1f}s")
 
     # --- analyse (hard cap 280s) ---
     # 540+ articles ÷ batch=5 ÷ concurrency=5 ≈ 22 batch-rounds. At 6-10s per
