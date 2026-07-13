@@ -555,3 +555,69 @@ def test_build_tvb_content_falls_back_to_content_hk_when_content_empty():
 
 def test_build_tvb_content_returns_none_without_nuxt_script():
     assert scrape._build_tvb_content("<html><body><p>no nuxt data here</p></body></html>") is None
+
+
+def test_fix_lazy_images_promotes_data_placeholder_src():
+    # GoTrip/WeekendHK lazy pattern: src is a base64 1px gif, real URL in
+    # data-src. The original regex only handled imgs with NO src at all.
+    html = '<img src="data:image/gif;base64,R0lGOD" data-src="https://imgs.gotrip.hk/real.jpg" alt="x">'
+    out = scrape._fix_lazy_images(html)
+    assert 'src="https://imgs.gotrip.hk/real.jpg"' in out
+    assert "data:image/gif" not in out.split("src=")[1][:30]
+
+
+def test_fix_picture_elements_skips_data_uri_placeholder():
+    html = (
+        "<picture>"
+        '<source data-srcset="https://imgs.gotrip.hk/from-source.jpg 1x">'
+        '<img src="data:image/gif;base64,R0lGOD" data-src="https://imgs.gotrip.hk/real.jpg">'
+        "</picture>"
+    )
+    out = scrape._fix_picture_elements(html)
+    assert "data:image/gif" not in out
+    assert 'src="https://imgs.gotrip.hk/real.jpg"' in out
+
+
+def test_build_lookmedia_content_extracts_paged_listicle_with_lazy_images():
+    # Multi-page listicle: text pages + image pages with a real-URL theme
+    # placeholder in src and the actual photo in data-src.
+    html = """
+    <html><body>
+      <div class="entry post-content js-post-gallery entry-content">
+        <div class="_page_ _page_1 read-full">第一頁導言文字，交代事件背景同人物。</div>
+        <div class="read_btn"><a>閱讀全文</a></div>
+        <div class="_more_content_">
+          <div class="_page_ _page_2"><p>第二頁內文，繼續講述事件發展經過。</p></div>
+          <div class="_page_ _page_3"><p>
+            <figure class="wp-caption">
+              <a><img src="https://www.weekendhk.com/wp-content/themes/bucket/placeholder.png"
+                      data-src="https://imgs.weekendhk.com/wp-content/uploads/2026/07/photo1"
+                      alt="圖片說明一"></a>
+            </figure>
+          </p></div>
+          <div class="_page_ _page_4"><p>
+            <figure class="wp-caption">
+              <a><img src="https://www.weekendhk.com/wp-content/themes/bucket/placeholder.png"
+                      data-src="https://imgs.weekendhk.com/wp-content/uploads/2026/07/photo2"
+                      alt="圖片說明二"></a>
+            </figure>
+          </p></div>
+          <div id="first_lrec_12345"></div>
+        </div>
+      </div>
+    </body></html>
+    """
+    content = scrape._build_lookmedia_content(html)
+    assert content is not None
+    assert "第一頁導言文字" in content
+    assert "第二頁內文" in content
+    assert content.count("photo1") == 1 and content.count("photo2") == 1
+    assert "placeholder.png" not in content
+    assert "閱讀全文" not in content
+    # text before images, image order preserved
+    assert content.index("第二頁內文") < content.index("photo1") < content.index("photo2")
+    assert "圖片說明一" in content  # caption carried via figcaption
+
+
+def test_build_lookmedia_content_returns_none_without_container():
+    assert scrape._build_lookmedia_content("<html><body><p>plain page</p></body></html>") is None

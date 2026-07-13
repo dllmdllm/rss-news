@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import aiohttp
 import trafilatura
 import zhconv
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from src.feeds import (
     HTTP_HEADERS,
@@ -71,6 +71,12 @@ def _is_nowsnews_url(url: str) -> bool:
 
 def _is_am730_url(url: str) -> bool:
     return "am730.com.hk" in (url or "").lower()
+
+
+def _is_lookmedia_url(url: str) -> bool:
+    """GoTrip and WeekendHK share 新傳媒's "look-child" WordPress theme."""
+    u = (url or "").lower()
+    return "gotrip.hk" in u or "weekendhk.com" in u
 
 
 def _hk01_tokens_to_text(tokens: list) -> str:
@@ -603,6 +609,109 @@ def _build_skypost_content(html: str, url: str) -> str | None:
     return content
 
 
+_LOOKMEDIA_SKIP_RE = re.compile(
+    r"(read_btn|adbox|ad-slot|advert|social|share|related|lrec|code-block|sponsor)",
+    re.IGNORECASE,
+)
+
+
+def _build_lookmedia_content(html: str) -> str | None:
+    """GoTrip / WeekendHK article body walker.
+
+    Two reasons trafilatura can't handle these pages:
+      1. Multi-page listicles render inline as sequential `._page_N` divs;
+         trafilatura keeps only part of them.
+      2. Images are lazy-loaded (base64 placeholder + data-src) AND live on
+         extension-less CDN URLs (imgs.gotrip.hk/...<hash> with no .jpg),
+         which trafilatura's image validator rejects outright — live-tested
+         0/7 images survived even with the real src restored.
+    Walking the theme's article container directly keeps text and images in
+    original reading order.
+    """
+    soup = BeautifulSoup(html or "", "html.parser")
+    root = None
+    for sel in (".entry-content", ".js-post-gallery", "[itemprop=articleBody]"):
+        root = soup.select_one(sel)
+        if root:
+            break
+    if not root:
+        return None
+    for node in root.find_all(["script", "style", "noscript", "iframe", "form"]):
+        node.decompose()
+
+    parts: list[str] = []
+    seen_imgs: set[str] = set()
+
+    def emit_img(img):
+        src = ""
+        # data-src first: when a lazy attr exists it IS the real image, and
+        # src is a placeholder. WeekendHK's placeholder is a plain http URL
+        # (a theme asset, same for every img) — filtering data: URIs alone
+        # collapsed all article photos into one deduped placeholder.
+        for attr in ("data-src", "data-lazy-src", "data-original", "src"):
+            val = (img.get(attr) or "").strip()
+            if val and not val.lower().startswith("data:"):
+                src = val
+                break
+        if not src or src in seen_imgs:
+            return
+        seen_imgs.add(src)
+        alt = _normalise_oncc_text(img.get("alt") or "")
+        safe_src = _html_escape(src, quote=True)
+        if alt:
+            parts.append(
+                f'<figure><img src="{safe_src}" alt="{_html_escape(alt, quote=True)}">'
+                f'<figcaption>{_html_escape(alt)}</figcaption></figure>'
+            )
+        else:
+            parts.append(f'<img src="{safe_src}">')
+
+    def walk(node):
+        name = getattr(node, "name", None)
+        if name is None:
+            return
+        token = " ".join(node.get("class") or []) + " " + (node.get("id") or "")
+        if _LOOKMEDIA_SKIP_RE.search(token):
+            return
+        if name == "img":
+            emit_img(node)
+            return
+        if name in {"p", "h2", "h3", "h4", "blockquote", "li"}:
+            imgs = node.find_all("img")
+            if imgs:
+                # Caption paragraphs: the visible text duplicates the image's
+                # alt/figcaption, so emit only the images (with captions).
+                for img in imgs:
+                    emit_img(img)
+            else:
+                text = node.get_text(" ", strip=True)
+                if text:
+                    parts.append(f"<p>{_html_escape(text)}</p>")
+            return
+        if name == "figure":
+            for img in node.find_all("img"):
+                emit_img(img)
+            return
+        for child in list(getattr(node, "children", [])):
+            # The lead paragraph sits as a BARE text node directly inside
+            # `._page_1.read-full` (no <p> wrapper) — tag-only walking
+            # silently dropped it.
+            if isinstance(child, NavigableString):
+                text = _normalise_oncc_text(str(child))
+                if len(text) >= 6:
+                    parts.append(f"<p>{_html_escape(text)}</p>")
+                continue
+            walk(child)
+
+    walk(root)
+    if not parts:
+        return None
+    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)))
+    if text_chars < 60 and not seen_imgs:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
+
+
 # am730 has no RSS body/description and no client-hydrated JSON payload
 # (unlike HK01/TVB) — the real article text is genuinely there in server HTML
 # under .article__body, but generic trafilatura extraction (317 chars in
@@ -760,6 +869,15 @@ def _expand_stheadline_galleries(html: str) -> str:
     return html
 
 
+# Matches an <img> whose src is an inline data: URI — the classic lazy-load
+# placeholder (1px transparent gif). The real URL sits in a data-src-style
+# attribute on the same tag.
+_IMG_DATA_PLACEHOLDER_RE = re.compile(
+    r'<img([^>]*?)\ssrc=(["\'])data:image/[^"\']*\2([^>]*?)>',
+    re.IGNORECASE,
+)
+
+
 def _fix_lazy_images(html: str) -> str:
     for attr in _LAZY_ATTRS:
         html = re.sub(
@@ -768,7 +886,22 @@ def _fix_lazy_images(html: str) -> str:
             html,
             flags=re.IGNORECASE,
         )
-    return html
+
+    # Second pass: imgs that DO have a src, but it's a base64 placeholder
+    # (GoTrip / WeekendHK lazy-load pattern: src="data:image/gif;base64,…"
+    # + data-src="real url"). The negative lookahead above deliberately
+    # skips srcful imgs, so without this pass the real URL never surfaces
+    # and trafilatura sees only a 1×1 transparent gif.
+    def _promote(m):
+        before, quote, after = m.group(1), m.group(2), m.group(3)
+        rest = before + " " + after
+        for attr in _LAZY_ATTRS:
+            m2 = re.search(rf'{attr}=(["\'])([^"\']+)\1', rest, re.IGNORECASE)
+            if m2:
+                return f'<img{before} src={quote}{m2.group(2)}{quote}{after}>'
+        return m.group(0)
+
+    return _IMG_DATA_PLACEHOLDER_RE.sub(_promote, html)
 
 
 def _extract_noscript_imgs(html: str) -> str:
@@ -833,8 +966,15 @@ def _fix_picture_elements(html: str) -> str:
         img = pic.find("img")
         url = None
         if img:
-            url = (img.get("src") or img.get("data-src") or
-                   img.get("data-lazy-src") or img.get("data-original"))
+            # Skip data: URIs — lazy-load placeholders (1px gif). Taking
+            # src first used to grab the placeholder and throw away the
+            # real URL sitting in data-src (GoTrip/WeekendHK pattern).
+            candidates = (img.get("src"), img.get("data-src"),
+                          img.get("data-lazy-src"), img.get("data-original"))
+            url = next(
+                (c for c in candidates if c and not c.strip().lower().startswith("data:")),
+                None,
+            )
         if not url:
             for src_tag in pic.find_all("source"):
                 for attr in ("srcset", "data-srcset"):
@@ -1122,6 +1262,8 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
         content = _build_skypost_content(html, url)
     elif _is_am730_url(url):
         content = _build_am730_content(html)
+    elif _is_lookmedia_url(url):
+        content = _build_lookmedia_content(html)
 
     if content is None:
         content = trafilatura.extract(
