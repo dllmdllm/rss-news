@@ -37,9 +37,11 @@ async def post_messages(
     a request-level timeout is set, so omitting `connect` would silently
     uncap the connect phase.
 
-    Pass thinking={"type": "disabled"} for latency-sensitive tasks (e.g.
-    title translation). MiniMax-M3 enables thinking by default; disabling it
-    removes the reasoning phase and cuts latency to M2.7 levels.
+    Pass thinking={"type": "disabled"} for every structured-output call —
+    M2.7 ignores the field and always thinks anyway; M3 defaults thinking
+    OFF but honours "disabled" explicitly too, so passing it is safe and
+    correct on both models (2026-07 MiniMax docs; keeps this project's
+    every AI call from ever leaking reasoning tokens into max_tokens).
     """
     payload: dict = {
         "model":      MINIMAX_MODEL,
