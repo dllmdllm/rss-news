@@ -20,11 +20,11 @@
       --accent: #46c2a6;
       --accent-2: #f2c14e;
       --danger: #f06a6a;
-      --radius: 8px;
+      --radius: 10px;
       --side-width: 300px;
       --ai-width: 420px;
       --ui-scale: 1;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
     }
     body.fs-small {
       --side-width: 270px;
@@ -37,7 +37,14 @@
       --ui-scale: 1.22;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
     a { color: inherit; text-decoration: none; }
     button { font: inherit; }
     .app {
@@ -602,7 +609,7 @@
       </section>
     </aside>
   </div>
-  <script src="js/common.js?v=20260713-aibrief"></script>
-  <script src="js/article.js?v=20260713-aibrief"></script>
+  <script src="js/common.js?v=20260714-polish"></script>
+  <script src="js/article.js?v=20260714-polish"></script>
 </body>
 </html>

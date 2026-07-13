@@ -22,8 +22,14 @@
       --danger: #f06a6a;
       --local: #7aa7ff;
       --cat-color: var(--accent);
-      --radius: 8px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
+      --radius: 10px;
+      --card-shadow: 0 1px 2px rgb(0 0 0 / .18);
+      --card-shadow-hover: 0 6px 20px rgb(0 0 0 / .30);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
+    }
+    body.theme-light {
+      --card-shadow: 0 1px 2px rgb(20 30 40 / .06);
+      --card-shadow-hover: 0 6px 20px rgb(20 30 40 / .12);
     }
 
     * { box-sizing: border-box; }
@@ -32,6 +38,8 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
 
     a { color: inherit; text-decoration: none; }
@@ -267,6 +275,7 @@
       border-radius: var(--radius);
       overflow: hidden;
       align-self: start;
+      box-shadow: var(--card-shadow);
     }
 
     .lead {
@@ -298,9 +307,9 @@
       gap: 8px;
       flex-wrap: wrap;
       align-items: center;
-      color: var(--muted);
-      font-size: .9rem;
-      margin-bottom: 8px;
+      color: var(--subtle);
+      font-size: .84rem;
+      margin-bottom: 10px;
     }
     .chip {
       display: inline-flex;
@@ -507,7 +516,7 @@
 
     .feed {
       display: grid;
-      gap: 10px;
+      gap: 12px;
     }
     .feed.feed-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -527,8 +536,8 @@
     .category-section {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 12px;
+      margin-bottom: 22px;
     }
     .category-section-head {
       grid-column: 1 / -1;
@@ -536,11 +545,13 @@
       align-items: baseline;
       justify-content: space-between;
       gap: 12px;
-      padding-top: 6px;
+      padding: 8px 0 2px;
+      border-bottom: 1px solid color-mix(in srgb, var(--cat-color) 24%, transparent);
     }
     .category-section-head h3 {
       margin: 0;
-      font-size: 1.02rem;
+      font-size: 1.05rem;
+      letter-spacing: .02em;
       color: color-mix(in srgb, var(--cat-color) 72%, var(--text));
     }
     .category-section-head span {
@@ -550,13 +561,20 @@
     .card {
       display: grid;
       grid-template-columns: 116px minmax(0, 1fr);
-      gap: 12px;
+      gap: 14px;
       align-items: start;
-      padding: 10px;
+      padding: 12px;
       border: 1px solid var(--line);
-      border-left: 4px solid var(--cat-color);
+      border-left: 3px solid color-mix(in srgb, var(--cat-color) 75%, transparent);
       background: var(--panel);
       border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .card:hover {
+      border-color: color-mix(in srgb, var(--cat-color) 40%, var(--line));
+      box-shadow: var(--card-shadow-hover);
+      transform: translateY(-1px);
     }
     .thumb {
       width: 116px;
@@ -602,9 +620,9 @@
       gap: 8px;
       flex-wrap: wrap;
       align-items: center;
-      color: var(--muted);
-      font-size: .88rem;
-      margin-bottom: 5px;
+      color: var(--subtle);
+      font-size: .8rem;
+      margin-bottom: 6px;
     }
 
     .ai {
@@ -1148,7 +1166,7 @@
           <summary><span id="sourceHealth">來源健康</span></summary>
           <div class="side-health" id="sideSourceHealth"></div>
         </details>
-        <span>Prototype · Desktop first</span>
+        <span>每 20 分鐘自動更新</span>
       </div>
     </aside>
 
@@ -1340,9 +1358,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260713-aibrief"></script>
-  <script src="js/common.js?v=20260713-aibrief"></script>
-  <script src="js/index.js?v=20260713-aibrief"></script>
+  <script src="vendor/fuse.min.js?v=20260714-polish"></script>
+  <script src="js/common.js?v=20260714-polish"></script>
+  <script src="js/index.js?v=20260714-polish"></script>
 </body>
 </html>
 
