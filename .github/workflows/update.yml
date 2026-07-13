@@ -121,6 +121,9 @@ jobs:
             # daily_brief.json 唔 stage 嘅話會永遠 untracked：下個 checkout 清走佢，
             # 日期 gate 失效，每 20 分鐘重新生成兼重發 Telegram。
             git add docs/data/daily_brief.json 2>/dev/null || true
+            # translated_content.json 同上——唔 stage 就每 build 重新翻譯 19 篇
+            # 英文文章（每 20 分鐘白燒一輪 API tokens）。
+            git add docs/data/translated_content.json 2>/dev/null || true
           }
 
           stage_outputs

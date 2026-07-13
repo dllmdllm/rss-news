@@ -708,7 +708,11 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
     for a in articles:
         content = a.get("content")
         old_record = None
-        fallback = "unknown"
+        # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
+        # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
+        # remove_duplicate_leading_thumbnail 重算 quality 就會覆蓋走原標籤，
+        # 令大半 source 喺數據入面睇落好似「不明 fallback」，審計時全部誤鳴。
+        fallback = (a.get("content_quality") or {}).get("fallback") or "unknown"
         if not content:
             old_record = _load_old_content_record(a["id"])
             content = old_record.get("content") if old_record else None
