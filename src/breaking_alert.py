@@ -77,6 +77,7 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
                 "score":      best.get("score") or 0,
                 "date":       best.get("date") or "",
                 "article_id": best.get("id", ""),
+                "thumbnail":  best.get("thumbnail") or "",
             })
 
     return breaking
@@ -99,7 +100,25 @@ async def _send_worker_push(session: aiohttp.ClientSession, headline: str, artic
         print(f"[breaking] Worker push failed: {exc!r}")
 
 
-async def _send_telegram(session: aiohttp.ClientSession, text: str) -> int:
+async def _send_telegram(session: aiohttp.ClientSession, text: str, photo_url: str = "") -> int:
+    """sendPhoto（caption）when photo_url is given, else plain sendMessage.
+
+    sendPhoto's caption caps at 1024 chars — callers must keep text short
+    (breaking alerts and the daily brief's headline+bullets both do). If
+    Telegram rejects the photo (dead URL, unsupported format) fall back to
+    sendMessage so a bad thumbnail never silently drops the notification.
+    """
+    if photo_url:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+        async with session.post(
+            url,
+            json={"chat_id": TELEGRAM_CHAT_ID, "photo": photo_url, "caption": text, "parse_mode": "HTML"},
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as resp:
+            if resp.status < 400:
+                return resp.status
+            print(f"[telegram] sendPhoto failed ({resp.status}), falling back to sendMessage")
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     async with session.post(
         url,
@@ -134,7 +153,7 @@ async def send_breaking_alerts(articles: list) -> None:
                     f"來源：{sources_str}"
                 )
                 try:
-                    status = await _send_telegram(session, text)
+                    status = await _send_telegram(session, text, photo_url=b.get("thumbnail", ""))
                     if 200 <= status < 300:
                         alerted[b["cid"]] = b["date"]
                         print(f"[breaking] Alerted: {b['headline'][:50]}")

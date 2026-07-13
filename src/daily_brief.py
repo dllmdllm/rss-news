@@ -191,8 +191,12 @@ async def generate_daily_brief(articles: list) -> None:
 
         if TELEGRAM_BOT_TOKEN:
             date_label = f"{now.month}月{now.day}日"
+            # 用 top story（picked 已經按 score/新鮮度排咗）嘅縮圖做早報配圖；
+            # sendPhoto caption 上限 1024 字，_telegram_text 得標題+bullets
+            # 遠遠夠餘。
+            thumbnail = picked[0].get("thumbnail", "") if picked else ""
             try:
-                status = await _send_telegram(session, _telegram_text(brief, date_label))
+                status = await _send_telegram(session, _telegram_text(brief, date_label), photo_url=thumbnail)
                 print(f"[brief] Telegram: {status}")
             except Exception as exc:
                 print(f"[brief] Telegram failed: {exc!r}")
