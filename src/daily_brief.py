@@ -125,12 +125,13 @@ def _parse_brief(raw: str, valid_ids: set) -> dict | None:
 
 
 def _telegram_text(brief: dict, date_label: str) -> str:
+    # 淨係標題 + bullets——嗰段 150-250 字 paragraph（brief["text"]）留喺網站
+    # 早報卡度。Telegram 度兩樣一齊出會重複晒同一批新聞，喺手機屏幕變成
+    # 一大堵字（2026-07-13 用戶反映排版亂）。
     esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     lines = [f"🌅 <b>今日早報 · {date_label}</b>"]
     if brief.get("title"):
         lines.append(esc(brief["title"]))
-    lines.append("")
-    lines.append(esc(brief["text"]))
     lines.append("")
     lines.extend(f"・{esc(h['point'])}" for h in brief["highlights"])
     return "\n".join(lines)

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from src.daily_brief import (
     HKT,
     _parse_brief,
+    _telegram_text,
     select_top_articles,
     should_generate,
 )
@@ -52,3 +53,19 @@ def test_parse_brief_strips_fences_and_validates_ids():
 def test_parse_brief_rejects_empty_body():
     assert _parse_brief('{"title": "x", "text": "", "highlights": []}', set()) is None
     assert _parse_brief("not json at all", set()) is None
+
+
+def test_telegram_text_omits_paragraph_to_avoid_duplication():
+    # 網站早報卡先顯示 brief["text"]（150-250 字段落）；Telegram 淨係標題 +
+    # bullets——兩樣一齊出會令手機屏幕出現重複內容（2026-07-13 用戶反映）。
+    brief = {
+        "title": "今日焦點",
+        "text": "呢段長 paragraph 唔應該出現喺 Telegram 度。",
+        "highlights": [{"point": "重點一", "id": "a"}, {"point": "重點二", "id": ""}],
+    }
+    text = _telegram_text(brief, "7月13日")
+    assert "今日早報 · 7月13日" in text
+    assert "今日焦點" in text
+    assert "・重點一" in text
+    assert "・重點二" in text
+    assert "呢段長 paragraph" not in text
