@@ -200,8 +200,20 @@ jobs:
           # repo, and git running as the LocalSystem service rejects the
           # Nary-owned _work checkout ("dubious ownership", 2026-06-12).
           $todayStart = "${today}T00:00:00Z"
-          $prior = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status=success --limit 30 --json updatedAt --jq "[.[] | select(.updatedAt >= \"$todayStart\")] | length" 2>$null
-          if (-not $prior) { $prior = "0" }
+          # NB: count in PowerShell, not via --jq. A jq string literal needs
+          # embedded double quotes, and PS 5.1's native-arg passing mangles
+          # them no matter how they're escaped (inline \" split the pipe into
+          # a bare arg → gh: unknown command "|", run #5664; variable-passed
+          # quotes get stripped by the C runtime parser). ISO-8601 Zulu
+          # strings compare correctly with -ge.
+          $runsJson = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status=success --limit 30 --json updatedAt 2>$null
+          $prior = "0"
+          if ($runsJson) {
+            try {
+              $runs = $runsJson | ConvertFrom-Json
+              $prior = [string]@($runs | Where-Object { $_.updatedAt -ge $todayStart }).Count
+            } catch {}
+          }
           if ($prior -ne "0") {
             Write-Host "heartbeat skipped: $prior prior success(es) today"
             exit 0
