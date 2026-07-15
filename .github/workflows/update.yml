@@ -226,7 +226,7 @@ jobs:
           try {
             Invoke-RestMethod `
               -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
-              -Method Post -Body $body `
+              -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
               -ContentType 'application/json; charset=utf-8' | Out-Null
             Write-Host "heartbeat sent"
           } catch {
@@ -259,7 +259,7 @@ jobs:
             Invoke-RestMethod `
               -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
               -Method Post `
-              -Body $body `
+              -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
               -ContentType 'application/json; charset=utf-8' | Out-Null
             Write-Host "telegram notify sent"
           } catch {
