@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import aiohttp
 import trafilatura
 import zhconv
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
     HTTP_HEADERS,
@@ -630,7 +630,11 @@ def _build_lookmedia_content(html: str) -> str | None:
     """
     soup = BeautifulSoup(html or "", "html.parser")
     root = None
-    for sel in (".entry-content", ".js-post-gallery", "[itemprop=articleBody]"):
+    # ._content_ before .js-post-gallery: WeekendHK's .js-post-gallery wraps
+    # the whole widget (h1 title, byline/date, 關鍵詞 footer, ad slots) with
+    # the real body nested in ._content_ — rooting at the outer div leaked
+    # all of that into the article. GoTrip's .entry-content is body-only.
+    for sel in (".entry-content", "._content_", ".js-post-gallery", "[itemprop=articleBody]"):
         root = soup.select_one(sel)
         if root:
             break
@@ -692,7 +696,25 @@ def _build_lookmedia_content(html: str) -> str | None:
             for img in node.find_all("img"):
                 emit_img(img)
             return
+        if name in {"div", "section"}:
+            # A div with no block-level descendants is a leaf paragraph —
+            # emit its text in ONE piece. Recursing instead used to shred
+            # sentences at every inline <a>/<strong> boundary (each bare
+            # text fragment became its own <p>).
+            has_block = node.find(
+                ["p", "h2", "h3", "h4", "li", "blockquote", "figure", "img", "div", "section"],
+                recursive=True,
+            )
+            if not has_block:
+                text = node.get_text(" ", strip=True)
+                if len(text) >= 6:
+                    parts.append(f"<p>{_html_escape(text)}</p>")
+                return
         for child in list(getattr(node, "children", [])):
+            # HTML comments (<!--leadlastlabel-->) are NavigableString
+            # subclasses — without this check their text leaked as content.
+            if isinstance(child, Comment):
+                continue
             # The lead paragraph sits as a BARE text node directly inside
             # `._page_1.read-full` (no <p> wrapper) — tag-only walking
             # silently dropped it.
