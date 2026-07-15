@@ -38,7 +38,9 @@ RSS_FEEDS = [
     {"name": "東網 國際",          "url": "https://hk.on.cc/hk/intnews/index.html",                                 "category": "國際", "fetcher": "oncc", "oncc_section": "intnews"},
     # 娛樂
     {"name": "明報 娛樂",          "url": "https://news.mingpao.com/rss/ins/s00007.xml",                           "category": "娛樂"},
-    {"name": "東網 娛樂",          "url": "https://hk.on.cc/hk/entertainment/index.html",                           "category": "娛樂", "fetcher": "oncc", "oncc_section": "entertainment"},
+    # 娛樂 index 頁係 client-side render（空殼），要用 on.cc 自己嘅
+    # dailyList JSON feed（fetch.py _fetch_oncc_daily）
+    {"name": "東網 娛樂",          "url": "https://hk.on.cc/hk/bkn/js/{date}/entertainment_dailyList.js",           "category": "娛樂", "fetcher": "oncc_daily", "oncc_section": "entertainment"},
     # 消閒
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},

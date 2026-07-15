@@ -137,3 +137,37 @@ def test_parse_am730_sitemap_extracts_recent_news_entries():
     assert articles[0]["title"] == "國際新聞A"
     assert articles[0]["category"] == "國際"
     assert articles[0]["thumbnail"] == "https://img.am730.com.hk/a.jpg"
+
+
+def test_parse_oncc_dailylist_builds_articles_from_json_feed():
+    # 東網娛樂 index 頁係 client-side render 空殼，改用 on.cc dailyList JSON。
+    from datetime import datetime, timedelta, timezone
+    from src.fetch import _parse_oncc_dailylist
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=30)
+    now_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S")
+    date_part = now_str[:8]
+    feed_info = {"name": "東網 娛樂", "category": "娛樂", "oncc_section": "entertainment"}
+    data = [
+        {
+            "articleId": f"bkn-{now_str}909-0715_00862_001",
+            "title": "測試娛樂新聞",
+            "pubDate": "2026-07-15 09:28:37",
+            "thumbnail": f"/cnt/entertainment/{date_part}/photo/a_01p.jpg",
+            "content": "測試 teaser 內容",
+        },
+        {"articleId": "", "title": "冇 id 應該跳過"},
+        {
+            # 太舊（cutoff 之前）——articleId 日期先係真相
+            "articleId": "bkn-20200101000000000-0101_00862_002",
+            "title": "舊文",
+        },
+    ]
+    out = _parse_oncc_dailylist(data, feed_info, cutoff)
+    assert len(out) == 1
+    a = out[0]
+    assert a["title"] == "測試娛樂新聞"
+    assert a["url"] == f"https://hk.on.cc/hk/bkn/cnt/entertainment/{date_part}/bkn-{now_str}909-0715_00862_001.html"
+    assert a["thumbnail"].startswith("https://hk.on.cc/hk/bkn/cnt/entertainment/")
+    assert a["category"] == "娛樂"
+    assert a["rss_content"] == "測試 teaser 內容"

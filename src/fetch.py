@@ -756,6 +756,89 @@ async def _fetch_nowtv(
     return articles, None, False
 
 
+# on.cc 部分 section（娛樂）嘅 index 頁係純 client-side render——HTML 得 12KB
+# 淨係 nav link，文章列表由佢哋自己嘅 dailyList JSON feed 載入（見
+# oncc-common.js 嘅 $FeedLoader：/hk/bkn/js/{date}/{section}_dailyList.js）。
+# 呢啲 section 直接讀 JSON feed；news/intnews 嘅 index 頁仍然係 server-rendered，
+# 繼續行 _fetch_oncc 嘅 HTML 路徑。
+_ONCC_DAILYLIST_URL = "https://hk.on.cc/hk/bkn/js/{date}/{section}_dailyList.js"
+_ONCC_ASSET_BASE = "https://hk.on.cc/hk/bkn"
+
+
+def _parse_oncc_dailylist(data, feed_info: dict, cutoff: datetime) -> list[dict]:
+    section = feed_info.get("oncc_section") or "entertainment"
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    articles: list[dict] = []
+    for item in data if isinstance(data, list) else []:
+        article_id = (item.get("articleId") or "").strip()
+        title = (item.get("title") or "").strip()
+        if not article_id or not title:
+            continue
+        # articleId 內嵌自己嘅日期（bkn-YYYYMMDD…）——文章 URL 用呢個日期做
+        # 目錄，唔係 dailyList 檔案嘅日期（凌晨出嘅文會跨檔）。
+        m = re.search(r"bkn-(\d{8})", article_id)
+        if not m:
+            continue
+        article_url = f"{_ONCC_ASSET_BASE}/cnt/{section}/{m.group(1)}/{article_id}.html"
+        date = _parse_oncc_datetime(article_url)
+        if date < cutoff:
+            continue
+        thumb = (item.get("thumbnail") or "").strip()
+        thumbnail = _ONCC_ASSET_BASE + thumb if thumb.startswith("/") else (thumb or None)
+        articles.append({
+            "id":          _make_id(article_url),
+            "title":       title,
+            "url":         article_url,
+            "date":        date.isoformat(),
+            "source":      feed_info["name"],
+            "category":    feed_info["category"],
+            "content":     None,
+            "thumbnail":   thumbnail,
+            "rss_content": (item.get("content") or "").strip() or None,
+        })
+        if len(articles) >= max_items:
+            break
+    return articles
+
+
+async def _fetch_oncc_daily(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    section = feed_info.get("oncc_section") or "entertainment"
+    now_hkt = datetime.now(timezone(timedelta(hours=8)))
+    merged: list[dict] = []
+    seen: set[str] = set()
+    errors: list[str] = []
+    # 今日 + 尋日兩個檔，覆蓋 30h cutoff window。
+    for day_offset in (0, 1):
+        date_str = (now_hkt - timedelta(days=day_offset)).strftime("%Y%m%d")
+        url = _ONCC_DAILYLIST_URL.format(date=date_str, section=section)
+        try:
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=15),
+                headers={"Accept": "application/json,text/javascript,*/*;q=0.8"},
+            ) as resp:
+                if resp.status >= 400:
+                    errors.append(f"HTTP {resp.status} ({date_str})")
+                    continue
+                raw = await resp.read()
+            # feed 帶 UTF-8 BOM，要用 utf-8-sig 解
+            data = json.loads(raw.decode("utf-8-sig", errors="replace"))
+        except Exception as exc:
+            print(f"[WARN] fetch {feed_info['name']} ({date_str}): {exc!r}")
+            errors.append(repr(exc))
+            continue
+        for a in _parse_oncc_dailylist(data, feed_info, cutoff):
+            if a["id"] not in seen:
+                seen.add(a["id"])
+                merged.append(a)
+    error = "; ".join(errors) if errors and not merged else None
+    return merged, error, False
+
+
 async def _fetch_oncc(
     session:   aiohttp.ClientSession,
     feed_info: dict,
@@ -818,6 +901,8 @@ async def _fetch_one(
         return await _fetch_am730(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "oncc":
         return await _fetch_oncc(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "oncc_daily":
+        return await _fetch_oncc_daily(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "skypost":
         return await _fetch_skypost(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "tvb":
