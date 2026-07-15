@@ -190,12 +190,17 @@ jobs:
           TELEGRAM_CHAT_ID: "1122095129"
         run: |
           $today = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
-          # `gh run list --created=` accepts a date string; counts prior
-          # completed-success runs today. 0 -> this run is the first.
+          # Count prior successes by COMPLETION time (updatedAt), not created
+          # date: a run created 23:5x that finishes 00:04 sent a heartbeat for
+          # the new day, then the true first run of the day saw zero successes
+          # *created* today and sent a second one (user got doubles at
+          # 08:04+08:10 HKT, 2026-07-15). At heartbeat time the current run is
+          # still in_progress, so it never counts itself.
           # --repo is required: without it gh shells out to git to infer the
           # repo, and git running as the LocalSystem service rejects the
           # Nary-owned _work checkout ("dubious ownership", 2026-06-12).
-          $prior = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status=success --created=$today --json databaseId --jq 'length' 2>$null
+          $todayStart = "${today}T00:00:00Z"
+          $prior = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status=success --limit 30 --json updatedAt --jq "[.[] | select(.updatedAt >= \"$todayStart\")] | length" 2>$null
           if (-not $prior) { $prior = "0" }
           if ($prior -ne "0") {
             Write-Host "heartbeat skipped: $prior prior success(es) today"
