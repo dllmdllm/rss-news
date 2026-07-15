@@ -337,6 +337,14 @@ img + content
 原因：`BeautifulSoup` 會將 HTML fragment 包成完整 `<html><head></head><body>…</body></html>`
 結構，`<img>` 若在 `<html>` 之前，瀏覽器 `innerHTML` 賦值時會忽略。
 
+### update.yml PowerShell step 引號鐵律
+
+Runner 係 Windows PowerShell 5.1。native 指令（gh/curl）嘅參數**唔好用內嵌雙引號**
+（bash 式 `\"` 會被 PS 斬開參數；經變數傳入嘅內層引號會被 C runtime 剝走——
+run #5664 一役兩種寫法都中）。要過濾／計數就攞 JSON 返嚟用 `ConvertFrom-Json` +
+`Where-Object` 做；send Telegram 要 `-Body ([Text.Encoding]::UTF8.GetBytes($body))`，
+PS 5.1 對 string body 硬編碼 ISO-8859-1（charset 聲明冇用，❌ 曾變 âŒ）。
+
 ### GitHub Actions push 策略
 
 每次 retry 都先重新 fetch/rebase，避免 concurrent push 導致 rejected：
