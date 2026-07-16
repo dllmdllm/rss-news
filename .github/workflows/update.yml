@@ -250,7 +250,11 @@ jobs:
             exit 0
           }
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $text = "❌ rss-news build failed`nrun #$env:GITHUB_RUN_NUMBER on $env:GITHUB_REF_NAME`n$runUrl"
+          # Emoji via code point, not a literal: the runner materialises step
+          # scripts as BOM-less UTF-8, which PowerShell 5.1 reads as ANSI —
+          # a literal ❌ in this file reaches Telegram as "âŒ".
+          $cross = [char]0x274C
+          $text = "$cross rss-news build failed`nrun #$env:GITHUB_RUN_NUMBER on $env:GITHUB_REF_NAME`n$runUrl"
           $body = @{
             chat_id = $env:TELEGRAM_CHAT_ID
             text    = $text
