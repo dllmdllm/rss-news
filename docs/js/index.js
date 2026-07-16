@@ -1006,6 +1006,21 @@
     const highlights = (brief.highlights || []).map((h) => h.id
       ? `<li><a href="article.html?id=${encodeURIComponent(h.id)}">${esc(h.point)}</a></li>`
       : `<li>${esc(h.point)}</li>`).join("");
+    // 每單新聞一段：新格式用 \n 分隔；舊格式（一嚿過）fallback 按句號斬
+    // ——用戶反映成段 250 字黐埋一嚿好難讀。
+    const paras = brief.text.includes("\n")
+      ? brief.text.split(/\n+/)
+      : brief.text.split(/(?<=。)/).reduce((acc, sentence) => {
+          // 每兩句合一段，避免斬得太碎
+          if (acc.length && acc[acc.length - 1].split("。").length <= 2) {
+            acc[acc.length - 1] += sentence;
+          } else {
+            acc.push(sentence);
+          }
+          return acc;
+        }, []);
+    const textHtml = paras.filter((p) => p.trim())
+      .map((p) => `<p>${esc(p.trim())}</p>`).join("");
     host.hidden = false;
     host.innerHTML = `
       <div class="morning-brief-head">
@@ -1013,7 +1028,7 @@
         <button class="morning-brief-tts" id="briefTts" type="button">🔊 聽早報</button>
       </div>
       ${brief.title ? `<strong class="morning-brief-title">${esc(brief.title)}</strong>` : ""}
-      <p>${esc(brief.text)}</p>
+      ${textHtml}
       ${highlights ? `<ul>${highlights}</ul>` : ""}`;
     $("briefTts")?.addEventListener("click", () => toggleBriefTts(brief));
   }
