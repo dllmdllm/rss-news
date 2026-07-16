@@ -77,3 +77,27 @@ def test_detect_breaking_clusters_includes_thumbnail_of_best_article():
     breaking = detect_breaking_clusters(articles)
     assert len(breaking) == 1
     assert breaking[0]["thumbnail"] == "https://example.com/high.jpg"
+
+
+def test_format_alert_text_includes_summary_bullets_and_sources_last():
+    from src.breaking_alert import _format_alert_text
+
+    text = _format_alert_text({
+        "headline": "測試突發標題 <b>",
+        "summary": "・重點一\n・重點二\n・重點三\n・重點四\n・重點五\n・重點六",
+        "sources": ["明報", "東網", "RTHK", "星島", "HK01", "am730"],
+    })
+    lines = text.split("\n")
+    assert lines[0] == "🔴 <b>突發</b>：測試突發標題 &lt;b&gt;"
+    # 最多 5 點
+    assert [l for l in lines if l.startswith("・")] == [
+        "・重點一", "・重點二", "・重點三", "・重點四", "・重點五"]
+    # 來源最尾，最多 5 個
+    assert lines[-1] == "來源：明報、東網、RTHK、星島、HK01"
+
+
+def test_format_alert_text_without_summary_keeps_headline_and_sources():
+    from src.breaking_alert import _format_alert_text
+
+    text = _format_alert_text({"headline": "冇摘要", "summary": "", "sources": ["明報"]})
+    assert text == "🔴 <b>突發</b>：冇摘要\n來源：明報"

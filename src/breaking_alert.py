@@ -7,6 +7,7 @@ re-alert for the same cluster.
 import asyncio
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -78,6 +79,9 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
                 "date":       best.get("date") or "",
                 "article_id": best.get("id", ""),
                 "thumbnail":  best.get("thumbnail") or "",
+                # breaking alert 跑喺 analyse 之後，best 已有 AI 摘要——
+                # 帶埋落通知度俾 _format_alert_text 出 bullet points。
+                "summary":    best.get("summary") or "",
             })
 
     return breaking
@@ -128,6 +132,18 @@ async def _send_telegram(session: aiohttp.ClientSession, text: str, photo_url: s
         return resp.status
 
 
+def _format_alert_text(b: dict) -> str:
+    """🔴 標題 + AI 摘要 bullets + 來源。摘要每點 ≤10 字（analyse prompt 保證），
+    最多 5 點，遠低於 sendPhoto caption 嘅 1024 字上限。冇摘要（分析超時）
+    就淨返標題＋來源，唔會 block 通知。"""
+    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    lines = [f"🔴 <b>突發</b>：{esc(b['headline'])}"]
+    points = [p.strip() for p in re.split(r"[\n・•]+", b.get("summary") or "") if p.strip()]
+    lines.extend(f"・{esc(p)}" for p in points[:5])
+    lines.append(f"來源：{esc('、'.join(b['sources'][:5]))}")
+    return "\n".join(lines)
+
+
 async def send_breaking_alerts(articles: list) -> None:
     """Alert Telegram for newly-detected breaking clusters."""
     state = _load_state()
@@ -147,11 +163,7 @@ async def send_breaking_alerts(articles: list) -> None:
     if new_ones:
         async with aiohttp.ClientSession() as session:
             for b in new_ones:
-                sources_str = "、".join(b["sources"][:5])
-                text = (
-                    f"🔴 <b>突發</b>：{b['headline']}\n"
-                    f"來源：{sources_str}"
-                )
+                text = _format_alert_text(b)
                 try:
                     status = await _send_telegram(session, text, photo_url=b.get("thumbnail", ""))
                     if 200 <= status < 300:
