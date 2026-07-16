@@ -196,7 +196,9 @@
       grid-column: 2;
       grid-row: 2 / span 99;
       position: sticky;
-      top: 72px;
+      /* 88px 唔係 72px：topbar 喺「大」字體下高 ~70px（.mode 按鈕跟 root
+         font 脹大），72px 會令摘要欄 scroll 時滑入 topbar 底下被遮住。 */
+      top: 88px;
       align-self: start;
     }
 
@@ -1358,9 +1360,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260716-briefpara"></script>
-  <script src="js/common.js?v=20260716-briefpara"></script>
-  <script src="js/index.js?v=20260716-briefpara"></script>
+  <script src="vendor/fuse.min.js?v=20260716-sticky"></script>
+  <script src="js/common.js?v=20260716-sticky"></script>
+  <script src="js/index.js?v=20260716-sticky"></script>
 </body>
 </html>
 
