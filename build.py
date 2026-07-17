@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from pathlib import Path
@@ -57,11 +57,14 @@ GRAPH_MAX_NODES = 150        # browser ceiling — cytoscape gets sluggish above
 GRAPH_MAX_EDGES = 300
 GRAPH_ENTITY_TYPES = ("people", "companies", "places")
 
+# ⚠️ Canonical 名要用「唔會過時」嘅主題式命名（伊朗局勢／蘋果動態），
+# 唔好用事件式命名（蘋果CEO交接）——事件完咗個標籤仍然日日掛喺話題聚焦度，
+# 用戶會以為成個 grid 冇更新過（2026-07-17 實際投訴）。
 TOPIC_ALIASES = [
     (("伊朗", "美伊", "霍爾木茲", "以色列", "黎巴嫩"), "伊朗局勢"),
     (("宏福苑", "宏新閣", "火警聽證", "居民上樓"), "宏福苑跟進"),
     (("高市早苗", "靖國", "日本首相"), "日本政局"),
-    (("蘋果", "庫克", "特努斯", "Ternus", "Apple"), "蘋果CEO交接"),
+    (("蘋果", "庫克", "特努斯", "Ternus", "Apple"), "蘋果動態"),
     (("機械人", "機器人", "人形機械", "半馬"), "機械人發展"),
     (("港股", "恆指", "新股", "IPO"), "港股市場"),
     (("天氣", "天文台", "雷暴", "驟雨"), "香港天氣"),
@@ -320,8 +323,22 @@ def build_trending_topics(
         heat = round(len(rows) * 8 + len(sources) * 5 + avg_score * 3 + recency * 2, 2)
         sorted_rows = sorted(rows, key=lambda row: row.get("date", ""), reverse=True)
 
+        # TOPIC_ALIASES 嘅 canonical 名係時間凝固嘅（「蘋果CEO交接」永遠係
+        # 交接），令話題聚焦 grid 日日顯示同一批標籤、睇落似冇更新。alias
+        # 繼續負責分組，但顯示名改用組內文章嘅多數原生 AI topic——有明顯
+        # 多數（≥2 篇且過半）先覆蓋，成員topic分散就保留 canonical 名。
+        display = topic
+        raw_counts = Counter(
+            (row.get("topic") or "").strip()
+            for row in rows if (row.get("topic") or "").strip()
+        )
+        if raw_counts:
+            top_raw, top_n = raw_counts.most_common(1)[0]
+            if top_n >= 2 and top_n * 2 >= len(rows):
+                display = top_raw
+
         trending.append({
-            "topic": topic,
+            "topic": display,
             "count": len(rows),
             "sources": sources[:5],
             "source_count": len(sources),
