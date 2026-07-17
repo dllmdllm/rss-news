@@ -1005,9 +1005,12 @@
   function renderMorningBrief(brief) {
     const host = $("morningBrief");
     if (!host || !brief || !brief.text || !brief.date) return;
-    // 顯示當日或前一日（凌晨新一份未生成時繼續顯示尋日嗰份）
-    const age = Date.now() - new Date(`${brief.date}T00:00:00+08:00`).getTime();
-    if (!(age >= 0 && age < 2 * 86400000)) return;
+    // 早報係朝早嘢：只喺生成當日 00:00 至中午 12:00（HKT）之間顯示，
+    // 過咗晏晝就收起（用戶要求）。
+    const dayStart = new Date(`${brief.date}T00:00:00+08:00`).getTime();
+    const noon = new Date(`${brief.date}T12:00:00+08:00`).getTime();
+    const now = Date.now();
+    if (!(now >= dayStart && now < noon)) return;
     const parts = String(brief.date).split("-");
     const dateLabel = `${Number(parts[1])}月${Number(parts[2])}日`;
     const highlights = (brief.highlights || []).map((h) => h.id

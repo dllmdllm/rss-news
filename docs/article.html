@@ -420,13 +420,16 @@
       .ai { border-top: 1px solid var(--line); }
       .side-block.meta-block { display: none; }
       .main { padding: 16px 14px 28px; }
+      /* 壓成單行：返回掣＋5 個工具掣一行過（閱讀時間收起）。之前
+         直向三行食咗 ~20% 屏幕高度（用戶投訴），內文冇晒位。 */
       .toolbar {
         top: 0;
-        align-items: stretch;
-        flex-direction: column;
-        gap: 9px;
-        margin: -16px -14px 14px;
-        padding: 10px 14px 12px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: -16px -14px 12px;
+        padding: 8px 10px;
         border-bottom: 1px solid var(--line);
         background: rgba(16, 18, 20, .94);
         backdrop-filter: blur(14px);
@@ -434,27 +437,30 @@
       body.theme-light .toolbar {
         background: rgba(245, 246, 248, .94);
       }
+      #readTime { display: none; }
       .mobile-back {
         display: inline-flex;
-        width: max-content;
+        flex: 0 0 auto;
         align-items: center;
         border: 1px solid var(--line);
         background: var(--panel);
         color: var(--text);
         border-radius: 999px;
         padding: 7px 10px;
-        font-size: .88rem;
+        font-size: .85rem;
+        white-space: nowrap;
       }
-      /* 5 個掣用 flex-wrap 攤做 3+2 兩行（各自填滿行闊）——之前 repeat(4)
-         grid 令第五個 AI 掣孤伶伶自己一行。 */
       .toolbar-actions {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        gap: 5px;
       }
       .tool {
-        flex: 1 1 30%;
-        padding: 9px 6px;
+        flex: 0 0 auto;
+        padding: 7px 9px;
+        font-size: .82rem;
         text-align: center;
+        white-space: nowrap;
       }
       .article-head {
         padding-bottom: 14px;
@@ -573,11 +579,11 @@
         <a class="mobile-back" href="index.html">← 返回首頁</a>
         <span id="readTime">閱讀中</span>
         <div class="toolbar-actions">
-          <button class="tool" id="fontSmall" type="button">🔍 細</button>
-          <button class="tool" id="fontNormal" type="button">📖 中</button>
-          <button class="tool active" id="fontLarge" type="button">🔎 大</button>
-          <button class="tool" id="textOnly" type="button">📝 純文字</button>
-          <button class="tool" id="aiToggle" type="button" title="摺埋／展開 AI 工作台">📊 AI</button>
+          <button class="tool" id="fontSmall" type="button">細</button>
+          <button class="tool" id="fontNormal" type="button">中</button>
+          <button class="tool active" id="fontLarge" type="button">大</button>
+          <button class="tool" id="textOnly" type="button" title="隱藏圖片，純文字閱讀">純文字</button>
+          <button class="tool" id="aiToggle" type="button" title="摺埋／展開右欄（關鍵句＋相關新聞）">AI</button>
         </div>
       </div>
       <article>
