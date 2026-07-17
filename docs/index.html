@@ -755,6 +755,55 @@
     }
     .topic span { color: var(--muted); font-size: .72rem; }
 
+    /* AI 工作台分析元素（方案 C rail） */
+    .contra-item {
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
+      font-size: .84rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .contra-item:first-child { border-top: 0; padding-top: 0; }
+    .contra-item .src { color: var(--text); font-weight: 700; }
+    .contra-item .contra-topic {
+      display: block;
+      color: var(--accent-2);
+      font-size: .78rem;
+      margin-bottom: 3px;
+    }
+    .upcoming-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      padding: 7px 0;
+      border-top: 1px solid var(--line);
+      font-size: .86rem;
+      color: var(--muted);
+    }
+    .upcoming-item:first-child { border-top: 0; padding-top: 0; }
+    .upcoming-item .date {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: .8rem;
+      white-space: nowrap;
+    }
+    .ai-links {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .ai-links a {
+      flex: 1;
+      text-align: center;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 7px 4px;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+    .ai-links a:hover { color: var(--text); border-color: var(--accent); }
+
     .mobile-tabs {
       display: none;
       position: fixed;
@@ -1079,10 +1128,9 @@
       body.mobile-search .mode,
       body.mobile-search .mobile-sub,
       body.mobile-search .mobile-cat-chips { display: none; }
-      /* AI view 收埋 brief：內容同「優先排行」大幅重複，一頁兩份。
-         content-head 喺 home view 保留，畀用戶見到篇數 counter。 */
+      /* 方案 C 之後 .brief 載住優先排行＋每類摘要，AI view 要顯示返佢；
+         rail (.ai) 就變咗純分析內容，冇重複。 */
       body.mobile-ai .lead,
-      body.mobile-ai .brief,
       body.mobile-ai .morning-brief,
       body.mobile-search .morning-brief,
       body.mobile-home .brief { display: none; }
@@ -1100,8 +1148,9 @@
       body.mobile-ai .mobile-sub-ai { order: 1; }
       body.mobile-ai .mobile-cat-chips,
       body.mobile-ai .mobile-source-chips { order: 2; }
-      body.mobile-ai .ai { order: 3; }
-      body.mobile-ai .main { order: 4; }
+      body.mobile-ai .main { order: 3; }
+      body.mobile-ai .ai { order: 4; }
+      body.mobile-ai .main > .brief { order: 1; }
       body.mobile-ai .main > .content-head { order: 2; }
       body.mobile-ai .main > .feed { order: 3; }
       body.mobile-search .topbar { position: static; }
@@ -1190,6 +1239,8 @@
       <section class="morning-brief" id="morningBrief" hidden></section>
       <article class="lead" id="leadStory"></article>
       <aside class="brief">
+        <h2 class="section-title"><strong>🔥 優先排行</strong><span id="priorityRange"></span></h2>
+        <div id="criticalList"></div>
         <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
         <ul class="brief-list" id="dailyBrief"></ul>
       </aside>
@@ -1236,16 +1287,23 @@
         <strong>AI 工作台</strong>
         <span id="aiUpdated">同步中</span>
       </div>
-      <section class="ai-block ai-block-collapse">
-        <details open>
-          <summary><h2>優先排行 <span id="priorityRange"></span></h2></summary>
-          <div id="criticalList"></div>
-        </details>
-      </section>
       <section class="ai-block">
         <h2>話題聚焦</h2>
         <div class="topic-grid" id="topicGrid"></div>
       </section>
+      <section class="ai-block" id="contraBlock" hidden>
+        <h2>⚡ 各報矛盾位</h2>
+        <div id="contraList"></div>
+      </section>
+      <section class="ai-block" id="upcomingBlock" hidden>
+        <h2>📅 未來事件</h2>
+        <div id="upcomingList"></div>
+      </section>
+      <div class="ai-links">
+        <a href="graph.html">知識圖譜</a>
+        <a href="entities.html">實體摘要</a>
+        <a href="upcoming.html">全部預測</a>
+      </div>
     </aside>
   </div>
 
@@ -1360,9 +1418,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260716-sticky"></script>
-  <script src="js/common.js?v=20260716-sticky"></script>
-  <script src="js/index.js?v=20260716-sticky"></script>
+  <script src="vendor/fuse.min.js?v=20260717-planc"></script>
+  <script src="js/common.js?v=20260717-planc"></script>
+  <script src="js/index.js?v=20260717-planc"></script>
 </body>
 </html>
 

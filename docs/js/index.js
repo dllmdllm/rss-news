@@ -258,11 +258,17 @@
     </a></li>`;
   }
 
+  // 優先排行（同欄上方）已顯示嘅文章唔重複出——排行負責「最重要」，
+  // 呢度負責「每類最新」，去重先至各有意義。
+  let criticalShownIds = new Set();
+
   function renderDailyBrief() {
     const groups = ["新聞", "國際", "娛樂"];
     const items = [];
     for (const group of groups) {
-      sortedArticles(state.articles.filter((a) => a.category === group)).slice(0, 3)
+      sortedArticles(state.articles.filter(
+        (a) => a.category === group && !criticalShownIds.has(a.id)
+      )).slice(0, 3)
         .forEach((article) => items.push(briefItem(article, group)));
     }
     $("dailyBrief").innerHTML = items.join("");
@@ -453,23 +459,22 @@
       const order = new Map(sorted.map((article, idx) => [article.id, idx]));
       scored.sort((a, b) => (order.get(a.article.id) ?? Infinity) - (order.get(b.article.id) ?? Infinity));
     }
-    const critical = scored.slice(0, 10);
+    const critical = scored.slice(0, 8);
     const allScores = scored.map((s) => s.score).filter((score) => Number.isFinite(score));
     const minScore = allScores.length ? Math.min(...allScores) : 0;
     const maxScore = allScores.length ? Math.max(...allScores) : 0;
     $("priorityRange").textContent = allScores.length ? `範圍 ${minScore}-${maxScore}` : "";
-    $("criticalList").innerHTML = critical.map(({ article }) => {
-      const points = pointsHtml(article, 3);
-      return `
+    // Compact 形態（方案 C）：排行同「今日 AI 摘要」同住 .brief 一欄，
+    // 唔出 bullets——摘要嗰邊先係詳細版；呢度係快速掃描清單。
+    criticalShownIds = new Set(critical.map(({ article }) => article.id));
+    $("criticalList").innerHTML = critical.map(({ article }) => `
       <a class="ai-pick" href="${articleUrl(article)}">
         <span class="ai-rank-row">
           <span>${esc(metaLine(article))}</span>
           ${priorityBadge(article)}
         </span>
         <strong>${esc(article.title || "")}</strong>
-        ${points ? `<ul class="ai-pick-points">${points}</ul>` : ""}
-      </a>`;
-    }).join("");
+      </a>`).join("");
 
     $("topicGrid").innerHTML = (state.topics || []).slice(0, 6).map((topic) => `
       <button class="topic ${state.topic === topic.topic ? "active" : ""}" data-topic="${esc(topic.topic || "")}" type="button">
@@ -637,9 +642,11 @@
     const list = filteredArticles();
     renderNav();
     renderLead(list);
+    // renderAiPanel 要行先：佢會set criticalShownIds，renderDailyBrief
+    // 靠佢去重（排行＋摘要而家同住 .brief 一欄）。
+    renderAiPanel(list);
     renderDailyBrief();
     renderFeed(list);
-    renderAiPanel(list);
     renderMobileSideHealth();
     // 來源 chips 靠 state.sources——initial load 時 updateMobileSubUi 行先過
     // data fetch，一定要喺 renderAll 度再 render 一次先會填到內容。
@@ -1065,6 +1072,63 @@
     } catch (_) {}
   }
 
+  // ── AI 工作台分析元素（方案 C）：各報矛盾位 + 未來事件 ──
+  // 兩份都係 build-time 現成數據（panel_digests / upcoming），零新增成本。
+  function renderContradictions(panelMap) {
+    const host = $("contraList");
+    const block = $("contraBlock");
+    if (!host || !block || !panelMap) return;
+    const rows = [];
+    for (const entry of Object.values(panelMap)) {
+      const digest = entry && entry.digest;
+      if (!digest) continue;
+      for (const c of (digest.contradictions || [])) {
+        if (c && c.claim_a && c.claim_b) rows.push({ topic: digest.headline || "", ...c });
+        if (rows.length >= 4) break;
+      }
+      if (rows.length >= 4) break;
+    }
+    if (!rows.length) return;
+    block.hidden = false;
+    host.innerHTML = rows.map((r) => `
+      <div class="contra-item">
+        <span class="contra-topic">${esc(r.topic)}</span>
+        <span class="src">${esc(r.source_a || "")}</span>：${esc(r.claim_a)}<br>
+        <span class="src">${esc(r.source_b || "")}</span>：${esc(r.claim_b)}
+      </div>`).join("");
+  }
+
+  function renderUpcoming(data) {
+    const host = $("upcomingList");
+    const block = $("upcomingBlock");
+    if (!host || !block || !data || !Array.isArray(data.events)) return;
+    const today = (data.today || "").slice(0, 10);
+    const events = data.events
+      .filter((e) => e && e.date && e.title && e.date >= today)
+      .slice(0, 5);
+    if (!events.length) return;
+    block.hidden = false;
+    host.innerHTML = events.map((e) => {
+      const d = e.date.split("-");
+      const article = (e.articles || [])[0];
+      const inner = `<span class="date">${Number(d[1])}/${Number(d[2])}</span><span>${esc(e.title)}</span>`;
+      return article && article.id
+        ? `<a class="upcoming-item" href="article.html?id=${encodeURIComponent(article.id)}">${inner}</a>`
+        : `<div class="upcoming-item">${inner}</div>`;
+    }).join("");
+  }
+
+  async function loadAiInsights() {
+    try {
+      const [panelRes, upRes] = await Promise.all([
+        fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
+        fetch("data/upcoming.json", { cache: "no-cache" }).catch(() => null),
+      ]);
+      if (panelRes && panelRes.ok) renderContradictions(await panelRes.json());
+      if (upRes && upRes.ok) renderUpcoming(await upRes.json());
+    } catch (_) {}
+  }
+
   async function load() {
     bindEvents();
     const data = await fetchArticleData();
@@ -1082,6 +1146,7 @@
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
   });
   loadMorningBrief();
+  loadAiInsights();
 
   registerServiceWorker();
 }());
