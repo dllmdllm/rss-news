@@ -449,7 +449,11 @@
       feed.classList.add("feed-grid");
       renderFeedFlat(list);
     }
-    $("resultCount").textContent = `${list.length} 篇`;
+    // 話題 filter 生效時提供顯眼嘅退出方式——手機由話題 chip 跳過嚟，
+    // 冇呢個掣就唔知自己身處 filter 狀態、更加唔知點返出去。
+    $("resultCount").innerHTML = state.topic
+      ? `${list.length} 篇 <button class="clear-filter" id="clearTopic" type="button">✕ 清除話題</button>`
+      : `${list.length} 篇`;
     // 「分類重點」只喺真係 render sections 嗰陣先啱；手機時間線係平鋪，
     // 叫返「最新新聞流」。
     $("feedTitle").textContent = state.source
@@ -945,13 +949,16 @@
     $("topicGrid").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-topic]");
       if (!button) return;
+      // 手機要「先切 view、後 set 話題」——switchMobileView 內嘅
+      // syncStateFromMobile 會重置 state.topic，順序倒轉就會落地變咗
+      // 普通時間線，用戶唔知自己彈咗去邊。
+      showHomeOnMobile();
       state.topic = button.dataset.topic;
       state.category = "全部";
       state.source = "";
       state.query = "";
       $("search").value = "";
       renderAll();
-      showHomeOnMobile();
     });
     $("modeNav").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-mode]");
@@ -995,16 +1002,23 @@
       }
       const topicBtn = event.target.closest("button[data-search-topic]");
       if (topicBtn) {
+        // 同 topicGrid 一樣：先切 view 後 set 話題（見上面註解）
+        showHomeOnMobile();
         state.topic = topicBtn.dataset.searchTopic;
         state.category = "全部";
         state.source = "";
         state.query = "";
         $("search").value = "";
         renderAll();
-        showHomeOnMobile();
       }
     });
     $("searchRecentClear")?.addEventListener("click", clearRecentSearches);
+    document.addEventListener("click", (event) => {
+      if (event.target.closest("#clearTopic")) {
+        state.topic = "";
+        renderAll();
+      }
+    });
     bindMobileShell();
   }
 

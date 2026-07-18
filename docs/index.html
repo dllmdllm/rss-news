@@ -527,6 +527,17 @@
       color: var(--muted);
       font-size: .78rem;
     }
+    .clear-filter {
+      margin-left: 6px;
+      border: 1px solid rgba(70, 194, 166, .45);
+      background: rgba(70, 194, 166, .12);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: .78rem;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
 
     .feed {
       display: grid;
@@ -1452,9 +1463,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260718-batch"></script>
-  <script src="js/common.js?v=20260718-batch"></script>
-  <script src="js/index.js?v=20260718-batch"></script>
+  <script src="vendor/fuse.min.js?v=20260718-topicfix"></script>
+  <script src="js/common.js?v=20260718-topicfix"></script>
+  <script src="js/index.js?v=20260718-topicfix"></script>
 </body>
 </html>
 
