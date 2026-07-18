@@ -202,20 +202,29 @@
       align-self: start;
     }
 
+    /* 兩個 column 同 .main 一樣（含 16px gap）——「優先/最新/綜合」正正
+       坐喺優先排行欄上面、闊度完全對齊；search＋細中大就同一行佔左欄。 */
     .topbar {
       position: sticky;
       top: 0;
       z-index: 5;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 16px;
       align-items: center;
       padding: 0 0 16px;
       background: linear-gradient(var(--bg) 78%, transparent);
     }
+    .topbar-left {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
 
     .search {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       height: 40px;
       border: 1px solid var(--line);
       background: var(--panel);
@@ -234,6 +243,7 @@
       border-radius: var(--radius);
     }
     .mode button {
+      flex: 1;
       border: 0;
       background: transparent;
       color: var(--muted);
@@ -241,6 +251,7 @@
       border-radius: 6px;
       cursor: pointer;
       white-space: nowrap;
+      text-align: center;
     }
     .mode button.active { background: var(--panel-2); color: var(--text); }
 
@@ -1223,16 +1234,18 @@
 
     <main class="main">
       <div class="topbar">
-        <input class="search" id="search" type="search" placeholder="搜尋標題、摘要、來源">
+        <div class="topbar-left">
+          <input class="search" id="search" type="search" placeholder="搜尋標題、摘要、來源">
+          <div class="font-tools" id="fontTools" aria-label="font size">
+            <button data-font="small" type="button">細</button>
+            <button data-font="normal" type="button" class="active">中</button>
+            <button data-font="large" type="button">大</button>
+          </div>
+        </div>
         <div class="mode" id="modeNav">
           <button data-mode="critical">🔥 優先</button>
           <button data-mode="latest" class="active">🕒 最新</button>
           <button data-mode="balanced">⚖️ 綜合</button>
-        </div>
-        <div class="font-tools" id="fontTools" aria-label="font size">
-          <button data-font="small" type="button">細</button>
-          <button data-font="normal" type="button" class="active">中</button>
-          <button data-font="large" type="button">大</button>
         </div>
       </div>
 
@@ -1418,9 +1431,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260717-toolbar"></script>
-  <script src="js/common.js?v=20260717-toolbar"></script>
-  <script src="js/index.js?v=20260717-toolbar"></script>
+  <script src="vendor/fuse.min.js?v=20260718-topbar"></script>
+  <script src="js/common.js?v=20260718-topbar"></script>
+  <script src="js/index.js?v=20260718-topbar"></script>
 </body>
 </html>
 
