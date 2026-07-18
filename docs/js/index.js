@@ -198,19 +198,34 @@
   }
 
   function renderNav() {
+    // 來源列表按「該分類實際有幾多篇」統計，唔再按 source 註冊分類——
+    // 星島主 feed 註冊喺新聞組，但佢啲娛樂/國際文（url_category 重新分類）
+    // 之前喺娛樂組來源清單完全唔出現。
+    const SEP = String.fromCharCode(31);
+    const countsByCat = new Map();
+    for (const a of state.articles) {
+      const key = a.category + SEP + a.source;
+      countsByCat.set(key, (countsByCat.get(key) || 0) + 1);
+    }
     const byCategory = categories.map((cat) => {
       const count = cat === "全部"
         ? state.articles.length
         : state.articles.filter((a) => a.category === cat).length;
-      const sourceNames = Object.entries(state.sources || {})
-        .filter(([, src]) => cat === "全部" || src.category === cat)
-        .sort((a, b) => Number(b[1].effective_count ?? b[1].count ?? 0) - Number(a[1].effective_count ?? a[1].count ?? 0))
-        .map(([name, src]) => {
-          const sourceCount = Number(src.effective_count ?? src.count ?? 0);
-          return `<button data-source="${esc(name)}" data-category="${esc(cat)}" class="source-btn ${state.source === name ? "active" : ""}">
+      let entries;
+      if (cat === "全部") {
+        entries = Object.entries(state.sources || {})
+          .map(([name, src]) => [name, Number(src.effective_count ?? src.count ?? 0)]);
+      } else {
+        entries = [...countsByCat.entries()]
+          .filter(([key]) => key.startsWith(cat + SEP))
+          .map(([key, n]) => [key.slice(cat.length + 1), n]);
+      }
+      const sourceNames = entries
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, sourceCount]) => `<button data-source="${esc(name)}" data-category="${esc(cat)}" class="source-btn ${state.source === name ? "active" : ""}">
             <span>${esc(name)}</span><span>${sourceCount}</span>
-          </button>`;
-        }).join("");
+          </button>`).join("");
       const open = state.openCategories.has(cat);
       return `<div class="tree-group">
         <button data-tree-category="${esc(cat)}" class="tree-head ${cat === state.category && !state.source ? "active" : ""}">
@@ -283,7 +298,8 @@
   }
 
   function card(article) {
-    const image = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
+    // lazy：infinite scroll 每批 append 30 張卡，即刻載晒啲圖好傷流動數據
+    const image = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="" loading="lazy" decoding="async">` : "";
     return `<a class="card ${categoryClass(article.category)}" href="${articleUrl(article)}">
       <div class="thumb">${image}</div>
       <div>
@@ -460,10 +476,8 @@
       scored.sort((a, b) => (order.get(a.article.id) ?? Infinity) - (order.get(b.article.id) ?? Infinity));
     }
     const critical = scored.slice(0, 8);
-    const allScores = scored.map((s) => s.score).filter((score) => Number.isFinite(score));
-    const minScore = allScores.length ? Math.min(...allScores) : 0;
-    const maxScore = allScores.length ? Math.max(...allScores) : 0;
-    $("priorityRange").textContent = allScores.length ? `範圍 ${minScore}-${maxScore}` : "";
+    // 內部分數範圍（「範圍 16-126」）對用戶冇意義——顯示條目數就夠
+    $("priorityRange").textContent = critical.length ? `Top ${critical.length}` : "";
     // Compact 形態（方案 C）：排行同「今日 AI 摘要」同住 .brief 一欄，
     // 唔出 bullets——摘要嗰邊先係詳細版；呢度係快速掃描清單。
     criticalShownIds = new Set(critical.map(({ article }) => article.id));
@@ -760,6 +774,21 @@
     window.scrollTo({ top: viewScroll[view] || 0, behavior: "auto" });
   }
 
+  // 未揀過 theme 就跟系統（prefers-color-scheme）；揀過以儲存值為準。
+  // 唔寫入 localStorage——等「跟系統」用戶將來系統轉色都會跟到。
+  function applyThemeInitial() {
+    let stored = null;
+    try {
+      stored = localStorage.getItem(THEME_KEY) || localStorage.getItem("mobile.theme");
+    } catch (_) {}
+    if (stored) {
+      applyTheme(stored);
+      return;
+    }
+    const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    document.body.classList.toggle("theme-light", !!prefersLight);
+  }
+
   function applyTheme(theme) {
     document.body.classList.toggle("theme-light", theme === "light");
     // THEME_KEY ("rss_theme") 定義喺 common.js，同 article / entities /
@@ -859,7 +888,7 @@
         .forEach((k) => localStorage.removeItem(k));
       location.reload();
     });
-    applyTheme(localStorage.getItem(THEME_KEY) || localStorage.getItem("mobile.theme") || "dark");
+    applyThemeInitial();
     if (isMobile()) {
       switchMobileView(state.mobile.view);
     } else {
@@ -1148,6 +1177,56 @@
   load().catch((err) => {
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
   });
+  // ── 手機 pull-to-refresh ──
+  // PWA / 加入主畫面模式冇瀏覽器 reload 掣，頂部下拉係新聞 app 嘅肌肉記憶。
+  // 只喺 scrollY=0 起手先攔截，其餘情況完全唔干預原生捲動。
+  function setupPullToRefresh() {
+    if (!isMobile() || !("ontouchstart" in window)) return;
+    const THRESHOLD = 70;
+    let startY = null;
+    let indicator = null;
+
+    const ensureIndicator = () => {
+      if (indicator) return indicator;
+      indicator = document.createElement("div");
+      indicator.id = "ptrIndicator";
+      indicator.textContent = "↓ 下拉重新整理";
+      document.body.appendChild(indicator);
+      return indicator;
+    };
+
+    window.addEventListener("touchstart", (e) => {
+      startY = window.scrollY <= 0 ? e.touches[0].clientY : null;
+    }, { passive: true });
+
+    window.addEventListener("touchmove", (e) => {
+      if (startY === null) return;
+      const delta = e.touches[0].clientY - startY;
+      if (delta > 24) {
+        const el = ensureIndicator();
+        el.classList.add("show");
+        const ready = delta > THRESHOLD;
+        el.textContent = ready ? "↻ 放手重新整理" : "↓ 下拉重新整理";
+        el.classList.toggle("ready", ready);
+      }
+    }, { passive: true });
+
+    window.addEventListener("touchend", (e) => {
+      if (startY === null) return;
+      const delta = e.changedTouches[0].clientY - startY;
+      startY = null;
+      if (indicator) indicator.classList.remove("show");
+      if (delta > THRESHOLD && window.scrollY <= 0) {
+        if (indicator) {
+          indicator.textContent = "⟳ 更新中…";
+          indicator.classList.add("show");
+        }
+        location.reload();
+      }
+    }, { passive: true });
+  }
+
+  setupPullToRefresh();
   loadMorningBrief();
   loadAiInsights();
 

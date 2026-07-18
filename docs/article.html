@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#101214">
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <title>新聞閱讀 Prototype</title>
   <style>
     :root {
@@ -312,6 +313,30 @@
       color: var(--muted);
       background: var(--panel);
     }
+    .next-article {
+      display: grid;
+      gap: 4px;
+      max-width: 920px;
+      margin: 14px auto 0;
+      border: 1px solid rgba(70, 194, 166, .4);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      background: rgba(70, 194, 166, .07);
+    }
+    .next-article[hidden] { display: none; }
+    .next-article .next-label {
+      color: var(--accent);
+      font-size: calc(.8rem * var(--ui-scale));
+      font-weight: 700;
+    }
+    .next-article strong {
+      font-size: calc(1rem * var(--ui-scale));
+      line-height: 1.4;
+    }
+    .next-article .next-meta {
+      color: var(--muted);
+      font-size: calc(.82rem * var(--ui-scale));
+    }
     .error {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -554,6 +579,8 @@
       try {
         theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
       } catch (_) {}
+      // 未揀過 theme 就跟系統設定
+      if (!theme && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "light";
       if (theme === "light") document.body.classList.add("theme-light");
     })();
   </script>
@@ -596,6 +623,11 @@
         <section class="summary-box" id="summaryBox"></section>
         <section class="content" id="content"></section>
         <a class="source-link" id="sourceLink" target="_blank" rel="noopener noreferrer">查看原文</a>
+        <a class="next-article" id="nextArticle" hidden>
+          <span class="next-label">下一篇</span>
+          <strong id="nextTitle"></strong>
+          <span class="next-meta" id="nextMeta"></span>
+        </a>
       </article>
     </main>
 

@@ -11,6 +11,18 @@
   "lang": "zh-HK",
   "icons": [
     {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%230f0f13'/><text x='50%25' y='58%25' font-size='118' text-anchor='middle' font-family='sans-serif' fill='%237c6af7'>新</text></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml",

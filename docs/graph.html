@@ -4,25 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#7c6af7">
+  <meta name="theme-color" content="#46c2a6">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/categories.css">
   <title>News Pulse · 知識圖譜</title>
   <style>
     :root {
-      --bg:      #0f0f13;
-      --surface: #1a1a22;
-      --border:  #2e2e3e;
-      --accent:  #7c6af7;
-      --text:    #e0e0f0;
-      --muted:   #888;
+      --bg:      #101214;
+      --surface: #171a1f;
+      --border:  #2b323b;
+      --accent:  #46c2a6;
+      --text:    #eef2f6;
+      --muted:   #9aa5b1;
     }
     body.theme-light {
-      --bg:      #fafaf8;
+      --bg:      #f5f6f8;
       --surface: #ffffff;
-      --border:  #e6e6e0;
-      --accent:  #1a6b9a;
-      --text:    #141414;
+      --border:  #d9dee5;
+      --accent:  #0b7a5e;
+      --text:    #1c232b;
       --muted:   #777;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -194,7 +194,7 @@
         if (isNaN(fs) || fs < 0 || fs > 2) fs = 1;
         document.body.classList.add("fs-" + fs);
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", t === "light" ? "#fafaf8" : "#0f0f13");
+        if (meta) meta.setAttribute("content", t === "light" ? "#f5f6f8" : "#101214");
       } catch (_) {}
     })();
   </script>
@@ -440,13 +440,13 @@
                 "width": "data(size)",
                 "height": "data(size)",
                 "font-size": fontSize,
-                "color": isDark ? "#e0e0f0" : "#141414",
-                "text-outline-color": isDark ? "#0f0f13" : "#fafaf8",
+                "color": isDark ? "#eef2f6" : "#1c232b",
+                "text-outline-color": isDark ? "#101214" : "#f5f6f8",
                 "text-outline-width": 2,
                 "text-valign": "bottom",
                 "text-margin-y": 4,
                 "border-width": 1,
-                "border-color": isDark ? "#2e2e3e" : "#e6e6e0",
+                "border-color": isDark ? "#2b323b" : "#d9dee5",
               },
             },
             {
@@ -463,7 +463,7 @@
               selector: "node:selected",
               style: {
                 "border-width": 3,
-                "border-color": "#7c6af7",
+                "border-color": "#46c2a6",
               },
             },
           ],

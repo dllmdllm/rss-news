@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#101214">
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <title>新聞控制台</title>
   <style>
     :root {
@@ -766,6 +767,26 @@
     }
     .topic span { color: var(--muted); font-size: .72rem; }
 
+    /* 手機 pull-to-refresh 指示器 */
+    #ptrIndicator {
+      position: fixed;
+      top: -44px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: .85rem;
+      box-shadow: var(--card-shadow-hover);
+      transition: top .18s ease;
+      pointer-events: none;
+    }
+    #ptrIndicator.show { top: 14px; }
+    #ptrIndicator.ready { color: var(--accent); border-color: var(--accent); }
+
     /* AI 工作台分析元素（方案 C rail） */
     .contra-item {
       padding: 9px 0;
@@ -1368,8 +1389,8 @@
         theme = localStorage.getItem("rss_theme") || localStorage.getItem("mobile.theme");
         view = localStorage.getItem("mobile.view") || "home";
       } catch (_) {}
-      // Apply saved theme before first paint (key shared with article page
-      // via common.js THEME_KEY; "mobile.theme" is the legacy key).
+      // 未揀過 theme 就跟系統設定；揀過就以儲存值為準。
+      if (!theme && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "light";
       if (theme === "light") document.body.classList.add("theme-light");
 
       // Mobile view classes only make sense under the mobile breakpoint.
@@ -1431,9 +1452,9 @@
       location.href = `article.html?id=${encodeURIComponent(id)}`;
     });
   </script>
-  <script src="vendor/fuse.min.js?v=20260718-topbar"></script>
-  <script src="js/common.js?v=20260718-topbar"></script>
-  <script src="js/index.js?v=20260718-topbar"></script>
+  <script src="vendor/fuse.min.js?v=20260718-batch"></script>
+  <script src="js/common.js?v=20260718-batch"></script>
+  <script src="js/index.js?v=20260718-batch"></script>
 </body>
 </html>
 

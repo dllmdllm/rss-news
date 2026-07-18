@@ -7,19 +7,19 @@
   <title>實體追蹤 — News Pulse</title>
   <style>
     :root {
-      --bg:      #0f0f13;
-      --surface: #1a1a22;
-      --border:  #2e2e3e;
-      --accent:  #7c6af7;
-      --text:    #e0e0f0;
-      --muted:   #888;
+      --bg:      #101214;
+      --surface: #171a1f;
+      --border:  #2b323b;
+      --accent:  #46c2a6;
+      --text:    #eef2f6;
+      --muted:   #9aa5b1;
     }
     body.theme-light {
-      --bg:      #fafaf8;
+      --bg:      #f5f6f8;
       --surface: #ffffff;
-      --border:  #e6e6e0;
-      --accent:  #1a6b9a;
-      --text:    #141414;
+      --border:  #d9dee5;
+      --accent:  #0b7a5e;
+      --text:    #1c232b;
       --muted:   #777;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -139,7 +139,7 @@
         }
         document.body.classList.add("theme-" + t);
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", t === "light" ? "#fafaf8" : "#0f0f13");
+        if (meta) meta.setAttribute("content", t === "light" ? "#f5f6f8" : "#101214");
       } catch (_) {}
     })();
   </script>

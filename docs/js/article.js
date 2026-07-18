@@ -163,6 +163,23 @@
       + (contradictions ? `<h3 class="panel-sub">⚡ 各報矛盾位</h3><ul class="panel-contra">${contradictions}</ul>` : "");
   }
 
+  // 讀完唔使撳返去再揀：內文尾提供「下一篇」——同來源、時間上緊接住
+  // 呢篇嘅舊一篇；同來源冇就退而求同分類。
+  function renderNextArticle(current, articles) {
+    const host = $("nextArticle");
+    if (!host) return;
+    const pick = (pool) => pool
+      .filter((a) => a.id !== current.id && String(a.date || "") < String(current.date || ""))
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+    const next = pick(articles.filter((a) => a.source === current.source))
+      || pick(articles.filter((a) => a.category === current.category));
+    if (!next) return;
+    host.href = articleUrl(next);
+    $("nextTitle").textContent = next.title || "";
+    $("nextMeta").textContent = [next.source, timeLabel(next)].filter(Boolean).join(" · ");
+    host.hidden = false;
+  }
+
   function bindToolbar() {
     const buttons = [$("fontSmall"), $("fontNormal"), $("fontLarge")];
     // rss_font_size 係同 index.html 共用嘅偏好（small / normal / large）；
@@ -287,6 +304,7 @@
       <div class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${baseScore}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</div>`;
 
     renderPanelDigest(panelMap, article);
+    renderNextArticle(article, data.articles || []);
 
     const facts = (article.key_sentences && article.key_sentences.length)
       ? article.key_sentences

@@ -68,6 +68,8 @@ RSS_FEEDS = [
     # 電視台新聞
     {"name": "TVB 新聞",           "url": "https://news.tvb.com/sitemap.xml",                                      "category": "新聞", "fetcher": "tvb"},
     {"name": "Now 新聞",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=119&pageNo=1&pageSize=30", "category": "新聞", "fetcher": "nowtv"},
+    # 中國版（category=122）2026-07 起 API 回傳空，probe 過 121-130 都冇——121 係財經
+    {"name": "Now 國際",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=120&pageNo=1&pageSize=30", "category": "國際", "fetcher": "nowtv"},
 ]
 
 MAX_ITEMS_PER_FEED = 20
