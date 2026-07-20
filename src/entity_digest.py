@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiohttp
+import zhconv
 
 from src.analyse import _strip_fences
 from src.minimax_client import (
@@ -85,6 +86,15 @@ def aggregate_entities(articles: list) -> list[dict]:
                 name = str(raw or "").strip()
                 if not name or len(name) < 2:
                     continue
+                # 簡繁 normalize 做 canonical key——AI extract 嘅 entity name
+                # 有時會混雜簡體字（M2.7 出過「地区」漏網嘅 case），令同一個
+                # 真實實體因為簡繁唔同拆散做幾個 entry、各自嘅 count 被稀釋，
+                # 更難夠 ENTITY_MIN_ARTICLES 呢條門檻上榜。轉做 zh-hk，同全站
+                # 文章內文/標題 normalize 嘅 convention 一致（2026-07-21 audit
+                # finding）。呢個淨係解決簡繁變體，唔處理稱謂/別名變體（例如
+                # 「美國總統特朗普」vs「特朗普」）——嗰類要靠 alias table，
+                # 冇一個安全嘅自動 heuristic 唔會誤merge唔同實體，未做。
+                name = zhconv.convert(name, "zh-hk")
                 key = (etype, name)
                 if aid:
                     entity_articles.setdefault(key, set()).add(aid)

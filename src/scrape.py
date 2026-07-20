@@ -554,6 +554,11 @@ def _strip_related_reading(content: str) -> str:
     return str(soup)
 
 _SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
+# Matches both the opening tag (with name=) and the closing {{/hket:inline-image}}
+# — used only to strip placeholder syntax out of get_text() output so a
+# placeholder-only paragraph's "real text" check isn't fooled by the tag
+# text itself (2026-07-21 audit finding).
+_SKYPOST_INLINE_IMAGE_STRIP_RE = re.compile(r'\{\{/?hket:inline-image(?:\s+name="[^"]*")?\}\}')
 
 
 def _skypost_hidden_text(soup: BeautifulSoup, field: str) -> str:
@@ -606,7 +611,15 @@ def _build_skypost_content(html: str, url: str) -> str | None:
         if node.name == "p":
             raw = node.decode_contents() or ""
             names = _SKYPOST_INLINE_IMAGE_RE.findall(raw)
-            text = _normalise_oncc_text(node.get_text(" ", strip=True))
+            # 2026-07-21 audit finding + live-fetch confirmed: 之前直接用
+            # node.get_text() 做 text，如果段落淨係得 placeholder（`{{hket:
+            # inline-image name="..."}}`），get_text() 會將呢串 literal
+            # placeholder syntax 都計做 text，令 text 必然非空——「if names
+            # and not text」呢個分支（畀 placeholder-only 段落用嘅）永遠冧
+            # 唔到，placeholder syntax 會當正文顯示畀讀者。先由 text 度剝走
+            # 已經匹配到嘅 placeholder syntax 先 check 剩返幾多真.文字。
+            text_stripped = _SKYPOST_INLINE_IMAGE_STRIP_RE.sub("", node.get_text(" ", strip=True))
+            text = _normalise_oncc_text(text_stripped)
             if names and not text:
                 for name in names:
                     if prefix:

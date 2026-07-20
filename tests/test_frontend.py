@@ -127,6 +127,38 @@ def test_stale_while_revalidate_never_responds_with_undefined():
     assert result.returncode == 0, result.stderr
 
 
+def test_index_and_categories_css_use_matching_category_colors():
+    # 2026-07-21 audit finding: docs/index.html 自己有一套獨立
+    # --cat-color 系統，同 docs/css/categories.css 嘅 --cat-rgb 完全冇連
+    # 過，同一分類撞色（例如「新聞」index.html 顯示藍色，categories.css
+    # 係紅色）。而家兩邊已經手動同步咗做同一組顏色，呢個 test 防止
+    # 之後單改一邊而唔記得改另一邊、悄悄地又拆返兩套。
+    index_html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    categories_css = (ROOT / "docs/css/categories.css").read_text(encoding="utf-8")
+
+    slug_to_zh = {
+        "cat-news": "新聞", "cat-world": "國際", "cat-ent": "娛樂",
+        "cat-tech": "科技", "cat-life": "消閒", "cat-media": "網媒",
+    }
+    hex_by_slug = dict(re.findall(r'\.(cat-\w+)\s*\{\s*--cat-color:\s*#([0-9a-fA-F]{6});', index_html))
+    assert len(hex_by_slug) == 6, f"expected 6 index.html category colours, found {hex_by_slug}"
+
+    rgb_by_zh = dict(re.findall(
+        r'body\.cat-([^\s,]+),\s*\[data-cat="[^"]+"\]\s*\{\s*--cat-rgb:\s*([\d\s]+);',
+        categories_css,
+    ))
+    assert len(rgb_by_zh) == 6, f"expected 6 categories.css dark-theme colours, found {rgb_by_zh}"
+
+    for slug, hex_val in hex_by_slug.items():
+        zh = slug_to_zh[slug]
+        expected_rgb = f"{int(hex_val[0:2], 16)} {int(hex_val[2:4], 16)} {int(hex_val[4:6], 16)}"
+        actual_rgb = rgb_by_zh[zh].strip()
+        assert actual_rgb == expected_rgb, (
+            f"{zh} ({slug}): index.html #{hex_val} = rgb({expected_rgb}) "
+            f"but categories.css has rgb({actual_rgb})"
+        )
+
+
 def test_graph_container_does_not_use_transform_animation():
     source = (ROOT / "docs" / "graph.html").read_text(encoding="utf-8")
     cy_rule = re.search(r"#cy\s*\{(?P<body>.*?)\n\s*\}", source, re.S)

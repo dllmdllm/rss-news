@@ -402,6 +402,35 @@ def test_build_skypost_content_preserves_inline_image_order():
     assert out.index("cover1_1024.jpeg") < out.index("第一段文字。") < out.index("/2255133/5.jpg") < out.index("第二段文字。") < out.index("/2255133/3.jpg")
     assert out.count("/2255133/5.jpg") == 1
     assert out.count("/2255133/3.jpg") == 1
+    # 2026-07-21 audit finding（live-fetch 確認正式 SkyPost 頁面用嘅正正係
+    # 呢種 `{{hket:inline-image name="..."}}{{/hket:inline-image}}` 開/close
+    # tag pair）：純 placeholder 嘅段落唔應該有任何 placeholder syntax
+    # 殘留喺輸出度，包括開 tag 同 close tag。
+    assert "hket:inline-image" not in out
+    assert "{{" not in out and "}}" not in out
+
+
+def test_build_skypost_content_mixed_text_and_placeholder_paragraph():
+    # 一個段落入面同時有真.文字同 inline-image placeholder（唔止純
+    # placeholder嗰種）——兩者都要保留，placeholder syntax 唔應該殘留。
+    html = """
+    <html>
+      <body>
+        <div class="hiddenOG">
+          <div class="prefixHidden">https://img.example.com/2255133/</div>
+        </div>
+        <div class="article-details-content-container">
+          <p>圖片說明文字 {{hket:inline-image name="7.jpg"}}{{/hket:inline-image}} 後續文字。</p>
+        </div>
+      </body>
+    </html>
+    """
+    out = scrape._build_skypost_content(html, "https://skypost.hk/article/2255133/")
+    assert out is not None
+    assert "圖片說明文字" in out
+    assert "後續文字" in out
+    assert "/2255133/7.jpg" in out
+    assert "hket:inline-image" not in out
 
 
 def test_build_oncc_content_preserves_text_image_order():
