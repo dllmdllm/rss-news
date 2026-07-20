@@ -3,7 +3,7 @@
 //   - HTML / docs data JSON : network-first (fall back to cache when offline)
 //   - content/*.json, images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v208";
+const CACHE   = "rss-news-v212";
 const SHELL   = [
   "./",
   "./index.html",
@@ -44,8 +44,14 @@ function networkFirst(req) {
       if (res && res.ok) {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
+        return res;
       }
-      return res;
+      // Reachable network but a non-OK status (e.g. a transient 5xx from a
+      // GitHub Pages deploy race) used to be returned as-is, defeating the
+      // whole point of "network-first with cache fallback" — only a
+      // connection-level failure (below) triggered the fallback before
+      // (2026-07-21 audit finding). Prefer a still-good cached copy.
+      return caches.match(key).then(cached => cached || res);
     })
     .catch(() => caches.match(key));
 }
@@ -59,7 +65,11 @@ function staleWhileRevalidate(req) {
         caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
       }
       return res;
-    }).catch(() => cached);
+    // A resource with no cache entry yet (first-ever view) whose network
+    // fetch also fails used to resolve to `undefined` here, and
+    // event.respondWith(undefined) is a spec violation that surfaces as a
+    // hard network error instead of a normal failed response.
+    }).catch(() => cached || Response.error());
     return cached || network;
   });
 }

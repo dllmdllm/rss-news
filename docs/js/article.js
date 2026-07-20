@@ -227,16 +227,21 @@
     // cache: "no-cache" 行 ETag revalidation（304 唔使重新下載）；
     // 舊做法 ?Date.now() + no-store 每次都全量拉成個 articles.json。
     // panel_digests 係 optional enrichment——fetch 失敗唔可以拖冧成頁。
+    // contentRes 都要同一個道理：之前冇 .catch()，一旦呢個 fetch
+    // reject（connection 層面失敗，唔止 HTTP 錯誤），成個 Promise.all
+    // 會冧晒，連本身已經攞到嘅文章標題/meta 都跌落「載入失敗」畫面——
+    // 本來應該可以優雅降級做「暫時未有全文內容」（2026-07-21 audit
+    // finding）。
     const [metaRes, contentRes, panelRes] = await Promise.all([
       fetch("data/articles.json", { cache: "no-cache" }),
-      fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }),
+      fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }).catch(() => null),
       fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
     ]);
     if (!metaRes.ok) throw new Error("讀取文章列表失敗");
     const data = await metaRes.json();
     const article = (data.articles || []).find((row) => row.id === id);
     if (!article) throw new Error("搵唔到呢篇文章");
-    if (contentRes.ok) {
+    if (contentRes && contentRes.ok) {
       const contentData = await contentRes.json();
       if (contentData && contentData.content) article.content = contentData.content;
     }

@@ -51,6 +51,82 @@ def test_frontend_javascript_syntax(script):
     assert result.returncode == 0, result.stderr
 
 
+def test_network_first_falls_back_to_cache_on_http_error():
+    # 2026-07-21 audit finding：之前 networkFirst 淨係喺 fetch 本身 reject
+    # （斷網/DNS/CORS）先 fallback 用 cache——伺服器有回應但係 4xx/5xx
+    # （例如 GitHub Pages deploy race）會直接將錯誤 response 傳返俾頁面，
+    # 完全繞過「network-first 但 cache 兜底」嘅設計原意。
+    node = _require_node()
+    source = (ROOT / "docs/sw.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'const CACHE = "test-cache";',
+        _extract_js_function(source, "cacheKey"),
+        _extract_js_function(source, "networkFirst"),
+        """
+        const cachedResponse = { ok: true, _tag: "cached" };
+        const caches = {
+          match: async (key) => cachedResponse,
+          open: async (name) => ({ put: async () => {} }),
+        };
+        async function fetch(req) {
+          return { ok: false, status: 503 };
+        }
+        (async () => {
+          const req = { url: "https://example.com/data/articles.json" };
+          const result = await networkFirst(req);
+          if (result !== cachedResponse) {
+            throw new Error("did not fall back to cache on HTTP error: " + JSON.stringify(result));
+          }
+        })();
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_stale_while_revalidate_never_responds_with_undefined():
+    # 2026-07-21 audit finding：冇 cache entry（第一次見呢個 resource）
+    # 又 fetch 失敗嘅話，之前會 resolve 做 undefined，
+    # event.respondWith(undefined) 本身就違反 spec、會令個 resource load
+    # 變成 hard network error。
+    node = _require_node()
+    source = (ROOT / "docs/sw.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'const CACHE = "test-cache";',
+        _extract_js_function(source, "cacheKey"),
+        _extract_js_function(source, "staleWhileRevalidate"),
+        """
+        const caches = {
+          match: async (key) => undefined,
+          open: async (name) => ({ put: async () => {} }),
+        };
+        async function fetch(req) {
+          throw new Error("network down");
+        }
+        const Response = { error: () => ({ _tag: "network-error-response" }) };
+        (async () => {
+          const req = { url: "https://example.com/data/content/x.json" };
+          const result = await staleWhileRevalidate(req);
+          if (result === undefined) {
+            throw new Error("staleWhileRevalidate resolved to undefined");
+          }
+        })();
+        """,
+    ])
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_graph_container_does_not_use_transform_animation():
     source = (ROOT / "docs" / "graph.html").read_text(encoding="utf-8")
     cy_rule = re.search(r"#cy\s*\{(?P<body>.*?)\n\s*\}", source, re.S)

@@ -515,6 +515,7 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     import src.breaking_alert as breaking_alert
     import src.daily_brief as daily_brief
     import src.keyword_alert as keyword_alert
+    import src.translate_content as translate_content
     monkeypatch.setattr(panel_digest, "CACHE_PATH", data_dir / "panel_digests.json")
     monkeypatch.setattr(entity_digest, "OUTPUT_PATH", data_dir / "entities.json")
     monkeypatch.setattr(breaking_alert, "STATE_PATH", data_dir / "breaking_alerts.json")
@@ -525,6 +526,17 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     # bug as the paths above, redirect both so a dry run can't touch them.
     monkeypatch.setattr(keyword_alert, "VAULT_PATH", tmp_path / "no_such_vault_note.md")
     monkeypatch.setattr(keyword_alert, "CONFIG_PATH", data_dir / "watch_keywords.txt")
+    # translate_content.CACHE_PATH is the same class of bug as the paths
+    # above and was previously missed (2026-07-21 audit finding).
+    monkeypatch.setattr(translate_content, "CACHE_PATH", data_dir / "translated_content.json")
+    # A real .env with a real TELEGRAM_BOT_TOKEN exists on this machine —
+    # `from src.breaking_alert import TELEGRAM_BOT_TOKEN` in keyword_alert.py
+    # is a separate binding (not a live reference), so both modules must be
+    # patched independently or a fixture with a real keyword/cluster match
+    # would POST a real message to the production Telegram channel
+    # (2026-07-21 audit finding).
+    monkeypatch.setattr(breaking_alert, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(keyword_alert, "TELEGRAM_BOT_TOKEN", "")
 
     # daily_brief 會 call MiniMax + 推 Telegram（本機 .env 有齊 key）——dry run
     # 一定要 stub 走，唔係測試會嘥錢兼真係出 message。

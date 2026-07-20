@@ -37,6 +37,9 @@
     category: "全部",
     source: "",
     topic: "",
+    // 撳 topic chip 之前嘅 category/source snapshot，等「✕ 清除話題」
+    // 可以還原返（唔係一律跌落「全部」），見 clearTopic handler。
+    preTopicFilter: null,
     openCategories: new Set(),
     mode: "latest",
     query: "",
@@ -964,6 +967,7 @@
       // syncStateFromMobile 會重置 state.topic，順序倒轉就會落地變咗
       // 普通時間線，用戶唔知自己彈咗去邊。
       showHomeOnMobile();
+      state.preTopicFilter = { category: state.category, source: state.source };
       state.topic = button.dataset.topic;
       state.category = "全部";
       state.source = "";
@@ -1015,6 +1019,7 @@
       if (topicBtn) {
         // 同 topicGrid 一樣：先切 view 後 set 話題（見上面註解）
         showHomeOnMobile();
+        state.preTopicFilter = { category: state.category, source: state.source };
         state.topic = topicBtn.dataset.searchTopic;
         state.category = "全部";
         state.source = "";
@@ -1026,7 +1031,14 @@
     $("searchRecentClear")?.addEventListener("click", clearRecentSearches);
     document.addEventListener("click", (event) => {
       if (event.target.closest("#clearTopic")) {
+        // 之前一律跌落「全部」——而家還原返撳 topic chip 之前嘅
+        // category/source（2026-07-21 audit finding）。
         state.topic = "";
+        if (state.preTopicFilter) {
+          state.category = state.preTopicFilter.category;
+          state.source = state.preTopicFilter.source;
+          state.preTopicFilter = null;
+        }
         renderAll();
       }
     });

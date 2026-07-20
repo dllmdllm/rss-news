@@ -80,6 +80,34 @@ def test_detect_breaking_clusters_includes_thumbnail_of_best_article():
     assert breaking[0]["url"] == "https://example.com/high"
 
 
+def test_detect_breaking_clusters_picks_best_from_recent_not_full_history():
+    # 2026-07-21 audit finding：之前 `best` 揀自成個 cluster 嘅全部歷史
+    # （可達 ~30h），唔係真正令個 cluster 變 breaking 嘅 fresh member——
+    # 一篇舊、高分文章可以蓋過真正觸發 breaking 嘅新報導。
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(hours=15)).isoformat()
+    fresh = now.isoformat()
+    articles = [
+        # 15 小時前嘅高分舊文——唔喺 BREAKING_WINDOW_HOURS(2h) 之內，
+        # 唔應該被揀做 best，就算分數最高。
+        {"id": "old", "cluster_id": "c1", "source": "A", "date": old, "score": 10,
+         "title": "舊文高分", "url": "https://example.com/old"},
+        # 3 個新 source 先真正觸發 breaking。
+        {"id": "b", "cluster_id": "c1", "source": "B", "date": fresh, "score": 5,
+         "title": "新報導B", "url": "https://example.com/b"},
+        {"id": "c", "cluster_id": "c1", "source": "C", "date": fresh, "score": 6,
+         "title": "新報導C", "url": "https://example.com/c"},
+        {"id": "d", "cluster_id": "c1", "source": "D", "date": fresh, "score": 4,
+         "title": "新報導D", "url": "https://example.com/d"},
+    ]
+    breaking = detect_breaking_clusters(articles)
+    assert len(breaking) == 1
+    assert breaking[0]["article_id"] == "c"   # fresh 入面分數最高嗰篇（6），唔係「old」
+    assert breaking[0]["headline"] == "新報導C"
+
+
 def test_format_alert_text_includes_summary_bullets_and_sources_last():
     from src.breaking_alert import _format_alert_text
 

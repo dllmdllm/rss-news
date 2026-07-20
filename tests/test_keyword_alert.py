@@ -181,6 +181,18 @@ def test_detect_keyword_matches_respects_cap(monkeypatch):
     assert len(out) == 2
 
 
+def test_detect_keyword_matches_logs_when_cap_drops_matches(monkeypatch, capsys):
+    # 2026-07-21 audit finding：之前完全冇 log 分辨「因為 cap 被截走」，
+    # 而家應該喺 stdout 見到 dropped count。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["新聞"])
+    monkeypatch.setattr(KA, "MAX_ALERTS_PER_BUILD", 2)
+    now = datetime.now(timezone.utc)
+    articles = [_article(id=f"a{i}", title=f"新聞{i}", date=now.isoformat()) for i in range(5)]
+    KA.detect_keyword_matches(articles, set(), now=now)
+    out = capsys.readouterr().out
+    assert "3 match" in out and "dropped" in out
+
+
 def test_detect_keyword_matches_empty_watchlist_returns_nothing(monkeypatch):
     monkeypatch.setattr(KA, "WATCH_KEYWORDS", [])
     now = datetime.now(timezone.utc)

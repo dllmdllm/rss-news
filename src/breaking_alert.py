@@ -70,7 +70,12 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
                 pass
         sources = {m["source"] for m in recent if m.get("source")}
         if len(sources) >= BREAKING_MIN_SOURCES:
-            best = max(members, key=lambda m: (m.get("score") or 0, m.get("date") or ""))
+            # 揀「best」一定要喺 recent（真正觸發 breaking 嘅新鮮 member）
+            # 入面揀，唔可以係 members（cluster 全部歷史，可達
+            # ARTICLE_MAX_AGE_HOURS ~30h）——否則個 headline/連結有機會
+            # 嚟自一篇舊文，同真正令個 cluster 變 breaking 嘅新報導對唔上
+            # （2026-07-21 audit finding）。
+            best = max(recent, key=lambda m: (m.get("score") or 0, m.get("date") or ""))
             breaking.append({
                 "cid":        cid,
                 "headline":   best.get("title", ""),

@@ -32,7 +32,7 @@ rss-news/
 │   ├── article.html      # 文章閱讀頁
 │   ├── js/
 │   │   ├── index.js      # 列表頁邏輯（搜尋 / tab / AI 功能）
-│   │   ├── article.js    # 文章閱讀邏輯（TTS / highlights）
+│   │   ├── article.js    # 文章閱讀邏輯（進度/swipe nav/next article）——TTS 同 key_sentences highlight 呢兩個之前有嘅功能喺 2026-05-23 redesign（`44fd85db47`）被移除咗，未重做
 │   │   └── common.js     # 共用工具
 │   ├── css/
 │   │   └── categories.css  # 分類色彩（--cat-rgb / --cat-active-bg）
@@ -396,7 +396,12 @@ img.referrerPolicy = "no-referrer";
 
 - `score: null` → migrate 過來的舊 entry，下次 build 重新分析
 - `topic` 用於 `cluster_articles()`：相同 topic 歸為一組
-- `key_sentences` 用於文章閱讀頁高亮顯示
+- `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
+  highlight，而家淨係喺 article.js 打做「關鍵句」plain list（`docs/js/index.js`
+  嘅摘要拼接都有用到）。translate_content.py 一定要行喺 analyse.py 之前嘅
+  ordering guarantee（保持 key_sentences 同 content 用字一致）依然有效、
+  依然值得保留——即使宜家個 highlight consumer 唔存在，呢個 invariant
+  本身零成本，之後想重做 highlight 都唔使再理呢層
 
 ### Mobile view class 命名（`docs/index.html`）
 

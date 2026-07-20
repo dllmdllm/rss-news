@@ -200,6 +200,13 @@ def detect_keyword_matches(articles: list, alerted_ids: set, *, now: datetime | 
             matches.append({**a, "_matched_keyword": hit})
 
     matches.sort(key=lambda a: a.get("date", ""), reverse=True)
+    if len(matches) > MAX_ALERTS_PER_BUILD:
+        # 之前完全靜默 drop——冇任何 log 分辨「因為 cap 被截走」定係「本身
+        # 冇咁多 match」，持續高於 5/build 嘅關鍵字（例如加咗突發事件字眼
+        # 之後）舊 match 會連續幾輪輸俾新 match，最終過咗 FRESHNESS_HOURS
+        # 靜靜哋消失，用戶完全唔知（2026-07-21 audit finding）。
+        dropped = len(matches) - MAX_ALERTS_PER_BUILD
+        print(f"[keyword] {dropped} match(es) dropped by MAX_ALERTS_PER_BUILD cap this cycle")
     return matches[:MAX_ALERTS_PER_BUILD]
 
 
