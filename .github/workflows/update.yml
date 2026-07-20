@@ -126,6 +126,10 @@ jobs:
             git add docs/data/translated_content.json 2>/dev/null || true
             # keyword_alerts.json 同上——唔 stage 會每 build 重推同一批關鍵字命中。
             git add docs/data/keyword_alerts.json 2>/dev/null || true
+            # config/watch_keywords.txt 由 sync_watch_keywords_from_vault() 寫，
+            # 要 stage 先可以俾 fast-watch.yml（喺 ubuntu 跑，見唔到 vault）
+            # 下次 checkout 攞到最新關鍵字。
+            git add config/watch_keywords.txt 2>/dev/null || true
           }
 
           stage_outputs

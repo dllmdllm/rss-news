@@ -11,8 +11,15 @@ deliberately doesn't attempt that.
 Purely rule-based (no MiniMax call) — keyword matching against
 title/summary/tags, zero extra AI cost.
 
-To change what's being watched, edit WATCH_KEYWORDS below and push;
-takes effect on the next build (~20 min).
+WATCH_KEYWORDS is user-editable via an Obsidian vault note (VAULT_PATH),
+not by touching this file. sync_watch_keywords_from_vault(), called once
+near the top of build.py's main() on the self-hosted runner (the only
+place with filesystem access to the vault), copies the vault's plain-text
+list into the repo-tracked CONFIG_PATH, which both this module and
+fast_watch.py (running on a separate, vault-blind GitHub-hosted runner)
+read at import time. Off that one machine (tests, CI) VAULT_PATH simply
+doesn't exist and the sync is a silent no-op — CONFIG_PATH (or, failing
+that, _DEFAULT_KEYWORDS) is still the source of truth everywhere else.
 """
 import json
 import os
@@ -23,19 +30,17 @@ import aiohttp
 
 from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
 
-STATE_PATH = Path(__file__).parent.parent / "docs" / "data" / "keyword_alerts.json"
+STATE_PATH  = Path(__file__).parent.parent / "docs" / "data" / "keyword_alerts.json"
+CONFIG_PATH = Path(__file__).parent.parent / "config" / "watch_keywords.txt"
+VAULT_PATH  = Path(r"C:\Users\Nary\Documents\LifeOS_Workspace\10_Projects\Active\RSS_News\RSS News - Watch Keywords.md")
 
-# 關鍵字之間係 OR 關係，每個都係 substring match（唔分大小寫）——
-# 純字面比對，冇語義理解。想追蹤一個主題就要將相關字（品牌/產品/人名/
-# 中英對照）全部列晒落嚟，例如淨係 "OpenAI" 唔會 match 到 "ChatGPT"。
-WATCH_KEYWORDS: list[str] = [
+# 純粹係 CONFIG_PATH 都讀唔到（未 sync 過／檔案損毀）時嘅安全網，
+# 唔係日常改嘅位——日常改請用 VAULT_PATH 嗰個 vault 檔案。
+_DEFAULT_KEYWORDS: list[str] = [
     "OpenAI", "ChatGPT", "GPT-", "Sam Altman", "奧特曼",
     "Anthropic", "Claude AI",
     "Google", "Gemini AI", "DeepMind",
     "Meta AI", "Llama",
-    # 淨用英文 "Apple"、唔加中文「蘋果」——快速通道對住嘅係綜合新聞
-    # source（唔係科技台），「蘋果」會撞正生果價錢／蘋果日報舊聞呢類
-    # 完全唔相關嘅新聞，誤鳴風險太高。
     "Apple", "庫克", "Tim Cook",
     "Microsoft", "微軟", "Satya Nadella",
     "Nvidia", "輝達", "黃仁勳",
@@ -44,6 +49,100 @@ WATCH_KEYWORDS: list[str] = [
 FRESHNESS_HOURS      = 2    # 只揀呢個窗口內先出嘅文，避免每次 build 重新掃全部舊文
 MAX_ALERTS_PER_BUILD = 5    # 防止太闊嘅關鍵字（例如「香港」）一次過洗版
 STATE_TTL_HOURS      = 48   # prune 舊 alerted record
+
+
+_KEYWORD_SECTION_MARKERS = ("## 關鍵字清單", "## keywords")
+
+
+def _skip_frontmatter(lines: list[str]) -> int:
+    i = 0
+    if lines and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines) and lines[i].strip() != "---":
+            i += 1
+        i += 1
+    return i
+
+
+def _find_marker_index(lines: list[str], start: int) -> int | None:
+    for idx in range(start, len(lines)):
+        if lines[idx].strip().lower() in _KEYWORD_SECTION_MARKERS:
+            return idx + 1
+    return None
+
+
+def _extract_keyword_lines(lines: list[str], start: int) -> list[str]:
+    out = []
+    for line in lines[start:]:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.lstrip("-*").strip()
+        if line:
+            out.append(line)
+    return out
+
+
+def _parse_keyword_lines(text: str) -> list[str]:
+    """畀 config/watch_keywords.txt 嗰種冇說明文字嘅純清單用：跳過 YAML
+    frontmatter，若見到 "## 關鍵字清單" 標題就淨處理佢之後嘅內容，搵唔到
+    就當全個 body 都係關鍵字（一行一個，`#` 開頭當 comment）。"""
+    lines = text.splitlines()
+    start = _skip_frontmatter(lines)
+    marker = _find_marker_index(lines, start)
+    return _extract_keyword_lines(lines, marker if marker is not None else start)
+
+
+def _parse_vault_keyword_lines(text: str) -> list[str] | None:
+    """畀 vault note 用——一定要搵到 "## 關鍵字清單" 標題先算有效輸入，
+    搵唔到就 return None（唔會將標題之前自由寫嘅說明文字當成關鍵字），
+    等 sync_watch_keywords_from_vault() 可以安全咁拒絕同步、保留舊 config，
+    而唔係將成段中文說明寫咗落去（試過一次：標題漏咗，dry-run test 冧咗
+    真 config file）。"""
+    lines = text.splitlines()
+    start = _skip_frontmatter(lines)
+    marker = _find_marker_index(lines, start)
+    if marker is None:
+        return None
+    return _extract_keyword_lines(lines, marker)
+
+
+def _load_keywords_from_config() -> list[str]:
+    try:
+        return _parse_keyword_lines(CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[keyword] config load failed: {exc!r}")
+        return list(_DEFAULT_KEYWORDS)
+
+
+def sync_watch_keywords_from_vault() -> None:
+    """喺 self-hosted runner 讀 Obsidian vault 嘅關鍵字清單，同步落
+    CONFIG_PATH（下次 build 同 fast-watch checkout 都會用到）。VAULT_PATH
+    淨係存在自己部機，喺其他環境見唔到就靜靜 skip，唔會累個 build 死。"""
+    if not VAULT_PATH.exists():
+        return
+    try:
+        text = VAULT_PATH.read_text(encoding="utf-8")
+    except Exception as exc:
+        print(f"[keyword] vault read failed: {exc!r}")
+        return
+
+    keywords = _parse_vault_keyword_lines(text)
+    if keywords is None:
+        print(f"[keyword] vault missing '## 關鍵字清單' marker — skipping sync, check {VAULT_PATH.name} wasn't edited wrong")
+        return
+    if not keywords:
+        print("[keyword] vault keyword section empty — keeping existing config")
+        return
+
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text("\n".join(keywords) + "\n", encoding="utf-8")
+    global WATCH_KEYWORDS
+    WATCH_KEYWORDS = keywords
+    print(f"[keyword] synced {len(keywords)} keywords from vault")
+
+
+WATCH_KEYWORDS: list[str] = _load_keywords_from_config()
 
 
 def _load_state() -> dict:

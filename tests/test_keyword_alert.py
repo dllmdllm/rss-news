@@ -20,6 +20,132 @@ def _article(**overrides):
     return base
 
 
+def test_parse_keyword_lines_plain_list():
+    text = "OpenAI\nChatGPT\n\nGoogle\n"
+    assert KA._parse_keyword_lines(text) == ["OpenAI", "ChatGPT", "Google"]
+
+
+def test_parse_keyword_lines_skips_frontmatter_and_comments():
+    text = "\n".join([
+        "---",
+        "type: note",
+        "tags: [a, b]",
+        "---",
+        "",
+        "# 說明文字，成行 # 開頭先當 comment",
+        "OpenAI",
+        "# 分類標題",
+        "ChatGPT",
+    ])
+    assert KA._parse_keyword_lines(text) == ["OpenAI", "ChatGPT"]
+
+
+def test_parse_keyword_lines_only_reads_after_section_marker():
+    text = "\n".join([
+        "---",
+        "type: note",
+        "---",
+        "",
+        "呢段係自由文字，唔係comment，但都要skip，因為未去到標題",
+        "仲有第二段explain文字都要skip",
+        "",
+        "## 關鍵字清單",
+        "",
+        "# OpenAI",
+        "OpenAI",
+        "ChatGPT",
+    ])
+    assert KA._parse_keyword_lines(text) == ["OpenAI", "ChatGPT"]
+
+
+def test_parse_keyword_lines_strips_bullet_prefixes():
+    text = "- OpenAI\n* ChatGPT\nGoogle"
+    assert KA._parse_keyword_lines(text) == ["OpenAI", "ChatGPT", "Google"]
+
+
+def test_parse_vault_keyword_lines_requires_marker():
+    text = "---\ntype: note\n---\n\n自由文字，冇標題\nOpenAI\n"
+    assert KA._parse_vault_keyword_lines(text) is None
+
+
+def test_parse_vault_keyword_lines_returns_list_after_marker():
+    text = "\n".join([
+        "---", "type: note", "---", "",
+        "自由文字，唔理", "",
+        "## 關鍵字清單", "",
+        "# 分類", "OpenAI", "ChatGPT",
+    ])
+    assert KA._parse_vault_keyword_lines(text) == ["OpenAI", "ChatGPT"]
+
+
+def test_load_keywords_from_config_falls_back_to_default_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(KA, "CONFIG_PATH", tmp_path / "missing.txt")
+    assert KA._load_keywords_from_config() == KA._DEFAULT_KEYWORDS
+
+
+def test_sync_watch_keywords_noop_when_vault_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(KA, "VAULT_PATH", tmp_path / "no_vault.md")
+    config_path = tmp_path / "watch_keywords.txt"
+    config_path.write_text("OldKeyword\n", encoding="utf-8")
+    monkeypatch.setattr(KA, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["OldKeyword"])
+
+    KA.sync_watch_keywords_from_vault()
+
+    assert config_path.read_text(encoding="utf-8") == "OldKeyword\n"
+    assert KA.WATCH_KEYWORDS == ["OldKeyword"]
+
+
+def test_sync_watch_keywords_writes_config_and_updates_global(monkeypatch, tmp_path):
+    vault_path = tmp_path / "vault.md"
+    vault_path.write_text(
+        "---\ntype: note\n---\n\n說明文字skip\n\n## 關鍵字清單\n\nOpenAI\nChatGPT\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "watch_keywords.txt"
+    monkeypatch.setattr(KA, "VAULT_PATH", vault_path)
+    monkeypatch.setattr(KA, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["Stale"])
+
+    KA.sync_watch_keywords_from_vault()
+
+    assert config_path.read_text(encoding="utf-8") == "OpenAI\nChatGPT\n"
+    assert KA.WATCH_KEYWORDS == ["OpenAI", "ChatGPT"]
+
+
+def test_sync_watch_keywords_keeps_existing_config_when_marker_missing(monkeypatch, tmp_path):
+    # 冇 "## 關鍵字清單" 標題 —— 一定要拒絕同步，唔可以將上面自由寫嘅
+    # 說明文字當成關鍵字（呢個曾經真係炒過一次：dry-run test 冧咗真
+    # config file，跟手先加返呢條 regression test）。
+    vault_path = tmp_path / "vault.md"
+    vault_path.write_text("---\ntype: note\n---\n\n淨係得說明文字，冇關鍵字段落\n", encoding="utf-8")
+    config_path = tmp_path / "watch_keywords.txt"
+    config_path.write_text("Existing\n", encoding="utf-8")
+    monkeypatch.setattr(KA, "VAULT_PATH", vault_path)
+    monkeypatch.setattr(KA, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["Existing"])
+
+    KA.sync_watch_keywords_from_vault()
+
+    assert config_path.read_text(encoding="utf-8") == "Existing\n"
+    assert KA.WATCH_KEYWORDS == ["Existing"]
+
+
+def test_sync_watch_keywords_keeps_existing_config_when_marker_section_empty(monkeypatch, tmp_path):
+    vault_path = tmp_path / "vault.md"
+    vault_path.write_text("---\ntype: note\n---\n\n## 關鍵字清單\n\n# 淨係得comment，冇真關鍵字\n", encoding="utf-8")
+    config_path = tmp_path / "watch_keywords.txt"
+    config_path.write_text("Existing\n", encoding="utf-8")
+    monkeypatch.setattr(KA, "VAULT_PATH", vault_path)
+    monkeypatch.setattr(KA, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["Existing"])
+
+    KA.sync_watch_keywords_from_vault()
+
+    assert config_path.read_text(encoding="utf-8") == "Existing\n"
+    assert KA.WATCH_KEYWORDS == ["Existing"]
+
+
 def test_detect_keyword_matches_case_insensitive_and_substring(monkeypatch):
     monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["樓市", "ai"])
     now = datetime.now(timezone.utc)

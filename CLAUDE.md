@@ -18,10 +18,14 @@ rss-news/
 │   ├── panel_digest.py   # 話題聚焦：共識 / 各媒體角度 / 張力（MiniMax）
 │   ├── embed.py          # 語義向量：計算 embeddings → similar.json
 │   ├── breaking_alert.py # 突發通知：Telegram bot 推送
+│   ├── keyword_alert.py  # 慢速關鍵字通道：隨 build（~20 分鐘）比對 WATCH_KEYWORDS → keyword_alerts.json + Telegram
+│   ├── fast_watch.py     # 快速關鍵字通道：獨立 ubuntu workflow（5 分鐘），淨查 3 個最快 source 標題，唔碰 docs/data
 │   ├── daily_brief.py    # 每日早報：HKT 06:00 後首個 build 綜合 24h top stories（MiniMax）→ daily_brief.json + Telegram
 │   ├── entity_digest.py  # 實體摘要：聚合人物 / 機構 → entities.json
 │   ├── minimax_client.py # MiniMax API thin wrapper（共用 HTTP shape + thinking 參數）
 │   └── feeds.py          # RSS 來源定義及常數
+├── config/
+│   └── watch_keywords.txt  # keyword_alert.py / fast_watch.py 共用嘅關鍵字清單，由 vault sync 寫，唔好手改
 ├── build.py              # 主程式：fetch → scrape → analyse → cluster → 輸出 JSON
 ├── docs/                 # GitHub Pages 根目錄
 │   ├── index.html        # 文章列表頁（含 AI tab）
@@ -45,6 +49,7 @@ rss-news/
 │       ├── embeddings.bin      # 向量數據（binary）
 │       ├── embeddings_meta.json
 │       ├── breaking_alerts.json
+│       ├── keyword_alerts.json # keyword_alert.py 已推送記錄（dedup 用）
 │       ├── daily_brief.json    # 今日早報（index 頁早報卡 + TTS）
 │       ├── feed_http_cache.json  # HTTP 304 cache
 │       └── content/            # 各文章完整 HTML（{id}.json）
@@ -52,7 +57,9 @@ rss-news/
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── update.yml    # GitHub Actions：每 20 分鐘執行 build.py（job timeout 25 min）
+        ├── update.yml     # GitHub Actions：每 20 分鐘執行 build.py（job timeout 25 min，self-hosted）
+        ├── guardian.yml   # 斷更偵測 + wedge run 清理（ubuntu，每 30 分鐘）
+        └── fast-watch.yml # 快速關鍵字通道（ubuntu，5 分鐘一次，00:00-07:00 HKT 除外）
 ```
 
 ---
@@ -69,8 +76,12 @@ RSS Feed
                           ├─ panel_digest.py  話題聚焦
                           ├─ embed.py         語義向量 + 相似文章
                           ├─ breaking_alert.py  Telegram 突發通知
+                          ├─ keyword_alert.py   慢速關鍵字通道（同時 sync vault → config/watch_keywords.txt）
                           ├─ entity_digest.py   實體摘要
                           └─ save_json()  → docs/data/
+
+fast_watch.py（獨立 ubuntu workflow，5 分鐘一次，唔行上面條 pipeline）
+  └─→ 淨查星島頭條 / am730 / TVB新聞標題 → 比對 config/watch_keywords.txt → Telegram
 ```
 
 ---
@@ -405,9 +416,40 @@ schema 唔齊（舊 build）會 fallback `articles.json`。改 build.py 嗰段 i
 
 ### 測試唔可以寫真 docs/data/
 
-`src/panel_digest.py` / `src/entity_digest.py` / `src/breaking_alert.py` 各自有
-module-level 絕對輸出路徑（唔跟 `build.DATA_DIR`）。任何跑 `build.main()` 嘅 test
-必須 monkeypatch 晒呢啲路徑，否則 dry run 會改寫真數據（試過 wipe `panel_digests.json`）。
+`src/panel_digest.py` / `src/entity_digest.py` / `src/breaking_alert.py` / `src/keyword_alert.py`
+各自有 module-level 絕對輸出路徑（唔跟 `build.DATA_DIR`）。任何跑 `build.main()` 嘅 test
+必須 monkeypatch 晒呢啲路徑，否則 dry run 會改寫真數據（試過 wipe `panel_digests.json`；
+2026-07-20 `keyword_alert.VAULT_PATH`/`CONFIG_PATH` 都中過一次，見下）。
+
+### 關鍵字監控：雙通道 + vault sync（`src/keyword_alert.py` / `src/fast_watch.py`）
+
+兩條獨立 Telegram 提示通道，共用同一份關鍵字清單：
+
+- **慢速通道**（`keyword_alert.py`）：隨主 build（~20 分鐘一輪，self-hosted），
+  比對全部 source 嘅 title/summary/tags，去重靠 `docs/data/keyword_alerts.json`
+- **快速通道**（`fast_watch.py`）：獨立 `fast-watch.yml`（ubuntu，5 分鐘一輪，
+  00:00-07:00 HKT 除外），淨查星島頭條/am730/TVB新聞三個最快 source 嘅標題
+  （唔 scrape 全文、唔叫 AI），去重靠 GitHub Actions cache（跟 `guardian.yml`
+  pattern）。**刻意唔碰 `docs/data`、唔 git push**——避免同主 build 嘅 push 撞
+
+兩條通道格式故意唔同（⚡ 快訊 vs 🔔 提醒），因為兩邊冇共用 dedup 狀態，
+偶爾會見到同一篇文兩邊各推一次——呢個係已知取捨，唔係 bug。
+
+**關鍵字清單來源**：`WATCH_KEYWORDS` 唔再係 hardcode 喺 code——用戶喺 Obsidian
+vault（`RSS News - Watch Keywords.md`）隨時改，`build.main()` 開頭
+`sync_watch_keywords_from_vault()`（self-hosted 先有 vault access）讀 vault、
+寫落 repo-tracked `config/watch_keywords.txt`，兩條通道都讀呢個檔（快速通道
+喺 ubuntu 見唔到 vault，靠 git checkout 攞到最新版，所以 `config/watch_keywords.txt`
+一定要喺 `update.yml` 嘅 `stage_outputs()` 入面 add）。
+
+⚠️ Vault note 一定要有 `## 關鍵字清單` 呢個標題，sync 先識分「上面自由寫嘅
+說明文字」同「下面真正嘅關鍵字」——搵唔到標題就當成 invalid input 整個拒絕
+同步（保留舊 config），**唔會**將說明文字當成關鍵字寫落去。2026-07-20
+第一版冇呢層保護，`tests/test_build.py` 嘅 dry-run 冧咗真 `config/watch_keywords.txt`
+（vault 說明文字全部變咗「關鍵字」），先加返呢個 fail-closed 設計 + regression test。
+
+字面 substring match，唔分大小寫，OR 邏輯——淨係 "OpenAI" 唔會 match 到
+"ChatGPT"，要中英對照/品牌/人名全部列晒。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 

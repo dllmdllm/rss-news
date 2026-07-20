@@ -41,7 +41,7 @@ from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
-from src.keyword_alert import send_keyword_alerts
+from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vault
 from src.daily_brief import generate_daily_brief
 from src.entity_digest import generate_entity_digests
 
@@ -989,6 +989,11 @@ async def main():
         build_status[name] = row
 
     old_articles = _load_old_articles()
+
+    try:
+        sync_watch_keywords_from_vault()
+    except Exception as exc:
+        _tlog(f"watch_keywords vault sync: {exc!r}")
 
     # --- fetch (hard cap 150s) ---
     t = time.monotonic()

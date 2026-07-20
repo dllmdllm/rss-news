@@ -498,6 +498,11 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(breaking_alert, "STATE_PATH", data_dir / "breaking_alerts.json")
     monkeypatch.setattr(daily_brief, "OUTPUT_PATH", data_dir / "daily_brief.json")
     monkeypatch.setattr(keyword_alert, "STATE_PATH", data_dir / "keyword_alerts.json")
+    # sync_watch_keywords_from_vault() reads/writes real machine-specific
+    # paths (the Obsidian vault + config/watch_keywords.txt) — same class of
+    # bug as the paths above, redirect both so a dry run can't touch them.
+    monkeypatch.setattr(keyword_alert, "VAULT_PATH", tmp_path / "no_such_vault_note.md")
+    monkeypatch.setattr(keyword_alert, "CONFIG_PATH", data_dir / "watch_keywords.txt")
 
     # daily_brief 會 call MiniMax + 推 Telegram（本機 .env 有齊 key）——dry run
     # 一定要 stub 走，唔係測試會嘥錢兼真係出 message。
