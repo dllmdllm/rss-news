@@ -171,3 +171,15 @@ def test_parse_oncc_dailylist_builds_articles_from_json_feed():
     assert a["thumbnail"].startswith("https://hk.on.cc/hk/bkn/cnt/entertainment/")
     assert a["category"] == "娛樂"
     assert a["rss_content"] == "測試 teaser 內容"
+
+
+def test_nowtv_category_slug_matches_real_site_paths():
+    # Regression: category 120 used to map to "world", a slug that returns
+    # HTTP 200 with an empty body on news.now.com (silently producing 20
+    # empty-content articles for 2 days, caught via
+    # test_content_sidecars_are_valid_and_nonempty). Locks the mapping to
+    # the slugs confirmed live against the real site.
+    from src.fetch import _NOWTV_CATEGORY_SLUG
+    assert _NOWTV_CATEGORY_SLUG["119"] == "local"
+    assert _NOWTV_CATEGORY_SLUG["120"] == "international"
+    assert _NOWTV_CATEGORY_SLUG["122"] == "china"

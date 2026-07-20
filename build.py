@@ -41,6 +41,7 @@ from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
+from src.keyword_alert import send_keyword_alerts
 from src.daily_brief import generate_daily_brief
 from src.entity_digest import generate_entity_digests
 
@@ -1111,6 +1112,15 @@ async def main():
         _tlog(f"breaking_alert: {exc!r}")
         mark_step("breaking_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"breaking done {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic()
+    try:
+        await asyncio.wait_for(send_keyword_alerts(articles), timeout=30)
+        mark_step("keyword_alert", seconds=time.monotonic() - t)
+    except Exception as exc:
+        _tlog(f"keyword_alert: {exc!r}")
+        mark_step("keyword_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+    _tlog(f"keyword done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("daily_brief start")

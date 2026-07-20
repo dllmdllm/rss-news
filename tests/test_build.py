@@ -492,10 +492,12 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     import src.entity_digest as entity_digest
     import src.breaking_alert as breaking_alert
     import src.daily_brief as daily_brief
+    import src.keyword_alert as keyword_alert
     monkeypatch.setattr(panel_digest, "CACHE_PATH", data_dir / "panel_digests.json")
     monkeypatch.setattr(entity_digest, "OUTPUT_PATH", data_dir / "entities.json")
     monkeypatch.setattr(breaking_alert, "STATE_PATH", data_dir / "breaking_alerts.json")
     monkeypatch.setattr(daily_brief, "OUTPUT_PATH", data_dir / "daily_brief.json")
+    monkeypatch.setattr(keyword_alert, "STATE_PATH", data_dir / "keyword_alerts.json")
 
     # daily_brief 會 call MiniMax + 推 Telegram（本機 .env 有齊 key）——dry run
     # 一定要 stub 走，唔係測試會嘥錢兼真係出 message。

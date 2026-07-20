@@ -689,7 +689,8 @@ async def _fetch_tvb(
 
 _NOWTV_CATEGORY_SLUG: dict[str, str] = {
     "119": "local",
-    "120": "world",
+    "120": "international",  # 唔係 "world" — 個 slug 錯咗令 Now 國際全部 20 篇
+                              # 都 scrape 到空頁（HTTP 200 但 0 bytes），已 probe 確認
     "122": "china",
 }
 

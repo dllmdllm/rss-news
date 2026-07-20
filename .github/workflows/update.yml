@@ -124,6 +124,8 @@ jobs:
             # translated_content.json 同上——唔 stage 就每 build 重新翻譯 19 篇
             # 英文文章（每 20 分鐘白燒一輪 API tokens）。
             git add docs/data/translated_content.json 2>/dev/null || true
+            # keyword_alerts.json 同上——唔 stage 會每 build 重推同一批關鍵字命中。
+            git add docs/data/keyword_alerts.json 2>/dev/null || true
           }
 
           stage_outputs
