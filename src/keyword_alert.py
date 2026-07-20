@@ -211,7 +211,7 @@ def detect_keyword_matches(articles: list, alerted_ids: set, *, now: datetime | 
 
 
 def _format_alert_text(article: dict) -> str:
-    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     lines = [
         f"🔔 <b>關鍵字提醒</b>：{esc(article['_matched_keyword'])}",
         esc(article.get("title", "")),

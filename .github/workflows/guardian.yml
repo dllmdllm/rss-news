@@ -65,14 +65,20 @@ jobs:
           }
 
           # --- 1. cancel wedged runs --------------------------------------
+          # 用 startedAt（真正開始執行）唔係 createdAt（被 trigger/排隊嗰
+          # 刻）——runner backlog 復原嗰陣一個 run 可以排隊超過 15 分鐘
+          # 先真正開跑，用 createdAt 會令 guardian cancel 咗一個其實仲喺
+          # 25min job timeout 之內、仲喺度做緊嘢嘅 run（2026-07-21 audit
+          # finding）。fallback 落 createdAt 係防呢個 GitHub CLI 版本／某
+          # 個 run 冇 startedAt（例如仍然 queued 未真正開跑）嘅情況。
           cutoff=$(date -u -d "@$(( now - WEDGE_MIN * 60 ))" +%Y-%m-%dT%H:%M:%SZ)
           wedged=$(gh run list -R "$GITHUB_REPOSITORY" --workflow update.yml \
-            --status in_progress --json databaseId,createdAt \
-            --jq "[.[] | select(.createdAt < \"$cutoff\") | .databaseId] | .[]")
+            --status in_progress --json databaseId,createdAt,startedAt \
+            --jq "[.[] | select((.startedAt // .createdAt) < \"$cutoff\") | .databaseId] | .[]")
           for id in $wedged; do
-            echo "cancelling wedged run $id (in_progress since before $cutoff)"
+            echo "cancelling wedged run $id (running since before $cutoff)"
             gh run cancel -R "$GITHUB_REPOSITORY" "$id" || true
-            tg "🧹 rss-news guardian：cancel 咗卡死嘅 run ${id}（in_progress 超過 ${WEDGE_MIN} 分鐘）"
+            tg "🧹 rss-news guardian：cancel 咗卡死嘅 run ${id}（執行超過 ${WEDGE_MIN} 分鐘）"
           done
 
           # --- 2. staleness of last data commit ---------------------------

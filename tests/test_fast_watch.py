@@ -39,30 +39,60 @@ def test_format_text_includes_keyword_source_and_link():
     assert 'href="https://x.com/1"' in text
 
 
+def test_format_text_escapes_double_quote_in_url():
+    # 2026-07-21 audit finding：url 入面一個 literal " 之前冇 escape，
+    # 會提早結束 <a href="..."> 個 attribute，拆散成個 Telegram message。
+    text = FW._format_text(_article(title="test", url='https://x.com/1"onmouseover=alert(1)'), "OpenAI")
+    assert 'href="https://x.com/1&quot;onmouseover=alert(1)"' in text
+
+
 def test_seen_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
-    FW._save_seen({"id1", "id2"})
-    assert FW._load_seen() == {"id1", "id2"}
+    FW._save_seen({"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"})
+    assert FW._load_seen() == {"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"}
 
 
 def test_load_seen_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "missing.json")
-    assert FW._load_seen() == set()
+    assert FW._load_seen() == {}
 
 
 def test_load_seen_corrupt_file_returns_empty(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text("not json", encoding="utf-8")
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
-    assert FW._load_seen() == set()
+    assert FW._load_seen() == {}
 
 
-def test_save_seen_caps_size(tmp_path, monkeypatch):
+def test_load_seen_migrates_old_plain_list_format(tmp_path, monkeypatch):
+    # 2026-07-20 之前 STATE_PATH 係 {"seen": [id, id, ...]}（純 list，
+    # 冇時間資訊）——升級之後要 migrate 做 dict，唔可以直接壞晒。
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps({"seen": ["old1", "old2"]}), encoding="utf-8")
+    monkeypatch.setattr(FW, "STATE_PATH", state_path)
+    seen = FW._load_seen()
+    assert set(seen.keys()) == {"old1", "old2"}
+    assert all(isinstance(ts, str) and ts for ts in seen.values())
+
+
+def test_save_seen_caps_size_by_recency_not_alphabetical(tmp_path, monkeypatch):
+    # 2026-07-21 audit finding：article id 嚟自 url 嘅 md5 hash，
+    # alphabetical sort 同幾時見過完全冇關係——之前嘅淘汰policy可能
+    # evict 咗啱啱先見過嘅 article。而家應該淘汰真正最舊嘅 timestamp。
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
     monkeypatch.setattr(FW, "SEEN_CAP", 3)
-    FW._save_seen({f"id{i}" for i in range(10)})
+    # "z_old" 字母排序最後，但時間上最舊——淘汰佢先啱，唔係保留佢。
+    seen = {
+        "z_old": "2026-01-01T00:00:00+00:00",
+        "a_new1": "2026-07-21T00:01:00+00:00",
+        "a_new2": "2026-07-21T00:02:00+00:00",
+        "a_new3": "2026-07-21T00:03:00+00:00",
+    }
+    FW._save_seen(seen)
     data = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert len(data["seen"]) == 3
+    assert "z_old" not in data["seen"]
+    assert set(data["seen"].keys()) == {"a_new1", "a_new2", "a_new3"}
 
 
 def test_main_skips_without_token(monkeypatch, tmp_path):

@@ -306,6 +306,10 @@ def _skypost_parse_date(soup: BeautifulSoup) -> datetime | None:
 
 
 def _skypost_parse_article(html: str, url: str, cutoff: datetime, feed_info: dict) -> dict | None:
+    # 之前呢個係唯一冇經 _clean_url() 就直接用嘅 url 賦值位——一個 caption/
+    # url 入面嘅 literal " 可以拆散下游 Telegram alert 嘅 <a href="..."> 屬性
+    # （2026-07-21 audit finding；escape 呢邊都補埋咗，但源頭清一清更保險）。
+    url = _clean_url(url)
     soup = BeautifulSoup(html or "", "html.parser")
     section = _skypost_hidden_text(soup, "sectionNameHidden") or _skypost_hidden_text(soup, "SectionNameCodeHidden")
     if section != _SKYPOST_NEWS_SECTION:

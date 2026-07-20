@@ -64,10 +64,22 @@ def _save_meta(meta: dict, data_dir: Path, meta_path: Path):
     os.replace(tmp, meta_path)
 
 
-def _load_embeddings(count: int, emb_path: Path) -> np.ndarray:
+def _load_embeddings(count: int, emb_path: Path, expected_bin_hash: str | None = None) -> np.ndarray:
     if emb_path.exists():
         try:
-            arr = np.frombuffer(emb_path.read_bytes(), dtype=np.float32)
+            raw = emb_path.read_bytes()
+            # embeddings.bin 同 embeddings_meta.json 各自 atomic write，但
+            # 兩個一齊唔係 atomic pair——build 中途死咗（例如 compute_embeddings
+            # 嘅 wait_for timeout 冧唔到已經開始跑嘅背景 thread）可以令
+            # bin 已經更新但 meta 仲係舊嘅（或者反過嚟），如果新舊 count
+            # 啱啱好一樣，單靠 byte-size check 會靜靜哋將 bin 嘅 row 同
+            # meta 嘅 id 錯配（2026-07-21 audit finding）。有 bin_hash 就
+            # 一定要對得上先信呢個 cache，唔對就當冇，強制全量重新 embed
+            # ——安全，只係嗰次 build 貴啲，好過長期派錯 similar.json。
+            if expected_bin_hash and hashlib.md5(raw).hexdigest()[:16] != expected_bin_hash:
+                print("[embed] embeddings.bin/meta mismatch — ignoring stale cache")
+                return np.empty((0, EMBED_DIM), dtype=np.float32)
+            arr = np.frombuffer(raw, dtype=np.float32)
             if arr.size == count * EMBED_DIM:
                 return arr.reshape(count, EMBED_DIM)
         except Exception:
@@ -75,11 +87,13 @@ def _load_embeddings(count: int, emb_path: Path) -> np.ndarray:
     return np.empty((0, EMBED_DIM), dtype=np.float32)
 
 
-def _save_embeddings(mat: np.ndarray, data_dir: Path, emb_path: Path):
+def _save_embeddings(mat: np.ndarray, data_dir: Path, emb_path: Path) -> str:
     data_dir.mkdir(parents=True, exist_ok=True)
+    raw = mat.astype(np.float32).tobytes()
     tmp = emb_path.with_suffix(emb_path.suffix + ".tmp")
-    tmp.write_bytes(mat.astype(np.float32).tobytes())
+    tmp.write_bytes(raw)
     os.replace(tmp, emb_path)
+    return hashlib.md5(raw).hexdigest()[:16]
 
 
 def _save_similar(similar: dict, data_dir: Path, sim_path: Path):
@@ -105,7 +119,7 @@ def compute_embeddings(articles: list, data_dir: Path | str | None = None) -> No
     meta      = _load_meta(meta_path)
     old_ids   = meta.get("ids") or []
     old_count = len(old_ids)
-    old_mat   = _load_embeddings(old_count, emb_path)
+    old_mat   = _load_embeddings(old_count, emb_path, meta.get("bin_hash"))
     old_hash  = meta.get("hashes") or {}
 
     # Keep existing embeddings for articles whose text hasn't changed.
@@ -168,12 +182,13 @@ def compute_embeddings(articles: list, data_dir: Path | str | None = None) -> No
         return
 
     mat = np.stack(ordered_vecs, axis=0)   # (n, 384), already L2-normalised
-    _save_embeddings(mat, data_root, emb_path)
+    bin_hash = _save_embeddings(mat, data_root, emb_path)
 
     new_hash = {a["id"]: _article_hash(a) for a in articles}
     updated  = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT")
     _save_meta({"ids": ordered_ids, "hashes": new_hash,
-                "dim": EMBED_DIM, "count": len(ordered_ids), "updated": updated},
+                "dim": EMBED_DIM, "count": len(ordered_ids), "updated": updated,
+                "bin_hash": bin_hash},
                data_root, meta_path)
 
     # Compute top-K similar for each article (cosine sim = dot product, normalised).

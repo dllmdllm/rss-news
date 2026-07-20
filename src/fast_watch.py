@@ -38,18 +38,33 @@ MAX_ALERTS_PER_RUN = 5
 SEEN_CAP = 3000        # bound state.json size — plain id list, no dates to prune by
 
 
-def _load_seen() -> set[str]:
+def _load_seen() -> dict[str, str]:
+    """Return {article_id: seen_at_iso}. Migrates the old plain-id-list
+    format (pre-2026-07-21) to the new dict shape, stamping migrated ids
+    with "now" since their real seen-time isn't recoverable."""
     if STATE_PATH.exists():
         try:
-            return set(json.loads(STATE_PATH.read_text(encoding="utf-8")).get("seen") or [])
+            data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            seen = data.get("seen")
+            if isinstance(seen, dict):
+                return seen
+            if isinstance(seen, list):
+                now_iso = datetime.now(timezone.utc).isoformat()
+                return {aid: now_iso for aid in seen}
         except Exception as exc:
             print(f"[fast-watch] state load failed: {exc!r}")
-    return set()
+    return {}
 
 
-def _save_seen(seen: set[str]):
-    ids = sorted(seen)[-SEEN_CAP:]
-    STATE_PATH.write_text(json.dumps({"seen": ids}, ensure_ascii=False), encoding="utf-8")
+def _save_seen(seen: dict[str, str]):
+    if len(seen) > SEEN_CAP:
+        # article id 嚟自 url 嘅 md5 hash，同 recency 完全冇關係——之前
+        # `sorted(seen)[-SEEN_CAP:]` 個 alphabetical 淘汰policy可以evict
+        # 啱啱先見過嘅article，保留舊嘅（2026-07-21 audit finding）。而家
+        # 淘汰真正最舊嘅 timestamp。
+        newest = sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:SEEN_CAP]
+        seen = dict(newest)
+    STATE_PATH.write_text(json.dumps({"seen": seen}, ensure_ascii=False), encoding="utf-8")
 
 
 def _match_keyword(article: dict) -> str | None:
@@ -61,7 +76,7 @@ def _match_keyword(article: dict) -> str | None:
 
 
 def _format_text(article: dict, keyword: str) -> str:
-    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     lines = [
         f"⚡ <b>快訊關鍵字</b>：{esc(keyword)}",
         esc(article.get("title", "")),
@@ -128,9 +143,13 @@ async def main() -> None:
     # 呢啲 article 嘅 alert 會永久遺失（2026-07-21 audit finding）。淨係將
     # 「冇撞中任何 keyword」或者「成功 send 咗」嘅 article 計入 seen；
     # matched 但送失敗/未輪到嘅留返俾下一輪（仲喺 freshness window 內）再試。
+    now_iso = now.isoformat()
     matched_ids = {a["id"] for a, _ in matched}
-    seen |= {a["id"] for a in articles if a.get("id") and a["id"] not in matched_ids}
-    seen |= alerted_ids
+    for a in articles:
+        if a.get("id") and a["id"] not in matched_ids:
+            seen[a["id"]] = now_iso
+    for aid in alerted_ids:
+        seen[aid] = now_iso
     _save_seen(seen)
     print(f"[fast-watch] fetched {len(articles)}, {len(matched)} matched, {sent} alerted, {len(seen)} tracked")
 

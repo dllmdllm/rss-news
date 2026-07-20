@@ -142,7 +142,10 @@ def _format_alert_text(b: dict) -> str:
     """🔴 標題 + AI 摘要 bullets + 來源。摘要每點 ≤10 字（analyse prompt 保證），
     最多 5 點，遠低於 sendPhoto caption 嘅 1024 字上限。冇摘要（分析超時）
     就淨返標題＋來源，唔會 block 通知。"""
-    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Telegram HTML parse_mode 支援 &quot; 呢個 named entity——之前冇
+    # escape 雙引號，url 入面一個 literal " 會提早結束 <a href="..."> 個
+    # attribute，拆散成個 message（2026-07-21 audit finding）。
+    esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     lines = [f"🔴 <b>突發</b>：{esc(b['headline'])}"]
     points = [p.strip() for p in re.split(r"[\n・•]+", b.get("summary") or "") if p.strip()]
     lines.extend(f"・{esc(p)}" for p in points[:5])
