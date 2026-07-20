@@ -35,6 +35,22 @@ def test_select_top_articles_dedupes_clusters_and_respects_cutoff():
     assert picked == ["a", "c"]
 
 
+def test_select_top_articles_handles_utc_offset_dates_correctly():
+    # fetch.py 寫嘅真實 article date 係 UTC（+00:00），唔係 HKT——呢個 test
+    # 用真實嘅 offset 組合，regression 住 2026-07-21 個 string-比較 timezone bug
+    # （之前令 24h 窗口日日縮水到 16-22h）。
+    now = datetime(2026, 7, 21, 6, 5, tzinfo=HKT)  # 早報固定生成時間點
+    from datetime import timezone as _tz
+    fresh_utc = (now.astimezone(_tz.utc) - timedelta(hours=23, minutes=30)).isoformat()
+    stale_utc = (now.astimezone(_tz.utc) - timedelta(hours=25)).isoformat()
+    articles = [
+        {"id": "fresh", "date": fresh_utc, "score": 9, "cluster_id": "c1"},
+        {"id": "stale", "date": stale_utc, "score": 10, "cluster_id": "c2"},
+    ]
+    picked = [a["id"] for a in select_top_articles(articles, now)]
+    assert picked == ["fresh"]
+
+
 def test_parse_brief_strips_fences_and_validates_ids():
     raw = """```json
     {"title": "今日焦點", "text": "早報正文內容。",

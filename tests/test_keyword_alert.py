@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 
 from src import keyword_alert as KA
@@ -229,10 +230,36 @@ def test_send_keyword_alerts_dedupes_across_calls(monkeypatch, tmp_path):
         return 200
     monkeypatch.setattr(KA, "_send_telegram", fake_send)
 
+    daytime = datetime.now(timezone.utc).replace(hour=12)  # HKT 20:00, outside quiet hours
     articles = [_article(id="hit1", title="樓市成交急升")]
-    asyncio.run(KA.send_keyword_alerts(articles))
+    asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
     assert calls["n"] == 1
 
     # 第二次 build 見到同一篇文（未過 FRESHNESS window）——唔應該再推
-    asyncio.run(KA.send_keyword_alerts(articles))
+    asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
     assert calls["n"] == 1
+
+
+def test_send_keyword_alerts_skips_during_quiet_hours(monkeypatch, tmp_path):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["樓市"])
+    monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(KA, "STATE_PATH", tmp_path / "keyword_alerts.json")
+
+    async def fail_send(*a, **kw):
+        raise AssertionError("should not call telegram during quiet hours")
+    monkeypatch.setattr(KA, "_send_telegram", fail_send)
+
+    night = datetime.now(timezone.utc).replace(hour=18)  # HKT 02:00
+    articles = [_article(id="hit1", title="樓市成交急升")]
+    asyncio.run(KA.send_keyword_alerts(articles, now=night))
+
+    # 未 mark alerted——quiet hours 完咗之後如果仲喺 freshness window 應該照送
+    state = json.loads((tmp_path / "keyword_alerts.json").read_text(encoding="utf-8"))
+    assert state["alerted"] == {}
+
+
+def test_in_quiet_hours_boundaries():
+    assert KA._in_quiet_hours(datetime(2026, 1, 1, 16, 0, tzinfo=timezone.utc))   # HKT 00:00
+    assert KA._in_quiet_hours(datetime(2026, 1, 1, 22, 59, tzinfo=timezone.utc))  # HKT 06:59
+    assert not KA._in_quiet_hours(datetime(2026, 1, 1, 23, 0, tzinfo=timezone.utc))  # HKT 07:00
+    assert not KA._in_quiet_hours(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc))  # HKT 20:00

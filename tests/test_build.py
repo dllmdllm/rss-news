@@ -404,6 +404,28 @@ def test_merge_missing_sources_respects_article_max_age(monkeypatch):
     assert [a["id"] for a in merged] == ["recent"]
 
 
+def test_merge_missing_sources_populates_stats_when_source_stats_starts_empty(monkeypatch):
+    # 2026-07-21 audit finding: fetch_all() 撞到 outer 150s timeout 時
+    # source_stats 會直接變 {}，之前個 `if src in source_stats` gate 令
+    # 呢個情況下所有 restored source 都冧唔到落 source_stats，
+    # articles_index.json 嘅 "sources" 就會係空 object。
+    now = datetime(2026, 4, 21, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(build, "ARTICLE_MAX_AGE_HOURS", 30)
+    monkeypatch.setattr(build, "datetime", type("FixedDateTime", (datetime,), {
+        "now": classmethod(lambda cls, tz=None: now if tz else now.replace(tzinfo=None)),
+    }))
+
+    recent = _topic_article("recent", "fallback", now, 5, source="Missing source")
+    source_stats = {}  # 模擬 fetch_all() outer timeout 之後嘅狀態
+
+    merged = build._merge_missing_sources([], [recent], source_stats)
+
+    assert [a["id"] for a in merged] == ["recent"]
+    assert "Missing source" in source_stats
+    assert source_stats["Missing source"]["restored"] == 1
+    assert source_stats["Missing source"]["effective_count"] == 1
+
+
 def test_build_upcoming_merges_same_event_across_sources():
     today = datetime(2026, 4, 27).date()
     arts = [

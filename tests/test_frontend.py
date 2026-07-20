@@ -471,6 +471,38 @@ def test_index_cluster_cards_are_stacked_and_click_to_expand():
     assert 'clusterSummaryHtml(cid, "body")' in source
 
 
+def test_payload_is_complete_rejects_empty_sources_and_articles():
+    # 2026-07-21 audit finding: `!{}` / `![].length` 喺 JS 都係 false，
+    # 之前空 sources object 同空 articles array 都會被當「完整」放行，
+    # 唔會 fallback 去 articles.json。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "payloadIsComplete")
+    js = fn + """
+    const complete = {
+      articles: [{ summary: "x" }],
+      sources: { "明報": {} },
+      trending_topics: [],
+    };
+    const emptySources = { ...complete, sources: {} };
+    const emptyArticles = { ...complete, articles: [] };
+    const noSources = { ...complete, sources: null };
+
+    if (payloadIsComplete(complete) !== true) throw new Error("complete payload rejected");
+    if (payloadIsComplete(emptySources) !== false) throw new Error("empty sources accepted");
+    if (payloadIsComplete(emptyArticles) !== false) throw new Error("empty articles accepted");
+    if (payloadIsComplete(noSources) !== false) throw new Error("null sources accepted");
+    if (payloadIsComplete(null) !== false) throw new Error("null payload accepted");
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_cluster_digest_dedupes_summary_points():
     node = _require_node()
     common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")

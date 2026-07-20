@@ -64,18 +64,41 @@ def should_generate(existing: dict, now: datetime | None = None) -> bool:
     return existing.get("date") != now.strftime("%Y-%m-%d")
 
 
+def _parse_article_date(a: dict) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(str(a.get("date", "")))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
 def select_top_articles(articles: list, now: datetime | None = None, top_n: int = TOP_N) -> list:
-    """過去 24 小時、每個 cluster 一篇、按 score+新鮮度排嘅 top N。"""
+    """過去 24 小時、每個 cluster 一篇、按 score+新鮮度排嘅 top N。
+
+    Article date 由 fetch.py 寫成 UTC（+00:00），`now`/cutoff 係 HKT
+    （+08:00）——兩個 offset 唔同嘅 ISO string 直接用 `>=` 字串比較唔會
+    respect timezone offset，會日日縮窄 24h 窗口（2026-07-21 audit
+    發現）。改做parse 做真正 datetime 先比較，等 aware-datetime 比較
+    自己處理 offset。
+    """
     now = now or datetime.now(HKT)
-    cutoff = (now - timedelta(hours=24)).isoformat()
+    cutoff = now - timedelta(hours=24)
     seen_clusters: set = set()
     picked = []
-    ranked = sorted(
-        (a for a in articles if not a.get("duplicate_of") and str(a.get("date", "")) >= cutoff),
-        key=lambda a: (int(a.get("score") or 0), str(a.get("date", ""))),
-        reverse=True,
-    )
-    for a in ranked:
+
+    fresh = []
+    for a in articles:
+        if a.get("duplicate_of"):
+            continue
+        dt = _parse_article_date(a)
+        if dt is None or dt < cutoff:
+            continue
+        fresh.append((a, dt))
+
+    ranked = sorted(fresh, key=lambda pair: (int(pair[0].get("score") or 0), pair[1]), reverse=True)
+    for a, _dt in ranked:
         cid = a.get("cluster_id")
         if cid and cid in seen_clusters:
             continue

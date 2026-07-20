@@ -108,6 +108,7 @@ async def main() -> None:
         matched.sort(key=lambda pair: pair[0].get("date", ""), reverse=True)
 
         sent = 0
+        alerted_ids: set[str] = set()
         for article, keyword in matched[:MAX_ALERTS_PER_RUN]:
             try:
                 status = await _send_telegram(
@@ -115,13 +116,21 @@ async def main() -> None:
                 )
                 if 200 <= status < 300:
                     sent += 1
+                    alerted_ids.add(article["id"])
                     print(f"[fast-watch] Alerted ({keyword}): {article.get('title', '')[:50]}")
                 else:
                     print(f"[fast-watch] Telegram returned {status}")
             except Exception as exc:
                 print(f"[fast-watch] Send failed: {exc!r}")
 
-    seen |= {a["id"] for a in articles if a.get("id")}
+    # 唔好將 send 失敗／未過 MAX_ALERTS_PER_RUN cap 嘅 matched article 都計
+    # 做「已讀」——`seen` 係唯一嘅去重機制，一入咗就永遠唔會再檢查，之前
+    # 呢啲 article 嘅 alert 會永久遺失（2026-07-21 audit finding）。淨係將
+    # 「冇撞中任何 keyword」或者「成功 send 咗」嘅 article 計入 seen；
+    # matched 但送失敗/未輪到嘅留返俾下一輪（仲喺 freshness window 內）再試。
+    matched_ids = {a["id"] for a, _ in matched}
+    seen |= {a["id"] for a in articles if a.get("id") and a["id"] not in matched_ids}
+    seen |= alerted_ids
     _save_seen(seen)
     print(f"[fast-watch] fetched {len(articles)}, {len(matched)} matched, {sent} alerted, {len(seen)} tracked")
 

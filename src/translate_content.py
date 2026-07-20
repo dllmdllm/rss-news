@@ -35,10 +35,14 @@ CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "translated_conten
 TRANSLATE_CONCURRENCY = 5
 TRANSLATE_MAX_ATTEMPTS = 3
 TRANSLATE_BACKOFF_BUDGET = 20.0
-# One article's paragraphs per call — typical body is 5-25 paragraphs, well
-# under any token budget, and keeps a slow/failed call scoped to one article
-# instead of risking a whole cross-article batch.
-_MAX_PARAGRAPH_CHARS = 600
+SAVE_CACHE_EVERY = 5   # incremental cache flush so a mid-run timeout keeps already-paid-for translations
+# Sanity cap, not a truncate-to length: a paragraph longer than this is left
+# untranslated (original English) rather than sent truncated, which used to
+# silently delete everything past the cutoff once the tag's content got
+# replaced with the (short) translation — 2026-07-21 audit finding. Set well
+# above any realistic news paragraph so this only ever excludes pathological
+# content (e.g. a full transcript dumped in one <p>).
+_MAX_PARAGRAPH_CHARS = 3000
 
 _TEXT_TAGS = ("p", "h2", "h3", "h4", "li", "blockquote")
 
@@ -80,15 +84,16 @@ def _source_hash(texts: list[str]) -> str:
 
 def extract_paragraphs(content: str) -> tuple[BeautifulSoup, list]:
     """Parse content and return (soup, tags) where tags is every block-level
-    text tag that has real text and no nested <img> (an image-bearing
-    paragraph is left untouched rather than risking mangling the image)."""
+    text tag that has real text, no nested <img> (an image-bearing paragraph
+    is left untouched rather than risking mangling the image), and isn't
+    implausibly long (over _MAX_PARAGRAPH_CHARS — see comment there)."""
     soup = BeautifulSoup(content or "", "html.parser")
     tags = []
     for tag in soup.find_all(_TEXT_TAGS):
         if tag.find("img"):
             continue
         text = tag.get_text(" ", strip=True)
-        if text:
+        if text and len(text) <= _MAX_PARAGRAPH_CHARS:
             tags.append(tag)
     return soup, tags
 
@@ -118,29 +123,44 @@ async def _translate_article(
     session: aiohttp.ClientSession,
     article: dict,
     sem: asyncio.Semaphore,
+    cache: dict,
+    save_lock: asyncio.Lock,
+    counter: list,
 ) -> None:
     content = article.get("content") or ""
     soup, tags = extract_paragraphs(content)
     if not tags:
         return
 
-    texts = [tag.get_text(" ", strip=True)[:_MAX_PARAGRAPH_CHARS] for tag in tags]
+    texts = [tag.get_text(" ", strip=True) for tag in tags]
     user_text = "\n".join(f"[{i}] {t}" for i, t in enumerate(texts))
 
     translated: list[str] | None = None
     async with sem:
         for attempt in range(TRANSLATE_MAX_ATTEMPTS):
-            raw, err, status = await post_messages(
-                session,
-                system=SYSTEM_PROMPT,
-                user_text=user_text,
-                max_tokens=max(1500, sum(len(t) for t in texts) * 3),
-                timeout=45,
-                thinking={"type": "disabled"},
-            )
+            backoff = TRANSLATE_BACKOFF_BUDGET / TRANSLATE_MAX_ATTEMPTS * (attempt + 1)
+            try:
+                raw, err, status = await post_messages(
+                    session,
+                    system=SYSTEM_PROMPT,
+                    user_text=user_text,
+                    max_tokens=max(1500, sum(len(t) for t in texts) * 3),
+                    timeout=45,
+                    thinking={"type": "disabled"},
+                )
+            except Exception as exc:
+                # A raw exception (timeout, connection reset, non-JSON error
+                # body) used to bypass every remaining attempt entirely —
+                # this is the same retry-on-exception pattern analyse.py
+                # already uses (2026-07-21 audit finding).
+                if attempt < TRANSLATE_MAX_ATTEMPTS - 1:
+                    await asyncio.sleep(backoff)
+                    continue
+                print(f"[translate] {article.get('source')} {article.get('id')}: crashed {exc!r}")
+                return
             if err:
                 if attempt < TRANSLATE_MAX_ATTEMPTS - 1 and should_retry(err, status):
-                    await asyncio.sleep(TRANSLATE_BACKOFF_BUDGET / TRANSLATE_MAX_ATTEMPTS * (attempt + 1))
+                    await asyncio.sleep(backoff)
                     continue
                 print(f"[translate] {article.get('source')} {article.get('id')}: API error {status} {err.get('type')}")
                 return
@@ -148,6 +168,8 @@ async def _translate_article(
             if translated:
                 break
             print(f"[translate] {article.get('source')} {article.get('id')}: unparseable output (attempt {attempt + 1})")
+            if attempt < TRANSLATE_MAX_ATTEMPTS - 1:
+                await asyncio.sleep(backoff)
     if not translated:
         return
 
@@ -156,11 +178,22 @@ async def _translate_article(
             _replace_tag_text(tag, new_text)
 
     article["content"] = str(soup)
-    article["_translate_cache_entry"] = {
+    cache[article["id"]] = {
         "content": article["content"],
         "source_hash": _source_hash(texts),
         "version": TRANSLATE_VERSION,
     }
+    # Incremental flush so a mid-run timeout (build.py wraps this whole call
+    # in asyncio.wait_for(90)) doesn't lose already-completed, already-paid-
+    # for translations — previously the cache was only saved once, after
+    # every task finished (2026-07-21 audit finding). asyncio is single-
+    # threaded so the dict mutation above is atomic w.r.t. other coroutines;
+    # the lock only serializes the sync disk write.
+    prev = counter[0]
+    counter[0] += 1
+    if counter[0] // SAVE_CACHE_EVERY > prev // SAVE_CACHE_EVERY:
+        async with save_lock:
+            save_cache(cache)
 
 
 async def translate_english_content(articles: list) -> None:
@@ -178,7 +211,7 @@ async def translate_english_content(articles: list) -> None:
         _, tags = extract_paragraphs(a["content"])
         if not tags:
             continue
-        texts = [t.get_text(" ", strip=True)[:_MAX_PARAGRAPH_CHARS] for t in tags]
+        texts = [t.get_text(" ", strip=True) for t in tags]
         cached = cache.get(a["id"])
         if (
             cached
@@ -193,20 +226,17 @@ async def translate_english_content(articles: list) -> None:
         return
 
     sem = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
+    save_lock = asyncio.Lock()
+    counter = [0]
     async with aiohttp.ClientSession() as session:
         results = await asyncio.gather(
-            *[_translate_article(session, a, sem) for a in pending],
+            *[_translate_article(session, a, sem, cache, save_lock, counter) for a in pending],
             return_exceptions=True,
         )
-    translated_count = 0
     for a, r in zip(pending, results):
         if isinstance(r, BaseException):
             print(f"[translate] {a.get('id')} crashed: {r!r}")
-            continue
-        entry = a.pop("_translate_cache_entry", None)
-        if entry:
-            cache[a["id"]] = entry
-            translated_count += 1
+    translated_count = counter[0]
 
     active_ids = {a["id"] for a in articles}
     pruned = {k: v for k, v in cache.items() if k in active_ids}

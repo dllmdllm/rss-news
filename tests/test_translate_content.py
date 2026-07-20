@@ -48,6 +48,58 @@ def test_translate_english_content_replaces_text_preserves_images(monkeypatch):
     assert "eng1" in saved
 
 
+def test_extract_paragraphs_excludes_but_does_not_truncate_long_paragraphs():
+    # 2026-07-21 audit finding: 段落太長之前會截到 600 字先送去翻譯，
+    # 但翻譯完之後成個 tag 內容被換晒做（短）譯文，600 字之後嘅原文永久消失。
+    # 而家改做：太長就整條skip（唔翻譯，保持英文原文），唔會再截斷。
+    long_text = "A" * (TC._MAX_PARAGRAPH_CHARS + 500)
+    content = f"<p>Short one.</p><p>{long_text}</p>"
+    _, tags = TC.extract_paragraphs(content)
+    texts = [t.get_text(" ", strip=True) for t in tags]
+    assert texts == ["Short one."]  # 太長嗰段冇入 tags，唔會被翻譯/替換
+
+
+def test_translate_english_content_leaves_overlong_paragraph_untranslated(monkeypatch):
+    monkeypatch.setattr(TC, "MINIMAX_API_KEY", "test-key")
+
+    async def fake_post_messages(session, **kwargs):
+        return json.dumps(["第一段。"]), {}, 200
+
+    monkeypatch.setattr(TC, "post_messages", fake_post_messages)
+    monkeypatch.setattr(TC, "load_cache", lambda: {})
+    monkeypatch.setattr(TC, "save_cache", lambda cache: None)
+
+    long_text = "B" * (TC._MAX_PARAGRAPH_CHARS + 100)
+    articles = [_article(content=f"<p>First paragraph.</p><p>{long_text}</p>")]
+    asyncio.run(TC.translate_english_content(articles))
+
+    content = articles[0]["content"]
+    assert "第一段。" in content
+    assert long_text in content  # 完整原文保留，冇被截斷或者掉失
+
+
+def test_translate_article_retries_on_raw_exception(monkeypatch):
+    monkeypatch.setattr(TC, "MINIMAX_API_KEY", "test-key")
+    monkeypatch.setattr(TC, "TRANSLATE_BACKOFF_BUDGET", 0.0)
+    call_count = {"n": 0}
+
+    async def flaky_post_messages(session, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] < 2:
+            raise TimeoutError("simulated network timeout")
+        return json.dumps(["第一段。", "第二段。"]), {}, 200
+
+    monkeypatch.setattr(TC, "post_messages", flaky_post_messages)
+    monkeypatch.setattr(TC, "load_cache", lambda: {})
+    monkeypatch.setattr(TC, "save_cache", lambda cache: None)
+
+    articles = [_article()]
+    asyncio.run(TC.translate_english_content(articles))
+
+    assert call_count["n"] == 2  # 第一次 raw exception，第二次先成功——冇因為exception就0 retry
+    assert "第一段。" in articles[0]["content"]
+
+
 def test_translate_english_content_skips_non_english_sources(monkeypatch):
     monkeypatch.setattr(TC, "MINIMAX_API_KEY", "test-key")
 

@@ -159,3 +159,53 @@ def test_main_respects_max_alerts_per_run(monkeypatch, tmp_path):
 
     asyncio.run(FW.main())
     assert len(sent) == 2
+
+
+def test_main_does_not_mark_seen_on_failed_send(monkeypatch, tmp_path):
+    # 2026-07-21 audit finding: send 失敗嘅 article 之前都會被計入 seen，
+    # 令個 alert 永久唔會補發。而家改做：淨係成功 send 咗先計入 seen，
+    # 送失敗嘅要留低俾下一輪（仲喺 freshness window 內）再試。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    articles = [_article(id="hit1", title="OpenAI 發布新模型")]
+
+    async def fake_fetch(session, cutoff):
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    async def failing_send(session, text, photo_url=""):
+        return 500
+    monkeypatch.setattr(FW, "_send_telegram", failing_send)
+
+    asyncio.run(FW.main())
+
+    seen = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["seen"]
+    assert "hit1" not in seen
+
+
+def test_main_does_not_mark_seen_when_capped_out(monkeypatch, tmp_path):
+    # 撞中 keyword 但因為 MAX_ALERTS_PER_RUN 冇輪到send嘅 article，
+    # 都唔應該計入 seen——否則永遠冇機會補送。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 1)
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    articles = [_article(id=f"hit{i}", title=f"OpenAI 新聞 {i}") for i in range(3)]
+
+    async def fake_fetch(session, cutoff):
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    async def fake_send(session, text, photo_url=""):
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+
+    seen = set(json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["seen"])
+    sent_count = sum(1 for i in range(3) if f"hit{i}" in seen)
+    assert sent_count == 1          # 淨係真正 send 咗嗰個入 seen
+    assert len(seen) == 1           # 另外 2 個未輪到嘅冇入 seen，下一輪可以再撞返

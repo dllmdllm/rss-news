@@ -50,6 +50,13 @@ FRESHNESS_HOURS      = 2    # 只揀呢個窗口內先出嘅文，避免每次 b
 MAX_ALERTS_PER_BUILD = 5    # 防止太闊嘅關鍵字（例如「香港」）一次過洗版
 STATE_TTL_HOURS      = 48   # prune 舊 alerted record
 
+HKT = timezone(timedelta(hours=8))
+QUIET_HOURS_HKT = range(0, 7)   # 00:00–07:00 HKT，跟 fast_watch.py 一致，唔想瞓緊覺俾嘢吵醒
+
+
+def _in_quiet_hours(now: datetime) -> bool:
+    return now.astimezone(HKT).hour in QUIET_HOURS_HKT
+
 
 _KEYWORD_SECTION_MARKERS = ("## 關鍵字清單", "## keywords")
 
@@ -215,12 +222,20 @@ def _format_alert_text(article: dict) -> str:
     return "\n".join(lines)
 
 
-async def send_keyword_alerts(articles: list) -> None:
+async def send_keyword_alerts(articles: list, *, now: datetime | None = None) -> None:
     """Alert Telegram for articles matching WATCH_KEYWORDS."""
     state = _load_state()
+    now = now or datetime.now(timezone.utc)
 
     if not TELEGRAM_BOT_TOKEN or not WATCH_KEYWORDS:
         _save_state(state)   # ensure the file always exists
+        return
+
+    if _in_quiet_hours(now):
+        # 靜靜 skip、唔 mark alerted——如果嗰篇文喺 quiet hours 完咗之後
+        # 仲喺 FRESHNESS_HOURS 窗口內，下個 build 會照樣揀返嚟推送。
+        print("[keyword] quiet hours (00:00-07:00 HKT) — skip send")
+        _save_state(state)
         return
 
     alerted = state.get("alerted") or {}

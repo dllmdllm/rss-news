@@ -950,9 +950,22 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
         total = sum(added_by_source.values())
         print(f"[build] Merged {total} articles from {len(added_by_source)} missing sources")
         for src, n in added_by_source.items():
-            if src in source_stats:
-                source_stats[src]["restored"] = n
-                source_stats[src]["effective_count"] = source_stats[src].get("count", 0) + n
+            # source_stats can be {} entirely (fetch_all's outer 150s
+            # timeout fires before any per-feed bookkeeping runs) — gating
+            # on `if src in source_stats` used to silently drop every
+            # restored source's stats in that case, leaving
+            # articles_index.json's "sources" object empty even though the
+            # article grid was fully repopulated from old_articles
+            # (2026-07-21 audit finding). setdefault() so an entry always
+            # gets created.
+            entry = source_stats.setdefault(src, {
+                "category": (old_by_source[src][0].get("category") if old_by_source[src] else ""),
+                "count": 0,
+                "error": "restored from previous build (source missing this run)",
+                "not_modified": False,
+            })
+            entry["restored"] = n
+            entry["effective_count"] = entry.get("count", 0) + n
     for src, stats in source_stats.items():
         stats.setdefault("effective_count", stats.get("count", 0) + stats.get("restored", 0))
     return articles

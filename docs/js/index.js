@@ -1028,8 +1028,14 @@
   // cache: "no-cache" 行 ETag revalidation——內容冇變時 304，唔使成個 payload
   // 重新下載（舊做法 ?Date.now() + no-store 係每次全量）。
   function payloadIsComplete(payload) {
-    if (!payload || !Array.isArray(payload.articles) || !payload.sources || !payload.trending_topics) return false;
-    return !payload.articles.length || "summary" in payload.articles[0];
+    // `!{}` 同 `!payload.articles.length`（空 array）喺 JS 都係 false——
+    // 一個完全空嘅 sources object / articles array 之前會被當「完整」放行，
+    // 唔會 fallback 去 articles.json（2026-07-21 audit finding：build.py
+    // 全部 fetch timeout 時可以寫出 sources:{} 但 articles 正常）。
+    if (!payload || !Array.isArray(payload.articles) || !payload.trending_topics) return false;
+    if (!payload.sources || Object.keys(payload.sources).length === 0) return false;
+    if (!payload.articles.length) return false;
+    return "summary" in payload.articles[0];
   }
 
   async function fetchArticleData() {

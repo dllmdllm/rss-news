@@ -20,6 +20,11 @@ concurrency:
 
 permissions:
   contents: write
+  # actions: read is required by the "Daily heartbeat" and "Notify Telegram
+  # on failure" steps' `gh run list` calls — without it those calls 403,
+  # get swallowed by `2>$null`, and both dedup checks silently fall back to
+  # "no prior run found" on every single run (audit finding, 2026-07-21).
+  actions: read
 
 jobs:
   build:
