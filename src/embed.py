@@ -9,10 +9,23 @@ Uses paraphrase-multilingual-MiniLM-L12-v2 (384-dim, ~120 MB on first run,
 then cached by sentence-transformers in ~/.cache/huggingface).  The same
 model is available as Xenova/paraphrase-multilingual-MiniLM-L12-v2 for
 transformers.js, so build-time and browser-time embeddings are compatible.
+
+compute_embeddings() (the public entry point) runs the actual computation
+in a subprocess (src/embed_worker.py), not a thread. build.py previously
+ran this via loop.run_in_executor + asyncio.wait_for — but cancelling that
+wait_for on timeout does NOT stop the underlying thread (Python has no API
+to kill a thread), and asyncio.run()'s own cleanup phase
+(shutdown_default_executor) blocks waiting for it anyway, so a hung
+embedding pass could hang the whole build.py process past its intended
+~14-minute global cap. A subprocess can be genuinely SIGKILLed on timeout
+(2026-07-21 audit finding).
 """
+import asyncio
 import hashlib
 import json
 import os
+import sys
+import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -25,6 +38,7 @@ EMBED_DIM  = 384
 TOP_K      = 5
 SIM_MIN    = 0.45   # min cosine similarity to count as "similar"
 BATCH_SIZE = 64
+WORKER_TIMEOUT = 170   # build.py's own asyncio.wait_for around this call is 180s
 
 
 def _article_text(a: dict) -> str:
@@ -104,8 +118,11 @@ def _save_similar(similar: dict, data_dir: Path, sim_path: Path):
     os.replace(tmp, sim_path)
 
 
-def compute_embeddings(articles: list, data_dir: Path | str | None = None) -> None:
-    """Embed all articles, cache incrementally, write similar.json."""
+def _compute_embeddings_sync(articles: list, data_dir: Path | str | None = None) -> None:
+    """Embed all articles, cache incrementally, write similar.json. Pure
+    sync CPU/IO work — called from src/embed_worker.py's subprocess entry
+    point, not directly from build.py (see compute_embeddings() below for
+    why)."""
     if not articles:
         return
     data_root, emb_path, meta_path, sim_path = _embed_paths(data_dir)
@@ -209,3 +226,55 @@ def compute_embeddings(articles: list, data_dir: Path | str | None = None) -> No
     kb_meta = meta_path.stat().st_size // 1024
     print(f"[embed] embeddings.bin {kb_emb} KB, similar.json {kb_sim} KB, "
           f"meta {kb_meta} KB ({n} articles)")
+
+
+async def compute_embeddings(
+    articles: list,
+    data_dir: Path | str | None = None,
+    timeout: float = WORKER_TIMEOUT,
+) -> None:
+    """Async entry point: run _compute_embeddings_sync in a subprocess
+    (src/embed_worker.py) instead of a thread, so a hang can be genuinely
+    killed on timeout rather than leaking into the parent process (see
+    module docstring). Only the minimal fields _article_text() needs
+    (id/title/summary) are handed to the worker."""
+    if not articles:
+        return
+    data_root, _emb_path, _meta_path, _sim_path = _embed_paths(data_dir)
+    data_root.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".json", prefix="embed_input_")
+    tmp_input = Path(tmp_path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(
+                [{"id": a["id"], "title": a.get("title", ""), "summary": a.get("summary", "")}
+                 for a in articles if a.get("id")],
+                f, ensure_ascii=False,
+            )
+
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "src.embed_worker",
+            "--input", str(tmp_input),
+            "--data-dir", str(data_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except (asyncio.TimeoutError, TimeoutError):
+            # This actually terminates the OS process — unlike cancelling a
+            # thread-backed future, which just stops awaiting it while the
+            # thread keeps running.
+            proc.kill()
+            await proc.wait()
+            print(f"[embed] worker exceeded {timeout}s — killed subprocess, keeping previous embeddings")
+            return
+
+        output = (stdout or b"").decode("utf-8", errors="replace")
+        if output:
+            print(output, end="" if output.endswith("\n") else "\n")
+        if proc.returncode != 0:
+            print(f"[embed] worker exited with code {proc.returncode}")
+    finally:
+        tmp_input.unlink(missing_ok=True)

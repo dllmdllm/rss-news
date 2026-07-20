@@ -498,7 +498,7 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
 
     embed_call = {}
 
-    def fake_compute_embeddings(articles, data_dir=None):
+    async def fake_compute_embeddings(articles, data_dir=None):
         embed_call["data_dir"] = data_dir
 
     monkeypatch.setattr(build, "DATA_DIR", data_dir)

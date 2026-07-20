@@ -32,7 +32,9 @@ SYSTEM_PROMPT = (
     "唔好有任何其他文字、解釋、markdown 或思考過程。"
     "陣列長度必須等於輸入新聞數量。\n"
     "每個 object 格式：\n"
-    '{"summary":"單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔，每點唔超過10個字",'
+    '{"idx":整數（對應輸入嘅「第X篇」入面嘅X，必須逐個對應、唔可以漏或者重複，'
+    '呢個field唔理你輸出嘅array順序係點，我哋都靠佢核對邊個object屬於邊篇新聞）,'
+    '"summary":"單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔，每點唔超過10個字",'
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'
@@ -280,7 +282,29 @@ def _parse_batch(raw: str, expected: int) -> list[dict | None] | None:
         except Exception:
             arr = None
         if isinstance(arr, list) and len(arr) == expected:
-            return [_normalise_parsed(obj) for obj in arr]
+            # 2026-07-21 audit finding: 之前純粹信 array 順序同輸入順序
+            # 一致（caller 用 zip(batch, parsed)）——如果 model 保留咗
+            # count 但 reorder 咗 item（保持長度一致嘅 instruction-
+            # following 失誤），會靜靜哋將 A 篇嘅分析結果貼咗落 B 篇，
+            # 冇任何機制偵測到。而家用 model 自己喺每個 object 入面回報
+            # 嘅 "idx"（對應 prompt 入面「第X篇」嘅 X）核對、重新排位；
+            # 冇 idx / 重複 / 出範圍嘅 slot 當 parse 失敗（None），交返
+            # 俾現有嘅 per-article fallback 補（呢個 mechanism 本身冇變，
+            # 只係輸入嗰個 list 可能有 None gap）。
+            by_idx: dict[int, dict] = {}
+            for obj in arr:
+                if not isinstance(obj, dict):
+                    continue
+                try:
+                    idx = int(obj.get("idx"))
+                except (TypeError, ValueError):
+                    continue
+                if not (1 <= idx <= expected) or idx in by_idx:
+                    continue
+                normalised = _normalise_parsed(obj)
+                if normalised:
+                    by_idx[idx] = normalised
+            return [by_idx.get(i) for i in range(1, expected + 1)]
     # Accept a bare object when batch size is 1 (some models drop the array)
     if expected == 1:
         single = _parse_analysis(text)

@@ -288,10 +288,15 @@ asyncio.run(asyncio.wait_for(main(), timeout=850))  # ~14 分鐘
 
 配合 workflow `timeout-minutes: 25`，確保 job 不會無限運行（25 嘅原因見 update.yml 註釋：慢網日 checkout 可食 10 分鐘）。
 
-注意：`compute_embeddings`（sentence-transformers）係 sync code，必須經
-`run_in_executor` + `wait_for` 跑——直接喺 event loop 上執行會令全局
-`wait_for(850)` 無法觸發（loop 被 block），一 hang 就食晒成個 job timeout，
-嗰一輪乜都 push 唔到。
+`compute_embeddings`（`src/embed.py`）2026-07-21 起改做 async，內部用
+`asyncio.create_subprocess_exec` 起 `python -m src.embed_worker` 跑真正
+嘅 sentence-transformers 計算（`_compute_embeddings_sync`），逾時
+`proc.kill()`。之前用 `loop.run_in_executor` + `wait_for` 有個死角：
+cancel 個 wait_for 淨係停止等待，唔會真正殺咗個 thread（Python 冇 API
+殺 thread），而且 `asyncio.run()` 自己收尾嗰陣（`shutdown_default_executor`）
+會等呢條背景 thread 行完先返，一 hang 就算全局 `wait_for(850)` 都救唔到，
+成個 `python build.py` process 卡住。Subprocess 可以真.SIGKILL，冇呢個
+問題。
 
 ### fetch per-feed 超時
 

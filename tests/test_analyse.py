@@ -208,14 +208,53 @@ def test_needs_when_summary_is_prompt_schema_echo():
 
 def test_parse_batch_array_matches_expected():
     raw = (
-        '[{"summary":"・a","score":5,"tags":["x"],"sentiment":"neutral","topic":""},'
-        '{"summary":"・b","score":8,"tags":[],"sentiment":"negative","topic":""}]'
+        '[{"idx":1,"summary":"・a","score":5,"tags":["x"],"sentiment":"neutral","topic":""},'
+        '{"idx":2,"summary":"・b","score":8,"tags":[],"sentiment":"negative","topic":""}]'
     )
     out = _parse_batch(raw, 2)
     assert out is not None
     assert len(out) == 2
     assert out[0]["summary"] == "・a"
     assert out[1]["score"] == 8
+
+
+def test_parse_batch_realigns_when_model_reorders_array(monkeypatch):
+    # 2026-07-21 audit finding: model 保留咗 array 長度但 reorder 咗 item
+    # 順序（第 2 篇嘅結果行先）——之前純粹靠 zip(batch, parsed) 假設
+    # position 對應輸入順序，會將呢個結果錯配。而家用 idx 核對，就算
+    # array 順序亂咗都應該正確歸位。
+    raw = (
+        '[{"idx":2,"summary":"・b","score":8,"tags":[],"sentiment":"negative","topic":""},'
+        '{"idx":1,"summary":"・a","score":5,"tags":["x"],"sentiment":"neutral","topic":""}]'
+    )
+    out = _parse_batch(raw, 2)
+    assert out is not None and len(out) == 2
+    assert out[0]["summary"] == "・a"  # 第 1 篇嘅結果，就算佢喺 array 第二個位
+    assert out[1]["summary"] == "・b"  # 第 2 篇嘅結果，就算佢喺 array 第一個位
+
+
+def test_parse_batch_missing_idx_becomes_none_slot():
+    # 冇 idx 嘅 object 而家會當 parse 失敗（交返俾 per-article fallback），
+    # 唔會再盲目信 array position。
+    raw = (
+        '[{"summary":"・a","score":5,"tags":["x"],"sentiment":"neutral","topic":""},'
+        '{"idx":2,"summary":"・b","score":8,"tags":[],"sentiment":"negative","topic":""}]'
+    )
+    out = _parse_batch(raw, 2)
+    assert out is not None and len(out) == 2
+    assert out[0] is None       # 冇 idx，parse 失敗
+    assert out[1]["summary"] == "・b"
+
+
+def test_parse_batch_duplicate_idx_only_keeps_first():
+    raw = (
+        '[{"idx":1,"summary":"・first","score":5,"tags":[],"sentiment":"neutral","topic":""},'
+        '{"idx":1,"summary":"・dup","score":9,"tags":[],"sentiment":"neutral","topic":""}]'
+    )
+    out = _parse_batch(raw, 2)
+    assert out is not None and len(out) == 2
+    assert out[0]["summary"] == "・first"
+    assert out[1] is None
 
 
 def test_parse_batch_length_mismatch_returns_none():
@@ -226,7 +265,7 @@ def test_parse_batch_length_mismatch_returns_none():
 def test_parse_batch_partial_returns_list_with_none():
     # Shape matches (length 2) but second item is not an object.
     raw = (
-        '[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""},'
+        '[{"idx":1,"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""},'
         '"garbage"]'
     )
     out = _parse_batch(raw, 2)
@@ -324,8 +363,10 @@ def test_parse_batch_single_accepts_bare_object():
 
 
 def test_parse_batch_strips_fence():
-    raw = '```json\n[{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}]\n```'
-    assert _parse_batch(raw, 1) is not None
+    raw = '```json\n[{"idx":1,"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}]\n```'
+    out = _parse_batch(raw, 1)
+    assert out is not None
+    assert out[0] is not None and out[0]["summary"] == "x"
 
 
 # ── _normalise_key_sentences ─────────────────────────────────────
