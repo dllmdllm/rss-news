@@ -123,6 +123,38 @@ def test_scrape_one_falls_back_to_rss_when_extraction_is_empty(monkeypatch):
     assert out["content_quality"]["fallback"] == "rss-empty"
 
 
+def test_remove_relative_images_keeps_protocol_relative_urls():
+    # 2026-07-21 audit finding：`//cdn.example.com/x.jpg`（protocol-relative，
+    # 常見 CDN pattern）之前會被誤判做 relative path 而刪走，但呢種 URL
+    # 喺瀏覽器度完全 resolve 得到，唔理個 page 自己個 origin 係咩。
+    content = (
+        '<p>a</p><img src="//cdn.example.com/photo.jpg">'
+        '<img src="/relative/path.jpg"><img src="https://ok.com/x.jpg">'
+    )
+    out = scrape._remove_relative_images(content)
+    assert "cdn.example.com/photo.jpg" in out
+    assert "https://ok.com/x.jpg" in out
+    assert "/relative/path.jpg" not in out
+
+
+def test_expand_stheadline_galleries_escapes_attributes():
+    # 2026-07-21 audit finding：src/alt 之前冇 escape 就直接 interpolate
+    # 落 <img> 屬性，caption 入面一個雙引號會拆散個 tag。
+    html = (
+        "<html><body>"
+        'const article_galleries = {"gallery-1": '
+        '[{"src": "https://x.com/a.jpg\\"onerror=alert(1)", "caption": "有 \\"quote\\" 嘅 caption"}]};\n'
+        "<gallery-1></gallery-1>"
+        "</body></html>"
+    )
+    out = scrape._expand_stheadline_galleries(html)
+    # src 屬性入面嗰個雙引號一定要被 escape 做 &quot;，唔可以係 bare "
+    # ——bare " 會提早結束 src="..." 呢個屬性，令 onerror=alert(1) 走
+    # 出咗屬性、變成一個真.嘅 HTML attribute（XSS/markup injection）。
+    assert 'src="https://x.com/a.jpg&quot;onerror=alert(1)"' in out
+    assert 'alt="有 &quot;quote&quot; 嘅 caption"' in out
+
+
 def test_cloudscraper_fetch_returns_none_on_http_error(monkeypatch):
     # 2026-07-21 audit finding：cloudscraper（requests-style）唔似
     # _fetch_html/_urllib_fetch 咁會喺 4xx/5xx raise——之前唔 check status

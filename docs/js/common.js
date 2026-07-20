@@ -12,6 +12,19 @@ function safeUrl(u) {
   return /^https?:\/\//i.test(s) ? s : "#";
 }
 
+// localStorage access itself (not just writes) can throw SecurityError under
+// blocked-cookies/private-mode. setupThemeMode/setupTextOnlyMode/setupFontSize
+// run at page-init time on entities.html/upcoming.html/graph.html — an
+// unguarded getItem() there used to be able to crash init before any UI
+// wired up, the same failure class fixed in index.js's storageGet()
+// (2026-07-21 audit finding).
+function storageGet(key, fallback = null) {
+  try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) {}
+}
+
 function readJsonSet(key) {
   try {
     const arr = JSON.parse(localStorage.getItem(key) || "[]");
@@ -50,7 +63,7 @@ function _themeIcon(theme) {
 }
 
 function setupThemeMode() {
-  const saved = localStorage.getItem(THEME_KEY);
+  const saved = storageGet(THEME_KEY);
   let theme = (saved === "light" || saved === "dark")
     ? saved
     : (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark");
@@ -61,7 +74,7 @@ function setupThemeMode() {
   btn.dataset.theme = theme;
   btn.addEventListener("click", () => {
     theme = theme === "light" ? "dark" : "light";
-    localStorage.setItem(THEME_KEY, theme);
+    storageSet(THEME_KEY, theme);
     _applyTheme(theme);
     btn.innerHTML = _themeIcon(theme);
     btn.dataset.theme = theme;
@@ -69,7 +82,7 @@ function setupThemeMode() {
 }
 
 function setupTextOnlyMode() {
-  const enabled = localStorage.getItem(TEXT_ONLY_KEY) === "1";
+  const enabled = storageGet(TEXT_ONLY_KEY) === "1";
   document.body.classList.toggle("text-only", enabled);
   const btn = document.getElementById("text-toggle");
   if (!btn) return;
@@ -82,13 +95,13 @@ function setupTextOnlyMode() {
   btn.addEventListener("click", () => {
     const next = btn.dataset.textOnly !== "1";
     document.body.classList.toggle("text-only", next);
-    localStorage.setItem(TEXT_ONLY_KEY, next ? "1" : "0");
+    storageSet(TEXT_ONLY_KEY, next ? "1" : "0");
     syncBtn(next);
   });
 }
 
 function setupFontSize() {
-  let fsLevel = parseInt(localStorage.getItem("fontSize") ?? "1");
+  let fsLevel = parseInt(storageGet("fontSize", "1"));
   if (isNaN(fsLevel) || fsLevel < 0 || fsLevel > 2) fsLevel = 1;
 
   function applyFs() {
@@ -102,14 +115,14 @@ function setupFontSize() {
   document.getElementById("font-inc").addEventListener("click", () => {
     if (fsLevel < 2) {
       fsLevel++;
-      localStorage.setItem("fontSize", fsLevel);
+      storageSet("fontSize", fsLevel);
       applyFs();
     }
   });
   document.getElementById("font-dec").addEventListener("click", () => {
     if (fsLevel > 0) {
       fsLevel--;
-      localStorage.setItem("fontSize", fsLevel);
+      storageSet("fontSize", fsLevel);
       applyFs();
     }
   });

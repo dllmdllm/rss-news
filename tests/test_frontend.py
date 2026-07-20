@@ -270,129 +270,6 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
     assert result.returncode == 0, result.stderr
 
 
-def _ignored_index_mobile_cluster_summary_renders_once():
-    node = _require_node()
-    js = textwrap.dedent(
-        """
-        const crypto = require("crypto");
-        const fs = require("fs");
-        const vm = require("vm");
-
-        class El {
-          constructor(id) {
-            this.id = id;
-            this.innerHTML = "";
-            this.textContent = "";
-            this.className = "";
-            this.dataset = {};
-            this.style = {};
-            this.tagName = "DIV";
-            this.value = "";
-            this.classList = {
-              add: () => null,
-              remove: () => null,
-              contains: () => false,
-              toggle: () => null,
-            };
-          }
-          addEventListener() {}
-          querySelectorAll() { return []; }
-        }
-
-        const clusterId = crypto.createHash("md5").update("伊朗局勢").digest("hex").slice(0, 8);
-        const articles = [
-          {
-            id: "a1",
-            title: "美伊局勢升溫",
-            url: "https://example.com/a1",
-            date: "2026-04-21T12:00:00+00:00",
-            source: "A",
-            category: "新聞",
-            summary: "・伊朗升溫\n・航道受關注",
-            cluster_id: clusterId,
-            cluster_size: 2,
-          },
-          {
-            id: "a2",
-            title: "以色列回應美伊緊張",
-            url: "https://example.com/a2",
-            date: "2026-04-21T11:00:00+00:00",
-            source: "B",
-            category: "新聞",
-            summary: "・以色列施壓\n・局勢升級",
-            cluster_id: clusterId,
-            cluster_size: 2,
-          },
-        ];
-
-        const els = new Map();
-        for (const id of [
-          "theme-toggle", "news-toast", "toast-msg", "toast-refresh", "toast-close",
-          "updated", "health-overlay", "health-close", "health-body", "search",
-          "filters", "chip-filters", "chip-divider", "source-filters", "tag-filters",
-          "sort-toggle", "grid", "font-dec", "font-inc", "top-picks",
-        ]) {
-          els.set(id, new El(id));
-        }
-
-        const document = {
-          body: new El("body"),
-          getElementById: id => els.get(id) || new El(id),
-          querySelector: () => ({ setAttribute() {} }),
-          querySelectorAll: () => [],
-          addEventListener() {},
-        };
-        const context = {
-          console,
-          document,
-          window: { matchMedia: () => ({ matches: true }), addEventListener() {} },
-          navigator: {},
-          localStorage: { getItem: () => null, setItem() {} },
-          setInterval() {},
-          setTimeout,
-          Date, URL, encodeURIComponent, Number, String, Set, Map, RegExp, JSON,
-          Fuse: class {
-            constructor(items) { this.items = items; }
-            search() { return []; }
-          },
-          fetch: async () => ({
-            json: async () => ({
-              articles,
-              trending_topics: [],
-              sources: {},
-            }),
-          }),
-        };
-        context.globalThis = context;
-
-        vm.runInNewContext(fs.readFileSync("docs/js/common.js", "utf8"), context);
-        vm.runInNewContext(fs.readFileSync("docs/js/index.js", "utf8"), context);
-
-        setTimeout(() => {
-          context.toggleClusterSummary(clusterId);
-          const html = els.get("grid").innerHTML;
-          const overlayCount = (html.match(new RegExp(`cluster-summary-${clusterId}-overlay`, "g")) || []).length;
-          const bodyCount = (html.match(new RegExp(`cluster-summary-${clusterId}-body`, "g")) || []).length;
-          if (overlayCount !== 0) {
-            throw new Error("expected no overlay summary, got " + overlayCount);
-          }
-          if (bodyCount !== 1) {
-            throw new Error("expected one body summary, got " + bodyCount);
-          }
-        }, 0);
-        """
-    )
-    result = subprocess.run(
-        [node, "-e", js],
-        cwd=ROOT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 def test_index_has_ai_sort_button():
     html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     if "js/index.js" in html:
@@ -593,6 +470,30 @@ def test_storage_get_survives_localstorage_securityerror():
     };
     const result = storageGet("mobile.view", "home");
     if (result !== "home") throw new Error("storageGet threw or ignored fallback: " + result);
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_common_js_storage_get_survives_localstorage_securityerror():
+    # 2026-07-21 audit finding: setupThemeMode/setupTextOnlyMode/
+    # setupFontSize 之前直接 call localStorage.getItem，喺 entities.html/
+    # upcoming.html/graph.html page-init 時執行——封鎖 cookies 環境會令
+    # 呢幾個 page 初始化失敗，同 index.js 果個已經修好嘅 bug 係同一類。
+    node = _require_node()
+    source = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "storageGet")
+    js = fn + """
+    const localStorage = {
+      getItem() { throw new DOMException("blocked", "SecurityError"); },
+    };
+    const result = storageGet("rss_theme", "dark");
+    if (result !== "dark") throw new Error("storageGet threw or ignored fallback: " + result);
     """
     result = subprocess.run(
         [node, "-e", js],

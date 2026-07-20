@@ -30,10 +30,17 @@ _BLOCK_PHRASES = [
     "ddos protection by",
 ]
 
+# 順序有意義：_fix_lazy_images 逐個 attr 試，一撞中就用（同一個 tag 唔會
+# 再睇後面嘅 attr）。名帶 "original"/"hi-res" 嘅 attr 明確表示高清版本，
+# 排先過 data-src/data-lazy 呢類通用低清 placeholder 命名——之前
+# data-src 排喺 data-original/data-hi-res-src 前面，兩個 attr 同時存在
+# 嗰陣會揀咗低清版本（2026-07-21 audit finding，low confidence，未證實
+# 邊個 source 實際會撞到，但呢個 fix 冇壞處）。
 _LAZY_ATTRS = [
-    "data-src", "data-lazy-src", "data-original", "data-lazy",
+    "data-original", "data-hi-res-src",
+    "data-src", "data-lazy-src", "data-lazy",
     "data-delayed-url", "data-url", "data-image", "data-echo",
-    "lazysrc", "data-actualsrc", "data-hi-res-src",
+    "lazysrc", "data-actualsrc",
 ]
 
 
@@ -893,7 +900,10 @@ def _expand_stheadline_galleries(html: str) -> str:
             src = item.get("src") or ""
             alt = item.get("alt_text") or item.get("caption") or ""
             if src:
-                imgs.append(f'<img src="{src}" alt="{alt}">')
+                # 之前呢個係全部 parser 入面唯一冇 escape src/alt 就直接
+                # interpolate 落 HTML 屬性嘅位——caption 入面一個雙引號
+                # 就會拆散個 <img> tag（2026-07-21 audit finding）。
+                imgs.append(f'<img src="{_html_escape(src, quote=True)}" alt="{_html_escape(alt)}">')
         return "\n".join(imgs)
 
     def _replace_gallery(m2):
@@ -967,12 +977,16 @@ def _is_blocked(html: str) -> bool:
 
 def _remove_relative_images(content: str) -> str:
     """Remove <img> tags whose src is a relative path — they resolve to the
-    article origin, not our GitHub Pages, so they always 404 on our site."""
+    article origin, not our GitHub Pages, so they always 404 on our site.
+    Protocol-relative URLs (`//cdn.example.com/x.jpg`, a common CDN pattern)
+    are NOT relative — they resolve fine in a browser regardless of the
+    page's own origin, and used to be misclassified as relative and
+    silently dropped (2026-07-21 audit finding)."""
     soup = BeautifulSoup(content, "html.parser")
     changed = False
     for img in soup.find_all("img"):
         src = (img.get("src") or "").strip()
-        if src and not src.startswith(("http://", "https://", "data:")):
+        if src and not src.startswith(("http://", "https://", "data:", "//")):
             img.decompose()
             changed = True
     return str(soup) if changed else content
