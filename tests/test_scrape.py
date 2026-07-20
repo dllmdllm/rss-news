@@ -123,6 +123,49 @@ def test_scrape_one_falls_back_to_rss_when_extraction_is_empty(monkeypatch):
     assert out["content_quality"]["fallback"] == "rss-empty"
 
 
+def test_cloudscraper_fetch_returns_none_on_http_error(monkeypatch):
+    # 2026-07-21 audit finding：cloudscraper（requests-style）唔似
+    # _fetch_html/_urllib_fetch 咁會喺 4xx/5xx raise——之前唔 check status
+    # 就直接 return r.text，錯誤頁如果冇撞中 _BLOCK_PHRASES 就會被當正文。
+    import sys
+    import types
+
+    class _FakeResponse:
+        status_code = 403
+        text = "<html>Cloudflare challenge page</html>"
+
+    class _FakeScraper:
+        def get(self, url, timeout=None, headers=None):
+            return _FakeResponse()
+
+    fake_module = types.ModuleType("cloudscraper")
+    fake_module.create_scraper = lambda **kw: _FakeScraper()
+    monkeypatch.setitem(sys.modules, "cloudscraper", fake_module)
+
+    result = asyncio.run(scrape._cloudscraper_fetch("https://example.com/a"))
+    assert result is None
+
+
+def test_cloudscraper_fetch_returns_text_on_success(monkeypatch):
+    import sys
+    import types
+
+    class _FakeResponse:
+        status_code = 200
+        text = "<html><body><p>正文</p></body></html>"
+
+    class _FakeScraper:
+        def get(self, url, timeout=None, headers=None):
+            return _FakeResponse()
+
+    fake_module = types.ModuleType("cloudscraper")
+    fake_module.create_scraper = lambda **kw: _FakeScraper()
+    monkeypatch.setitem(sys.modules, "cloudscraper", fake_module)
+
+    result = asyncio.run(scrape._cloudscraper_fetch("https://example.com/a"))
+    assert result == "<html><body><p>正文</p></body></html>"
+
+
 def test_scrape_one_retries_mingpao_empty_response_with_urllib(monkeypatch):
     async def fake_fetch_html(session, url):
         return ""
@@ -459,6 +502,30 @@ def test_scrape_one_uses_oncc_parser_before_trafilatura(monkeypatch):
     assert "東網第一段完整內文" in out["content"]
     assert 'src="https://hk.on.cc/a.jpg"' in out["content"]
     assert out["content_quality"]["fallback"] == "none"
+
+
+def test_build_hk01_content_returns_none_on_unexpected_shape():
+    # 2026-07-21 audit finding：深層 JSON traverse 之前冇 guard，`props`
+    # 明確係 JSON null（唔係 missing key）會令 `.get("props", {})` 都
+    # 冧唔到（dict.get 嘅 default 淨係喺 key 唔存在先生效，key 存在但值
+    # 係 None 就照樣 return None，跟住 .get() 就 AttributeError）。
+    # 而家應該 catch 咗、graceful return None，唔會拋 exception 出去。
+    import json as _json
+    payload = {"props": None}
+    html = f'<html><body><script id="__NEXT_DATA__" type="application/json">{_json.dumps(payload)}</script></body></html>'
+    assert scrape._build_hk01_content(html) is None
+
+
+def test_build_hk01_content_returns_none_when_blocks_has_non_dict_entry():
+    import json as _json
+    payload = {
+        "props": {"initialProps": {"pageProps": {"article": {
+            "description": "",
+            "blocks": ["not-a-dict-block"],
+        }}}}
+    }
+    html = f'<html><body><script id="__NEXT_DATA__" type="application/json">{_json.dumps(payload)}</script></body></html>'
+    assert scrape._build_hk01_content(html) is None
 
 
 def test_build_hk01_content_skips_description_when_it_prefixes_first_block():

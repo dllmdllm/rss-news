@@ -503,6 +503,30 @@ def test_payload_is_complete_rejects_empty_sources_and_articles():
     assert result.returncode == 0, result.stderr
 
 
+def test_storage_get_survives_localstorage_securityerror():
+    # 2026-07-21 audit finding: state.mobile 初始化之前有 7 個 unguarded
+    # localStorage.getItem call，係 module 頂層 code，喺任何 function 執行
+    # 之前就跑——封鎖 cookies/私隱模式環境 access localStorage 本身就會
+    # throw SecurityError，令成個 script 死晒，page 睇落「載入咗但係空白」。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "storageGet")
+    js = fn + """
+    const localStorage = {
+      getItem() { throw new DOMException("blocked", "SecurityError"); },
+    };
+    const result = storageGet("mobile.view", "home");
+    if (result !== "home") throw new Error("storageGet threw or ignored fallback: " + result);
+    """
+    result = subprocess.run(
+        [node, "-e", js],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_cluster_digest_dedupes_summary_points():
     node = _require_node()
     common = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")

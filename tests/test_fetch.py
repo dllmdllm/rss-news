@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from src.fetch import (
@@ -171,6 +171,134 @@ def test_parse_oncc_dailylist_builds_articles_from_json_feed():
     assert a["thumbnail"].startswith("https://hk.on.cc/hk/bkn/cnt/entertainment/")
     assert a["category"] == "娛樂"
     assert a["rss_content"] == "測試 teaser 內容"
+
+
+class _FakeJsonResp:
+    def __init__(self, payload, status=200):
+        self._payload = payload
+        self.status = status
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *exc):
+        return False
+    async def json(self, content_type=None):
+        return self._payload
+
+
+class _FakeJsonSession:
+    def __init__(self, payload):
+        self._payload = payload
+    def get(self, url, timeout=None, headers=None):
+        return _FakeJsonResp(self._payload)
+
+
+def test_fetch_hk01_skips_malformed_item_without_losing_others():
+    # 2026-07-21 audit finding：per-item 處理冇 try/except，一個 item
+    # 格式怪（呢度用 mainImage 唔係 dict 嚟模擬）會令成個 function 冇
+    # return，連之前已經 append 好嘅 article 都一齊丟失。
+    import asyncio
+    from src.fetch import _fetch_hk01
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    payload = {"items": [
+        {"type": 1, "data": {
+            "publishUrl": "https://www.hk01.com/a/1", "publishTime": now_ts,
+            "title": "正常文章一", "mainImage": {"cdnUrl": "https://img/1.jpg"},
+        }},
+        {"type": 1, "data": {
+            "publishUrl": "https://www.hk01.com/a/2", "publishTime": now_ts,
+            "title": "格式怪嘅文章", "mainImage": "not-a-dict",   # 會令 .get() 拋 AttributeError
+        }},
+        {"type": 1, "data": {
+            "publishUrl": "https://www.hk01.com/a/3", "publishTime": now_ts,
+            "title": "正常文章三", "mainImage": {"cdnUrl": "https://img/3.jpg"},
+        }},
+    ]}
+    session = _FakeJsonSession(payload)
+    feed_info = {"name": "HK01 突發", "category": "新聞", "max_items": 20, "url": "https://www.hk01.com/v2/feed/zone/2"}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=30)
+
+    articles, error, _not_modified = asyncio.run(_fetch_hk01(session, feed_info, cutoff))
+
+    assert error is None
+    assert [a["title"] for a in articles] == ["正常文章一", "正常文章三"]
+
+
+def test_fetch_nowtv_skips_malformed_item_without_losing_others():
+    import asyncio
+    from src.fetch import _fetch_nowtv
+
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    payload = [
+        {"newsId": "1", "title": "正常文章一", "publishDate": now_ms,
+         "imageList": [{"imageUrl": "https://img/1.jpg"}]},
+        {"newsId": "2", "title": "格式怪嘅文章", "publishDate": now_ms,
+         "imageList": "not-a-list"},   # 會令 image_list[0] 拋 TypeError
+        {"newsId": "3", "title": "正常文章三", "publishDate": now_ms,
+         "imageList": [{"imageUrl": "https://img/3.jpg"}]},
+    ]
+    session = _FakeJsonSession(payload)
+    feed_info = {"name": "Now 國際", "category": "國際", "max_items": 20, "url": "https://news.now.com/home/international"}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=30)
+
+    articles, error, _not_modified = asyncio.run(_fetch_nowtv(session, feed_info, cutoff))
+
+    assert error is None
+    assert [a["title"] for a in articles] == ["正常文章一", "正常文章三"]
+
+
+def test_fetch_oncc_daily_recaps_after_merging_two_days(monkeypatch):
+    # 2026-07-21 audit finding：今日/尋日兩個 dailyList 各自內部已經
+    # cap 咗 max_items，但 merge 之後冇再 re-cap，實際可以攞到接近雙倍
+    # max_items（東網娛樂）。呢個 test 唔理會真實 HTTP/JSON 細節，直接
+    # stub `_parse_oncc_dailylist` 每次 call 都返 max_items 個 article，
+    # 淨係驗證 merge 完之後嘅結果仲係尊重 max_items。
+    import asyncio
+    from datetime import timedelta, timezone
+    from src import fetch as F
+
+    max_items = 20
+    calls = {"n": 0}
+
+    def fake_get(url, timeout=None, headers=None):
+        class _Resp:
+            status = 200
+            async def __aenter__(self_):
+                return self_
+            async def __aexit__(self_, *exc):
+                return False
+            async def read(self_):
+                return b"[]"
+        return _Resp()
+
+    def fake_parse(data, feed_info, cutoff):
+        calls["n"] += 1
+        base = calls["n"] * 1000
+        now = datetime.now(timezone.utc)
+        return [
+            {
+                "id": f"oncc{base + i}",
+                "title": f"文章 {base + i}",
+                "url": f"https://hk.on.cc/x/{base + i}",
+                "date": (now - timedelta(minutes=base + i)).isoformat(),
+                "source": feed_info["name"],
+                "category": feed_info["category"],
+                "content": None,
+                "thumbnail": None,
+                "rss_content": None,
+            }
+            for i in range(max_items)
+        ]
+
+    monkeypatch.setattr(F, "_parse_oncc_dailylist", fake_parse)
+    session = SimpleNamespace(get=fake_get)
+    feed_info = {"name": "東網 娛樂", "category": "娛樂", "oncc_section": "entertainment", "max_items": max_items}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=30)
+
+    articles, error, _not_modified = asyncio.run(F._fetch_oncc_daily(session, feed_info, cutoff))
+
+    assert calls["n"] == 2          # 今日 + 尋日各 call 一次
+    assert len(articles) == max_items   # 之前呢度會係 max_items*2（40）
 
 
 def test_nowtv_category_slug_matches_real_site_paths():

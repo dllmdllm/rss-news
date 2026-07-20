@@ -547,39 +547,51 @@ async def _fetch_hk01(
         return articles, repr(exc), False
 
     max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
-    for item in (data.get("items") or [])[:max_items]:
-        if item.get("type") != 1:
-            continue  # skip sponsored cards / videos
-        d = item.get("data") or {}
-        article_url = _clean_url(d.get("publishUrl") or "")
-        if not article_url:
-            continue
-        ts = d.get("publishTime")
-        if not ts:
-            continue
+    # 2026-07-21 audit finding: (a) 之前喺 filter 贊助/影片卡之前就截
+    # max_items，令實際 candidate 數量少過預期——而家 filter 完先 cap；
+    # (b) per-item 處理冇 try/except，一個 item 格式怪（例如 mainImage
+    # 唔係 dict）就會拋 exception 令成個 function 冇 return，連之前已經
+    # append 好嘅 article 都一齊丟失——而家每個 item 獨立 catch，壞一個
+    # skip 一個。
+    for item in data.get("items") or []:
         try:
-            date = datetime.fromtimestamp(int(ts), timezone.utc)
-        except Exception:
-            continue
-        if date < cutoff:
-            continue
+            if item.get("type") != 1:
+                continue  # skip sponsored cards / videos
+            d = item.get("data") or {}
+            article_url = _clean_url(d.get("publishUrl") or "")
+            if not article_url:
+                continue
+            ts = d.get("publishTime")
+            if not ts:
+                continue
+            try:
+                date = datetime.fromtimestamp(int(ts), timezone.utc)
+            except Exception:
+                continue
+            if date < cutoff:
+                continue
 
-        thumbnail = (d.get("mainImage") or {}).get("cdnUrl") \
-            or (d.get("originalImage") or {}).get("cdnUrl") \
-            or None
-        description = (d.get("description") or "").strip() or None
+            thumbnail = (d.get("mainImage") or {}).get("cdnUrl") \
+                or (d.get("originalImage") or {}).get("cdnUrl") \
+                or None
+            description = (d.get("description") or "").strip() or None
 
-        articles.append({
-            "id":          _make_id(article_url),
-            "title":       d.get("title", "(no title)"),
-            "url":         article_url,
-            "date":        date.isoformat(),
-            "source":      feed_info["name"],
-            "category":    _map_category_for_url(article_url, feed_info),
-            "content":     None,
-            "thumbnail":   thumbnail,
-            "rss_content": description,
-        })
+            articles.append({
+                "id":          _make_id(article_url),
+                "title":       d.get("title", "(no title)"),
+                "url":         article_url,
+                "date":        date.isoformat(),
+                "source":      feed_info["name"],
+                "category":    _map_category_for_url(article_url, feed_info),
+                "content":     None,
+                "thumbnail":   thumbnail,
+                "rss_content": description,
+            })
+        except Exception as exc:
+            print(f"[WARN] fetch {feed_info['name']}: skipping malformed item: {exc!r}")
+            continue
+        if len(articles) >= max_items:
+            break
     return articles, None, False
 
 
@@ -719,38 +731,45 @@ async def _fetch_nowtv(
     articles: list[dict] = []
 
     for item in items:
-        news_id = str(item.get("newsId") or "").strip()
-        title   = (item.get("title") or "").strip()
-        if not news_id or not title:
-            continue
         try:
-            date = datetime.fromtimestamp(int(item["publishDate"]) / 1000, timezone.utc)
-        except Exception:
+            news_id = str(item.get("newsId") or "").strip()
+            title   = (item.get("title") or "").strip()
+            if not news_id or not title:
+                continue
+            try:
+                date = datetime.fromtimestamp(int(item["publishDate"]) / 1000, timezone.utc)
+            except Exception:
+                continue
+            if date < cutoff:
+                continue
+
+            cat_id   = str(item.get("category") or "119")
+            slug     = _NOWTV_CATEGORY_SLUG.get(cat_id, "local")
+            article_url = f"https://news.now.com/home/{slug}/player?newsId={news_id}"
+
+            image_list = item.get("imageList") or []
+            thumbnail  = None
+            if image_list:
+                first     = image_list[0]
+                thumbnail = (first.get("imageUrl") or first.get("image2Url") or "").strip() or None
+
+            articles.append({
+                "id":          _make_id(article_url),
+                "title":       title,
+                "url":         article_url,
+                "date":        date.isoformat(),
+                "source":      feed_info["name"],
+                "category":    feed_info["category"],
+                "content":     None,
+                "thumbnail":   thumbnail,
+                "rss_content": None,
+            })
+        except Exception as exc:
+            # 一個格式怪嘅 item（例如 imageList 入面唔係 dict）之前會令
+            # 成個 function 冇 return，連之前已經 append 好嘅 article 都
+            # 一齊丟失（2026-07-21 audit finding）——而家淨係 skip 呢個 item。
+            print(f"[WARN] fetch {feed_info['name']}: skipping malformed item: {exc!r}")
             continue
-        if date < cutoff:
-            continue
-
-        cat_id   = str(item.get("category") or "119")
-        slug     = _NOWTV_CATEGORY_SLUG.get(cat_id, "local")
-        article_url = f"https://news.now.com/home/{slug}/player?newsId={news_id}"
-
-        image_list = item.get("imageList") or []
-        thumbnail  = None
-        if image_list:
-            first     = image_list[0]
-            thumbnail = (first.get("imageUrl") or first.get("image2Url") or "").strip() or None
-
-        articles.append({
-            "id":          _make_id(article_url),
-            "title":       title,
-            "url":         article_url,
-            "date":        date.isoformat(),
-            "source":      feed_info["name"],
-            "category":    feed_info["category"],
-            "content":     None,
-            "thumbnail":   thumbnail,
-            "rss_content": None,
-        })
         if len(articles) >= max_items:
             break
 
@@ -837,7 +856,12 @@ async def _fetch_oncc_daily(
                 seen.add(a["id"])
                 merged.append(a)
     error = "; ".join(errors) if errors and not merged else None
-    return merged, error, False
+    # 今日／尋日兩個檔各自內部已經 cap 咗 max_items，但 merge 之後未re-cap
+    # 過——兩日通常都有唔重疊嘅文章，實際上可以攞到接近雙倍配額
+    # （2026-07-21 audit finding）。Merge 完再揀最新 max_items 個。
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    merged.sort(key=lambda a: a["date"], reverse=True)
+    return merged[:max_items], error, False
 
 
 async def _fetch_oncc(

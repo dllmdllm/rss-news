@@ -105,6 +105,21 @@ def _build_hk01_content(html: str) -> str | None:
     except Exception:
         return None
 
+    try:
+        return _build_hk01_content_from_data(data)
+    except Exception as exc:
+        # 之前淨係 json.loads 有 guard，深層 traverse 冇——HK01 一旦出現
+        # unexpected shape（例如某個 key 明確係 None、blocks 入面有非-dict
+        # entry）會拋 exception 直接逃出 function。若連續兩次都撞到，
+        # _scrape_one 會喺完全冇 call fallback content 嘅情況下 return，
+        # 比落返 trafilatura SEO preview 仲差——變成完全冇 content
+        # （2026-07-21 audit finding）。而家統一喺呢度 catch，同 json.loads
+        # 一樣 return None 交返俾 trafilatura fallback。
+        print(f"[WARN] _build_hk01_content: unexpected shape {exc!r}")
+        return None
+
+
+def _build_hk01_content_from_data(data: dict) -> str | None:
     article = (
         data.get("props", {})
         .get("initialProps", {})
@@ -1226,6 +1241,14 @@ async def _cloudscraper_fetch(url: str, extra_headers: dict | None = None) -> st
         def _fetch():
             scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
             r = scraper.get(url, timeout=_FALLBACK_TIMEOUT, headers=extra_headers or None)
+            # Unlike _fetch_html/_urllib_fetch, cloudscraper (requests-style)
+            # doesn't raise on non-2xx — a Cloudflare/origin error page whose
+            # body happens not to match any _BLOCK_PHRASES would otherwise be
+            # trusted as real content by _is_blocked() (2026-07-21 audit
+            # finding).
+            if r.status_code >= 400:
+                print(f"[WARN] cloudscraper HTTP {r.status_code} for {url[:60]}")
+                return None
             return r.text
         return await asyncio.wait_for(loop.run_in_executor(None, _fetch), timeout=_FALLBACK_TIMEOUT + 5)
     except Exception as exc:

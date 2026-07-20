@@ -21,6 +21,15 @@
     }
   }
 
+  // localStorage access itself (getItem, not just setItem) can throw
+  // SecurityError under blocked-cookies/private-mode — this was previously
+  // unguarded right here at module init, so it could crash the whole script
+  // before bindEvents()/load() ever ran, leaving the page looking "loaded
+  // but empty" (2026-07-21 audit finding).
+  function storageGet(key, fallback = "") {
+    try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
+  }
+
   const state = {
     articles: [],
     topics: [],
@@ -34,13 +43,13 @@
     fuse: null,
     recentSearches: loadRecentSearches(),
     mobile: {
-      view: localStorage.getItem("mobile.view") || "home",
-      homeMode: localStorage.getItem("mobile.homeMode") || "latest",
-      aiMode: localStorage.getItem("mobile.aiMode") || "priority",
-      homeCat: localStorage.getItem("mobile.homeCat") || "全部",
-      aiCat: localStorage.getItem("mobile.aiCat") || "全部",
-      homeSource: localStorage.getItem("mobile.homeSource") || "",
-      aiSource: localStorage.getItem("mobile.aiSource") || "",
+      view: storageGet("mobile.view", "home"),
+      homeMode: storageGet("mobile.homeMode", "latest"),
+      aiMode: storageGet("mobile.aiMode", "priority"),
+      homeCat: storageGet("mobile.homeCat", "全部"),
+      aiCat: storageGet("mobile.aiCat", "全部"),
+      homeSource: storageGet("mobile.homeSource", ""),
+      aiSource: storageGet("mobile.aiSource", ""),
     },
   };
 
@@ -886,10 +895,12 @@
       applyTheme(next);
     });
     $("resetMobile")?.addEventListener("click", () => {
-      ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat",
-       "mobile.homeSource", "mobile.aiSource",
-       "mobile.theme", "rss_theme", "rss_home_font_size", "rss_font_size"]
-        .forEach((k) => localStorage.removeItem(k));
+      try {
+        ["mobile.view", "mobile.homeMode", "mobile.aiMode", "mobile.homeCat", "mobile.aiCat",
+         "mobile.homeSource", "mobile.aiSource",
+         "mobile.theme", "rss_theme", "rss_home_font_size", "rss_font_size"]
+          .forEach((k) => localStorage.removeItem(k));
+      } catch (_) {}
       location.reload();
     });
     applyThemeInitial();
@@ -914,7 +925,7 @@
   }
 
   function bindEvents() {
-    applyFontSize(localStorage.getItem("rss_font_size") || localStorage.getItem("rss_home_font_size") || "normal");
+    applyFontSize(storageGet("rss_font_size") || storageGet("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
       const sourceButton = event.target.closest("button[data-source]");
       if (sourceButton) {
