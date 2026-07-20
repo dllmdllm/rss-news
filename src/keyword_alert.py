@@ -25,9 +25,21 @@ from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
 
 STATE_PATH = Path(__file__).parent.parent / "docs" / "data" / "keyword_alerts.json"
 
-# 關鍵字之間係 OR 關係，每個都係 substring match（唔分大小寫）。
-# 例："樓市", "AI", "越南"
-WATCH_KEYWORDS: list[str] = []
+# 關鍵字之間係 OR 關係，每個都係 substring match（唔分大小寫）——
+# 純字面比對，冇語義理解。想追蹤一個主題就要將相關字（品牌/產品/人名/
+# 中英對照）全部列晒落嚟，例如淨係 "OpenAI" 唔會 match 到 "ChatGPT"。
+WATCH_KEYWORDS: list[str] = [
+    "OpenAI", "ChatGPT", "GPT-", "Sam Altman", "奧特曼",
+    "Anthropic", "Claude AI",
+    "Google", "Gemini AI", "DeepMind",
+    "Meta AI", "Llama",
+    # 淨用英文 "Apple"、唔加中文「蘋果」——快速通道對住嘅係綜合新聞
+    # source（唔係科技台），「蘋果」會撞正生果價錢／蘋果日報舊聞呢類
+    # 完全唔相關嘅新聞，誤鳴風險太高。
+    "Apple", "庫克", "Tim Cook",
+    "Microsoft", "微軟", "Satya Nadella",
+    "Nvidia", "輝達", "黃仁勳",
+]
 
 FRESHNESS_HOURS      = 2    # 只揀呢個窗口內先出嘅文，避免每次 build 重新掃全部舊文
 MAX_ALERTS_PER_BUILD = 5    # 防止太闊嘅關鍵字（例如「香港」）一次過洗版

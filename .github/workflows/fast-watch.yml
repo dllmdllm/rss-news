@@ -1,0 +1,61 @@
+# Fast keyword tripwire — polls only the 3 fastest-publishing sources
+# (星島頭條, am730, TVB 新聞) every 5 min for keyword hits, title/RSS-only
+# (no full-text scrape, no AI analysis). Runs on GitHub-hosted ubuntu,
+# fully decoupled from update.yml / the self-hosted runner: never touches
+# docs/data and never commits to git, so it can't collide with the main
+# 20-min build's own pushes. State (seen article ids, to avoid
+# re-alerting) persists across runs via the Actions cache — same pattern
+# as guardian.yml.
+#
+# Trade-off: no shared state with keyword_alert.py's own dedup (that one
+# runs inside build.py every ~20 min against docs/data/keyword_alerts.json).
+# A fast-lane hit can occasionally be followed by a second, slower alert
+# from the main pipeline for the same article. Message prefixes are kept
+# visually distinct (⚡ here vs 🔔 there) so that's obviously not a bug.
+name: Fast Keyword Watch
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fast-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install deps
+        run: pip install aiohttp==3.13.5 feedparser==6.0.12 beautifulsoup4==4.14.3 zhconv==1.4.3
+
+      - name: Restore seen-articles cache
+        uses: actions/cache/restore@v5
+        with:
+          path: fast_watch_state.json
+          key: fast-watch-state-${{ github.run_id }}
+          restore-keys: fast-watch-state-
+
+      - name: Check keywords
+        run: python -m src.fast_watch
+
+      - name: Save seen-articles cache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: fast_watch_state.json
+          key: fast-watch-state-${{ github.run_id }}
