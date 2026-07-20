@@ -78,6 +78,7 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
                 "score":      best.get("score") or 0,
                 "date":       best.get("date") or "",
                 "article_id": best.get("id", ""),
+                "url":        best.get("url") or "",
                 "thumbnail":  best.get("thumbnail") or "",
                 # breaking alert 跑喺 analyse 之後，best 已有 AI 摘要——
                 # 帶埋落通知度俾 _format_alert_text 出 bullet points。
@@ -141,6 +142,9 @@ def _format_alert_text(b: dict) -> str:
     points = [p.strip() for p in re.split(r"[\n・•]+", b.get("summary") or "") if p.strip()]
     lines.extend(f"・{esc(p)}" for p in points[:5])
     lines.append(f"來源：{esc('、'.join(b['sources'][:5]))}")
+    url = b.get("url") or ""
+    if url:
+        lines.append(f'<a href="{esc(url)}">睇原文</a>')
     return "\n".join(lines)
 
 

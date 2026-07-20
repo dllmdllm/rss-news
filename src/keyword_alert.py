@@ -110,6 +110,9 @@ def _format_alert_text(article: dict) -> str:
     meta = " · ".join(filter(None, [article.get("category", ""), article.get("source", "")]))
     if meta:
         lines.append(esc(meta))
+    url = article.get("url") or ""
+    if url:
+        lines.append(f'<a href="{esc(url)}">睇原文</a>')
     return "\n".join(lines)
 
 

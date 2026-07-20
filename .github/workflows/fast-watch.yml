@@ -12,11 +12,15 @@
 # A fast-lane hit can occasionally be followed by a second, slower alert
 # from the main pipeline for the same article. Message prefixes are kept
 # visually distinct (⚡ here vs 🔔 there) so that's obviously not a bug.
+#
+# Quiet hours: no run 00:00-07:00 HKT (UTC+8) daily, per user request —
+# HKT 00:00 = UTC 16:00 (prev day), HKT 07:00 = UTC 23:00, so the allowed
+# cron hours are UTC 23 and 0-15.
 name: Fast Keyword Watch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 23,0-15 * * *"
   workflow_dispatch:
 
 permissions:

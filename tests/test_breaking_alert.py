@@ -68,15 +68,16 @@ def test_detect_breaking_clusters_includes_thumbnail_of_best_article():
     now = datetime.now(timezone.utc).isoformat()
     articles = [
         {"id": "a", "cluster_id": "c1", "source": "A", "date": now, "score": 5,
-         "title": "低分", "thumbnail": "https://example.com/low.jpg"},
+         "title": "低分", "thumbnail": "https://example.com/low.jpg", "url": "https://example.com/low"},
         {"id": "b", "cluster_id": "c1", "source": "B", "date": now, "score": 9,
-         "title": "高分", "thumbnail": "https://example.com/high.jpg"},
+         "title": "高分", "thumbnail": "https://example.com/high.jpg", "url": "https://example.com/high"},
         {"id": "c", "cluster_id": "c1", "source": "C", "date": now, "score": 3,
          "title": "都係呢單", "thumbnail": ""},
     ]
     breaking = detect_breaking_clusters(articles)
     assert len(breaking) == 1
     assert breaking[0]["thumbnail"] == "https://example.com/high.jpg"
+    assert breaking[0]["url"] == "https://example.com/high"
 
 
 def test_format_alert_text_includes_summary_bullets_and_sources_last():
@@ -101,3 +102,12 @@ def test_format_alert_text_without_summary_keeps_headline_and_sources():
 
     text = _format_alert_text({"headline": "冇摘要", "summary": "", "sources": ["明報"]})
     assert text == "🔴 <b>突發</b>：冇摘要\n來源：明報"
+
+
+def test_format_alert_text_appends_link_when_url_present():
+    from src.breaking_alert import _format_alert_text
+
+    text = _format_alert_text({
+        "headline": "有連結", "summary": "", "sources": ["明報"], "url": "https://example.com/x",
+    })
+    assert text.endswith('<a href="https://example.com/x">睇原文</a>')

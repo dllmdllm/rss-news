@@ -14,6 +14,7 @@ def _article(**overrides):
         "source": "RTHK 本地",
         "date": datetime.now(timezone.utc).isoformat(),
         "thumbnail": "",
+        "url": "https://example.com/a1",
     }
     base.update(overrides)
     return base
@@ -61,12 +62,21 @@ def test_detect_keyword_matches_empty_watchlist_returns_nothing(monkeypatch):
 
 
 def test_format_alert_text_includes_keyword_summary_and_meta():
-    article = _article(title="樓市成交急升", summary="・重點一\n・重點二")
+    article = _article(title="樓市成交急升", summary="・重點一\n・重點二", url="https://example.com/hit")
     article["_matched_keyword"] = "樓市"
     text = KA._format_alert_text(article)
     assert text.startswith("🔔 <b>關鍵字提醒</b>：樓市\n樓市成交急升")
     assert "・重點一" in text
     assert "新聞 · RTHK 本地" in text
+    assert 'href="https://example.com/hit"' in text
+    assert text.rstrip().endswith("</a>")
+
+
+def test_format_alert_text_omits_link_when_no_url():
+    article = _article(title="樓市成交急升", url="")
+    article["_matched_keyword"] = "樓市"
+    text = KA._format_alert_text(article)
+    assert "<a href=" not in text
 
 
 def test_send_keyword_alerts_noop_without_keywords(monkeypatch, tmp_path):
