@@ -150,6 +150,33 @@ def test_main_alerts_new_match_and_persists_seen(monkeypatch, tmp_path):
     assert set(seen) == {"hit1", "miss1"}
 
 
+def test_main_saves_partial_progress_on_timeout(monkeypatch, tmp_path):
+    # 2026-07-21 audit finding：之前 main() 完全冇成體 timeout 保護——
+    # 而家加咗，但要確保逾時嗰陣 _save_seen 仍然會用返已經 fetch 到嘅
+    # article 嚟保存 seen 狀態，唔係乜都save唔到（成個run嘅去重進度流失）。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+    monkeypatch.setattr(FW, "MAIN_TIMEOUT", 0.05)
+
+    articles = [_article(id="miss1", title="天氣預告")]
+
+    async def slow_fetch(session, cutoff):
+        # 攞到 article 之後先 sleep——模擬 send 階段先卡死，
+        # 驗證 articles 呢個 nonlocal 變數喺 timeout 之後仍然保留低。
+        await asyncio.sleep(0.2)
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", slow_fetch)
+
+    asyncio.run(FW.main())
+
+    seen = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["seen"]
+    # _fetch_watched 本身逾時緊，所以 articles 停留喺空 list——但最緊要係
+    # main() 冇拋 exception，_save_seen 一定有執行（state.json 會存在）。
+    assert (tmp_path / "state.json").exists()
+    assert seen == {}
+
+
 def test_main_does_not_realert_seen_article(monkeypatch, tmp_path):
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])

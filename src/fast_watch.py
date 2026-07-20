@@ -36,6 +36,12 @@ STATE_PATH = Path("fast_watch_state.json")
 FRESHNESS_HOURS = 2   # cold-start window; "seen" set prevents re-alerting after that
 MAX_ALERTS_PER_RUN = 5
 SEEN_CAP = 3000        # bound state.json size — plain id list, no dates to prune by
+# fast-watch.yml's job timeout-minutes is 4 (240s), covering checkout +
+# setup-python + pip install + cache restore/save around this one step too
+# — unlike build.py, main() had no overall wait_for at all, so a hang here
+# could eat the whole job timeout and skip _save_seen() entirely, losing
+# this run's dedup progress (2026-07-21 audit finding).
+MAIN_TIMEOUT = 150
 
 
 def _load_seen() -> dict[str, str]:
@@ -116,27 +122,41 @@ async def main() -> None:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
 
-    async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
-        articles = await _fetch_watched(session, cutoff)
-        fresh = [a for a in articles if a.get("id") and a["id"] not in seen]
-        matched = [(a, kw) for a in fresh if (kw := _match_keyword(a))]
-        matched.sort(key=lambda pair: pair[0].get("date", ""), reverse=True)
+    # Mutated by _run() as it progresses, so a timeout mid-way still leaves
+    # us with whatever was determined so far to persist below — unlike a
+    # bare `asyncio.wait_for(main(), ...)` wrapper from outside, which would
+    # cancel everything including the never-reached _save_seen() call.
+    articles: list[dict] = []
+    matched: list[tuple[dict, str]] = []
+    alerted_ids: set[str] = set()
+    sent = 0
 
-        sent = 0
-        alerted_ids: set[str] = set()
-        for article, keyword in matched[:MAX_ALERTS_PER_RUN]:
-            try:
-                status = await _send_telegram(
-                    session, _format_text(article, keyword), photo_url=article.get("thumbnail") or ""
-                )
-                if 200 <= status < 300:
-                    sent += 1
-                    alerted_ids.add(article["id"])
-                    print(f"[fast-watch] Alerted ({keyword}): {article.get('title', '')[:50]}")
-                else:
-                    print(f"[fast-watch] Telegram returned {status}")
-            except Exception as exc:
-                print(f"[fast-watch] Send failed: {exc!r}")
+    async def _run():
+        nonlocal articles, matched, sent
+        async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
+            articles = await _fetch_watched(session, cutoff)
+            fresh = [a for a in articles if a.get("id") and a["id"] not in seen]
+            matched = [(a, kw) for a in fresh if (kw := _match_keyword(a))]
+            matched.sort(key=lambda pair: pair[0].get("date", ""), reverse=True)
+
+            for article, keyword in matched[:MAX_ALERTS_PER_RUN]:
+                try:
+                    status = await _send_telegram(
+                        session, _format_text(article, keyword), photo_url=article.get("thumbnail") or ""
+                    )
+                    if 200 <= status < 300:
+                        sent += 1
+                        alerted_ids.add(article["id"])
+                        print(f"[fast-watch] Alerted ({keyword}): {article.get('title', '')[:50]}")
+                    else:
+                        print(f"[fast-watch] Telegram returned {status}")
+                except Exception as exc:
+                    print(f"[fast-watch] Send failed: {exc!r}")
+
+    try:
+        await asyncio.wait_for(_run(), timeout=MAIN_TIMEOUT)
+    except (asyncio.TimeoutError, TimeoutError):
+        print(f"[fast-watch] timed out after {MAIN_TIMEOUT}s — saving partial progress")
 
     # 唔好將 send 失敗／未過 MAX_ALERTS_PER_RUN cap 嘅 matched article 都計
     # 做「已讀」——`seen` 係唯一嘅去重機制，一入咗就永遠唔會再檢查，之前

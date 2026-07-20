@@ -992,6 +992,13 @@ async def main():
     t0 = time.monotonic()
     _build_status = {}
     build_status = _build_status
+    # _build_status is reset every call above; _core_saved wasn't — it only
+    # ever went False→True and stayed True forever after the first
+    # successful save. Harmless under the one-process-per-cron-invocation
+    # model this repo actually runs under, but a real re-entrancy bug for
+    # any future caller (a test, a retry wrapper) that invokes main() more
+    # than once in the same process (2026-07-21 audit finding).
+    _core_saved = False
 
     def mark_step(name: str, ok: bool = True, error: str = "", seconds: float | None = None) -> None:
         row = {"ok": ok}
@@ -1013,21 +1020,27 @@ async def main():
     _tlog("fetch start")
     try:
         articles, source_stats = await asyncio.wait_for(fetch_all(), timeout=150)
+        mark_step("fetch", seconds=time.monotonic() - t)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("fetch timed out — falling back to old articles")
         articles, source_stats = [], {}
+        mark_step("fetch", ok=False, error="timeout", seconds=time.monotonic() - t)
     _tlog(f"fetch done {time.monotonic()-t:.1f}s ({len(articles)} articles)")
 
     articles = _merge_missing_sources(articles, old_articles, source_stats)
 
     # --- retranslate (hard cap 45s) ---
+    t = time.monotonic()
     _tlog(f"retranslate start ({len(articles)} articles after merge)")
     try:
         await asyncio.wait_for(retranslate_english_titles(articles), timeout=45)
+        mark_step("retranslate", seconds=time.monotonic() - t)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("retranslate timed out — skipping")
+        mark_step("retranslate", ok=False, error="timeout", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"retranslate error: {exc!r}")
+        mark_step("retranslate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog("retranslate done")
 
     # --- scrape (internal 240s cap; outer cap 255s) ---
@@ -1035,8 +1048,10 @@ async def main():
     _tlog("scrape start")
     try:
         articles = await asyncio.wait_for(scrape_all(articles), timeout=255)
+        mark_step("scrape", seconds=time.monotonic() - t)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("scrape outer timeout — using partial")
+        mark_step("scrape", ok=False, error="timeout", seconds=time.monotonic() - t)
     _tlog(f"scrape done {time.monotonic()-t:.1f}s")
 
     # --- translate English source bodies (hard cap 90s) ---
@@ -1071,9 +1086,11 @@ async def main():
     _tlog("analyse start")
     try:
         articles = await asyncio.wait_for(analyse_all(articles), timeout=280)
+        mark_step("analyse", seconds=time.monotonic() - t)
     except (asyncio.TimeoutError, TimeoutError):
         _tlog("analyse timed out — using partial")
         _ensure_analysis_defaults(articles)
+        mark_step("analyse", ok=False, error="timeout", seconds=time.monotonic() - t)
     _tlog(f"analyse done {time.monotonic()-t:.1f}s")
 
     articles = _apply_fallback_summaries(articles, old_articles)
@@ -1083,7 +1100,15 @@ async def main():
     articles = annotate_ai_features(articles)
 
     # Save core data *before* optional heavy steps so a timeout still commits.
-    # Total budget for steps above: 150+45+255+280 = 730s max → save_json always runs by t=730s.
+    # Total budget for steps above: fetch 150 + retranslate 45 + scrape 255 +
+    # translate 90 + analyse 280 = 820s max → against the 850s global cap
+    # (asyncio.wait_for(main(), timeout=850) at the bottom of this file),
+    # that leaves ~30s for detect_duplicates/cluster_articles/
+    # annotate_ai_features/save_json below — not the 120s a stale version of
+    # this comment used to claim (it omitted the translate stage entirely;
+    # 2026-07-21 audit finding). On a day where fetch/scrape/translate/
+    # analyse all trend toward their ceilings, save_json may not finish
+    # before the hard kill.
     articles.sort(key=lambda x: x.get("date", ""), reverse=True)
     _tlog("save_json start")
     save_json(articles, source_stats)

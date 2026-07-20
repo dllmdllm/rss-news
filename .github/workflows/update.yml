@@ -148,9 +148,14 @@ jobs:
           # Retry fetch → resync → push up to 3 times. Each iteration re-stacks
           # our generated output on top of the latest origin/main, so a concurrent
           # push (Codex, or a prior stuck chore commit) can't permanently wedge us.
+          # http.lowSpeedLimit/lowSpeedTime aborts a STALLED (not just slow)
+          # transfer after 30s below 1000 B/s — without it a hung (not
+          # refused) connection has no timeout at all and can eat the whole
+          # 25min job timeout even after build.py already saved good data
+          # locally (2026-07-21 audit finding).
           for i in 1 2 3; do
             echo "=== attempt $i ==="
-            if ! git fetch origin main; then
+            if ! git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch origin main; then
               echo "fetch failed on attempt $i"
               sleep 3
               continue
@@ -169,7 +174,7 @@ jobs:
               echo "no changes after resync"; exit 0
             fi
             git commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
-            if git push origin HEAD:main; then
+            if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 push origin HEAD:main; then
               echo "push OK on attempt $i"
               exit 0
             fi

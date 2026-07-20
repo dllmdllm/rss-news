@@ -558,6 +558,13 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     assert "<guid isPermaLink=\"false\">dryrun</guid>" in feed
     assert embed_call["data_dir"] == data_dir
     assert (data_dir / "build_status.json").exists()
+    build_status = json.loads((data_dir / "build_status.json").read_text(encoding="utf-8"))
+    steps = build_status["steps"]
+    # 2026-07-21 audit finding: fetch/retranslate/scrape/analyse 之前完全
+    # 冇 mark_step，build_status.json 淨係 track 到 translate 之後嘅 stage。
+    for stage in ("fetch", "retranslate", "scrape", "analyse", "translate"):
+        assert stage in steps, f"{stage} missing from build_status.json"
+        assert steps[stage]["ok"] is True
 
 
 def test_timeout_status_records_build_failure(tmp_path, monkeypatch):
