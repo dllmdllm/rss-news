@@ -20,14 +20,14 @@ rss-news/
 │   ├── breaking_alert.py # 突發通知：Telegram bot 推送
 │   ├── keyword_alert.py  # 慢速關鍵字通道：隨 build（~20 分鐘）比對 WATCH_KEYWORDS（+ trending）→ keyword_alerts.json + Telegram
 │   ├── fast_watch.py     # 快速關鍵字通道：獨立 ubuntu workflow（5 分鐘），淨查 3 個最快 source 標題，唔碰 docs/data
-│   ├── trends_watch.py   # Google Trends（香港）熱門字：每日一次 sync → trending_keywords.txt，自動並入關鍵字監控
+│   ├── trends_watch.py   # Google Trends（香港）熱門字：隨 build（~20 分鐘）sync → trending_keywords.txt，自動並入關鍵字監控
 │   ├── daily_brief.py    # 每日早報：HKT 06:00 後首個 build 綜合 24h top stories（MiniMax）→ daily_brief.json + Telegram
 │   ├── entity_digest.py  # 實體摘要：聚合人物 / 機構 → entities.json
 │   ├── minimax_client.py # MiniMax API thin wrapper（共用 HTTP shape + thinking 參數）
 │   └── feeds.py          # RSS 來源定義及常數
 ├── config/
 │   ├── watch_keywords.txt     # keyword_alert.py / fast_watch.py 共用嘅關鍵字清單，由 vault sync 寫，唔好手改
-│   └── trending_keywords.txt  # Google Trends 香港熱門字，由 trends_watch.py 每日 sync 寫，唔好手改
+│   └── trending_keywords.txt  # Google Trends 香港熱門字，由 trends_watch.py 隨 build sync 寫，唔好手改
 ├── build.py              # 主程式：fetch → scrape → analyse → cluster → 輸出 JSON
 ├── docs/                 # GitHub Pages 根目錄
 │   ├── index.html        # 文章列表頁（含 AI tab）
@@ -79,7 +79,7 @@ RSS Feed
                           ├─ embed.py         語義向量 + 相似文章
                           ├─ breaking_alert.py  Telegram 突發通知
                           ├─ keyword_alert.py   慢速關鍵字通道（同時 sync vault → config/watch_keywords.txt
-                          │                      + trends_watch.py 每日 sync → config/trending_keywords.txt）
+                          │                      + trends_watch.py 隨 build sync → config/trending_keywords.txt）
                           ├─ entity_digest.py   實體摘要
                           └─ save_json()  → docs/data/
 
@@ -484,17 +484,19 @@ check + send 完即時更新，唔可以喺 loop 之前一次過計 eligible lis
 Google 香港熱門搜尋自動加入監控清單，match 到就當普通 keyword alert 送
 （唔開獨立 channel、唔額外標記）。Google 冇官方「過去一小時」granularity 嘅
 trending API，用官方支援嘅 daily trending RSS feed（`trends.google.com/trending/rss?geo=HK`，
-免 auth，唔算 unofficial scraping）代替，所以粒度係日更新，唔係真.即時。
-`sync_trending_keywords()` 跟 `daily_brief.py` 嗰種「每日一次」冪等 pattern
-（sync 日期記喺 `config/trending_keywords.txt` 第一行 `# synced YYYY-MM-DD`），
-由 `build.py` 喺 vault sync 之後、fetch 之前 call（20s cap，失敗/逾時就保留
-舊清單）。每次成功都完全覆寫（唔似 `WATCH_KEYWORDS` 咁累積），避免舊日
-trending 詞賴喺個清單度。單字（例如「金」）撞正太多常見詞、substring match
-誤鳴風險太高，`MIN_KEYWORD_LEN=2` 過濾走；標題經 `zhconv` 轉做香港繁體
-（Google 有時返簡體，唔轉嘅話成隻詞永遠 match 唔中網站嘅繁體內文）。兩條
-通道都用 `load_trending_keywords()` 讀呢個 config，同 `WATCH_KEYWORDS` 合併
-（`dict.fromkeys()` 去重）先做 match——冇喺 `KEYWORD_CONTEXT` 登記，所以
-trending 字自動當冇 context 限制。
+免 auth，唔算 unofficial scraping）代替——但實測（2026-07-21）item 嘅
+pubDate 相隔 10-30 分鐘，個榜好快轉勻，「daily」淨係個 feed 個名，唔係
+實際更新頻率。`sync_trending_keywords()` 跟返 `build.py` 主 pipeline 同頻率
+（~20 分鐘一次 build 都真.去 fetch，冇 gate），由 `build.py` 喺 vault sync
+之後、fetch 之前 call（20s cap，失敗/逾時就保留舊清單）。每次成功都完全
+覆寫（唔似 `WATCH_KEYWORDS` 咁累積），避免舊嘅 trending 詞賴喺個清單度；
+`config/trending_keywords.txt` 第一行 `# synced <ISO timestamp>` 純粹記錄
+「上次成功 fetch 幾時」，冇 gating 邏輯食呢個值。單字（例如「金」）撞正
+太多常見詞、substring match 誤鳴風險太高，`MIN_KEYWORD_LEN=2` 過濾走；
+標題經 `zhconv` 轉做香港繁體（Google 有時返簡體，唔轉嘅話成隻詞永遠
+match 唔中網站嘅繁體內文）。兩條通道都用 `load_trending_keywords()` 讀
+呢個 config，同 `WATCH_KEYWORDS` 合併（`dict.fromkeys()` 去重）先做
+match——冇喺 `KEYWORD_CONTEXT` 登記，所以 trending 字自動當冇 context 限制。
 
 ⚠️ **Test isolation 陷阱**（同 2026-07-21 `KEYWORD_CONTEXT` 嗰個一樣，重複出現
 過兩次）：一旦 self-hosted 機真.跑過 `sync_trending_keywords()`，

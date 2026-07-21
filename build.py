@@ -1016,9 +1016,11 @@ async def main():
     except Exception as exc:
         _tlog(f"watch_keywords vault sync: {exc!r}")
 
-    # Google Trends（香港）熱門字，每日一次（2026-07-21，用戶要求自動加入
-    # keyword 監控）。20s cap——fetch 失敗/逾時就用返舊 config，唔會阻住
-    # 之後嘅 fetch/scrape 步驟。
+    # Google Trends（香港）熱門字，跟呢個 build 一齊 sync（~20 分鐘一次，
+    # 2026-07-21，用戶要求自動加入 keyword 監控；實測 Google 個 feed 本身
+    # 10-30 分鐘就轉一次，所以跟主 pipeline 頻率、冇再淨係每日一次）。
+    # 20s cap——fetch 失敗/逾時就用返舊 config，唔會阻住之後嘅 fetch/scrape
+    # 步驟。
     try:
         await asyncio.wait_for(sync_trending_keywords(), timeout=20)
     except (asyncio.TimeoutError, TimeoutError):

@@ -76,42 +76,18 @@ def test_clean_keywords_respects_max_cap(monkeypatch):
     assert out == ["一二", "三四"]
 
 
-def test_load_synced_date_missing_file_returns_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(TW, "CONFIG_PATH", tmp_path / "missing.txt")
-    assert TW._load_synced_date() == ""
-
-
 def test_write_config_then_load_roundtrip(tmp_path, monkeypatch):
     config_path = tmp_path / "trending_keywords.txt"
     monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
-    TW._write_config(["陳嘉信", "屯門公路"], "2026-07-21")
-    assert TW._load_synced_date() == "2026-07-21"
+    TW._write_config(["陳嘉信", "屯門公路"], "2026-07-21T10:00:00+08:00")
     assert TW.load_trending_keywords() == ["陳嘉信", "屯門公路"]
+    first_line = config_path.read_text(encoding="utf-8").splitlines()[0]
+    assert first_line == "# synced 2026-07-21T10:00:00+08:00"
 
 
 def test_load_trending_keywords_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(TW, "CONFIG_PATH", tmp_path / "missing.txt")
     assert TW.load_trending_keywords() == []
-
-
-def test_should_sync_true_when_never_synced(tmp_path, monkeypatch):
-    monkeypatch.setattr(TW, "CONFIG_PATH", tmp_path / "missing.txt")
-    assert TW.should_sync(datetime.now(TW.HKT)) is True
-
-
-def test_should_sync_false_when_already_synced_today(tmp_path, monkeypatch):
-    config_path = tmp_path / "trending_keywords.txt"
-    monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
-    now = datetime(2026, 7, 21, 10, 0, tzinfo=TW.HKT)
-    TW._write_config(["陳嘉信"], now.strftime("%Y-%m-%d"))
-    assert TW.should_sync(now) is False
-
-
-def test_should_sync_true_on_new_calendar_day(tmp_path, monkeypatch):
-    config_path = tmp_path / "trending_keywords.txt"
-    monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
-    TW._write_config(["陳嘉信"], "2026-07-20")
-    assert TW.should_sync(datetime(2026, 7, 21, 0, 5, tzinfo=TW.HKT)) is True
 
 
 def test_fetch_trending_keywords_parses_and_cleans():
@@ -120,40 +96,32 @@ def test_fetch_trending_keywords_parses_and_cleans():
     assert out == ["陳嘉信", "屯門公路"]  # 「金」單字被過濾走，簡轉繁
 
 
-def test_sync_trending_keywords_skips_fetch_when_already_synced_today(tmp_path, monkeypatch):
+def test_sync_trending_keywords_always_fetches_even_when_synced_recently(tmp_path, monkeypatch):
+    # 2026-07-21：實測 Google 個 feed 每 10-30 分鐘就轉一次，跟返 build.py
+    # 主 pipeline 頻率（~20 分鐘一次）每次都真.去 fetch，冇「今日 sync 過
+    # 就 skip」嘅 gate（呢個 gate 舊版有，而家刪咗）。
     config_path = tmp_path / "trending_keywords.txt"
     monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
     now = datetime(2026, 7, 21, 10, 0, tzinfo=TW.HKT)
-    TW._write_config(["舊清單"], now.strftime("%Y-%m-%d"))
+    TW._write_config(["舊清單"], now.isoformat())
 
-    async def fail_fetch(*a, **kw):
-        raise AssertionError("should not fetch — already synced today")
-    monkeypatch.setattr(TW, "fetch_trending_keywords", fail_fetch)
-
-    out = asyncio.run(TW.sync_trending_keywords(now))
-    assert out == ["舊清單"]
-
-
-def test_sync_trending_keywords_fetches_and_overwrites_on_new_day(tmp_path, monkeypatch):
-    config_path = tmp_path / "trending_keywords.txt"
-    monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
-    TW._write_config(["舊清單"], "2026-07-20")
+    called = {"n": 0}
 
     async def fake_fetch(session):
+        called["n"] += 1
         return ["新清單一", "新清單二"]
     monkeypatch.setattr(TW, "fetch_trending_keywords", fake_fetch)
 
-    now = datetime(2026, 7, 21, 0, 5, tzinfo=TW.HKT)
-    out = asyncio.run(TW.sync_trending_keywords(now))
+    out = asyncio.run(TW.sync_trending_keywords(now + timedelta(minutes=5)))
+    assert called["n"] == 1
     assert out == ["新清單一", "新清單二"]
     assert TW.load_trending_keywords() == ["新清單一", "新清單二"]  # 完全覆寫，冇同舊清單合併
-    assert TW._load_synced_date() == "2026-07-21"
 
 
 def test_sync_trending_keywords_keeps_old_config_on_fetch_failure(tmp_path, monkeypatch):
     config_path = tmp_path / "trending_keywords.txt"
     monkeypatch.setattr(TW, "CONFIG_PATH", config_path)
-    TW._write_config(["舊清單"], "2026-07-20")
+    TW._write_config(["舊清單"], "2026-07-20T00:00:00+08:00")
 
     async def failing_fetch(session):
         raise RuntimeError("network error")
@@ -162,4 +130,4 @@ def test_sync_trending_keywords_keeps_old_config_on_fetch_failure(tmp_path, monk
     now = datetime(2026, 7, 21, 0, 5, tzinfo=TW.HKT)
     out = asyncio.run(TW.sync_trending_keywords(now))
     assert out == ["舊清單"]
-    assert TW._load_synced_date() == "2026-07-20"  # 冇被覆寫做今日日期
+    assert TW.load_trending_keywords() == ["舊清單"]  # 冇被覆寫
