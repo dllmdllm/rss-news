@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src import fast_watch as FW
 
@@ -60,36 +60,43 @@ def test_format_text_escapes_double_quote_in_url():
     assert 'href="https://x.com/1&quot;onmouseover=alert(1)"' in text
 
 
-def test_seen_roundtrip(tmp_path, monkeypatch):
+def test_state_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
-    FW._save_seen({"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"})
-    assert FW._load_seen() == {"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"}
+    FW._save_state({
+        "seen": {"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"},
+        "cooldown": {"交通意外": "2026-07-21T00:00:00+00:00"},
+    })
+    state = FW._load_state()
+    assert state["seen"] == {"id1": "2026-07-21T00:00:00+00:00", "id2": "2026-07-21T00:01:00+00:00"}
+    assert state["cooldown"] == {"交通意外": "2026-07-21T00:00:00+00:00"}
 
 
-def test_load_seen_missing_file_returns_empty(tmp_path, monkeypatch):
+def test_load_state_missing_file_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "missing.json")
-    assert FW._load_seen() == {}
+    assert FW._load_state() == {"seen": {}, "cooldown": {}}
 
 
-def test_load_seen_corrupt_file_returns_empty(tmp_path, monkeypatch):
+def test_load_state_corrupt_file_returns_empty(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text("not json", encoding="utf-8")
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
-    assert FW._load_seen() == {}
+    assert FW._load_state() == {"seen": {}, "cooldown": {}}
 
 
-def test_load_seen_migrates_old_plain_list_format(tmp_path, monkeypatch):
+def test_load_state_migrates_old_plain_list_seen_format(tmp_path, monkeypatch):
     # 2026-07-20 之前 STATE_PATH 係 {"seen": [id, id, ...]}（純 list，
-    # 冇時間資訊）——升級之後要 migrate 做 dict，唔可以直接壞晒。
+    # 冇時間資訊，亦都冇 cooldown key）——升級之後要 migrate 做 dict，
+    # 唔可以直接壞晒。
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps({"seen": ["old1", "old2"]}), encoding="utf-8")
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
-    seen = FW._load_seen()
-    assert set(seen.keys()) == {"old1", "old2"}
-    assert all(isinstance(ts, str) and ts for ts in seen.values())
+    state = FW._load_state()
+    assert set(state["seen"].keys()) == {"old1", "old2"}
+    assert all(isinstance(ts, str) and ts for ts in state["seen"].values())
+    assert state["cooldown"] == {}
 
 
-def test_save_seen_caps_size_by_recency_not_alphabetical(tmp_path, monkeypatch):
+def test_save_state_caps_seen_size_by_recency_not_alphabetical(tmp_path, monkeypatch):
     # 2026-07-21 audit finding：article id 嚟自 url 嘅 md5 hash，
     # alphabetical sort 同幾時見過完全冇關係——之前嘅淘汰policy可能
     # evict 咗啱啱先見過嘅 article。而家應該淘汰真正最舊嘅 timestamp。
@@ -102,11 +109,25 @@ def test_save_seen_caps_size_by_recency_not_alphabetical(tmp_path, monkeypatch):
         "a_new2": "2026-07-21T00:02:00+00:00",
         "a_new3": "2026-07-21T00:03:00+00:00",
     }
-    FW._save_seen(seen)
+    FW._save_state({"seen": seen, "cooldown": {}})
     data = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert len(data["seen"]) == 3
     assert "z_old" not in data["seen"]
     assert set(data["seen"].keys()) == {"a_new1", "a_new2", "a_new3"}
+
+
+def test_keyword_in_cooldown():
+    now = datetime.now(timezone.utc)
+    cooldown = {"交通意外": (now - timedelta(minutes=10)).isoformat()}
+    assert FW._keyword_in_cooldown("交通意外", cooldown, now)          # 10 分鐘前，30 分鐘冷卻仲未過
+    assert not FW._keyword_in_cooldown("OpenAI", cooldown, now)         # 冇記錄過，唔喺冷卻
+    stale_cooldown = {"交通意外": (now - timedelta(minutes=31)).isoformat()}
+    assert not FW._keyword_in_cooldown("交通意外", stale_cooldown, now)  # 31 分鐘前，冷卻已過
+
+
+def test_keyword_in_cooldown_survives_bad_timestamp():
+    now = datetime.now(timezone.utc)
+    assert not FW._keyword_in_cooldown("x", {"x": "not-a-date"}, now)
 
 
 def test_main_skips_without_token(monkeypatch, tmp_path):
@@ -164,6 +185,64 @@ def test_main_alerts_new_match_and_persists_seen(monkeypatch, tmp_path):
     assert set(seen) == {"hit1", "miss1"}
 
 
+def test_main_collapses_same_keyword_matches_within_cooldown(monkeypatch, tmp_path):
+    # 用戶反映：一單「交通意外」俾好多 source 分別報道，每篇都獨立 alert，
+    # 連環彈幾次。呢度冇 AI clustering 分辨「同一單」，用 keyword cooldown
+    # 頂住：同一個 run 入面 3 篇文都撞中「交通意外」，應該淨係送最新嗰篇。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外"])
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="a1", title="交通意外 A報道", source="am730", date=(now - timedelta(minutes=2)).isoformat()),
+        _article(id="a2", title="交通意外 B報道", source="TVB 新聞", date=(now - timedelta(minutes=1)).isoformat()),
+        _article(id="a3", title="交通意外 C報道", source="星島頭條", date=now.isoformat()),
+    ]
+
+    async def fake_fetch(session, cutoff):
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+
+    assert len(sent) == 1
+    assert "C報道" in sent[0]  # 最新嗰篇
+
+
+def test_main_resumes_alerting_after_cooldown_expires(monkeypatch, tmp_path):
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外"])
+    state_path = tmp_path / "state.json"
+    monkeypatch.setattr(FW, "STATE_PATH", state_path)
+
+    now = datetime.now(timezone.utc)
+    stale_cooldown = (now - timedelta(minutes=31)).isoformat()  # 冷卻 30 分鐘已過
+    state_path.write_text(json.dumps({"seen": {}, "cooldown": {"交通意外": stale_cooldown}}), encoding="utf-8")
+
+    async def fake_fetch(session, cutoff):
+        return [_article(id="a1", title="交通意外新一輪", date=now.isoformat())]
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+
+    assert len(sent) == 1
+
+
 def test_main_saves_partial_progress_on_timeout(monkeypatch, tmp_path):
     # 2026-07-21 audit finding：之前 main() 完全冇成體 timeout 保護——
     # 而家加咗，但要確保逾時嗰陣 _save_seen 仍然會用返已經 fetch 到嘅
@@ -210,12 +289,15 @@ def test_main_does_not_realert_seen_article(monkeypatch, tmp_path):
 
 
 def test_main_respects_max_alerts_per_run(monkeypatch, tmp_path):
+    # 5 篇文用 5 個唔同 keyword（避免 keyword cooldown 都嚟埋一齊觸發，
+    # 呢個 test 淨係想單獨驗證 MAX_ALERTS_PER_RUN 個 cap）。
+    keywords = ["OpenAI", "ChatGPT", "Google", "Nvidia", "Meta AI"]
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
-    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", keywords)
     monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 2)
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
 
-    articles = [_article(id=f"hit{i}", title=f"OpenAI 新聞 {i}") for i in range(5)]
+    articles = [_article(id=f"hit{i}", title=f"{kw} 新聞") for i, kw in enumerate(keywords)]
 
     async def fake_fetch(session, cutoff):
         return articles
@@ -230,6 +312,42 @@ def test_main_respects_max_alerts_per_run(monkeypatch, tmp_path):
 
     asyncio.run(FW.main())
     assert len(sent) == 2
+
+
+def test_main_cooldown_does_not_starve_other_keywords(monkeypatch, tmp_path):
+    # 一個仲喺 cooldown 嘅 keyword（例如連環報道緊嘅「交通意外」）唔應該
+    # 頂住 MAX_ALERTS_PER_RUN 個位、累到本身有得送嘅其他 keyword 都送唔到。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外", "OpenAI"])
+    monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 1)
+    state_path = tmp_path / "state.json"
+    monkeypatch.setattr(FW, "STATE_PATH", state_path)
+
+    now = datetime.now(timezone.utc)
+    state_path.write_text(
+        json.dumps({"seen": {}, "cooldown": {"交通意外": now.isoformat()}}),
+        encoding="utf-8",
+    )
+
+    articles = [
+        _article(id="a1", title="交通意外跟進", date=now.isoformat()),
+        _article(id="a2", title="OpenAI 新模型", date=(now - timedelta(minutes=1)).isoformat()),
+    ]
+
+    async def fake_fetch(session, cutoff):
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+    assert len(sent) == 1
+    assert "OpenAI" in sent[0]
 
 
 def test_main_does_not_mark_seen_on_failed_send(monkeypatch, tmp_path):

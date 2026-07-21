@@ -37,33 +37,43 @@ STATE_PATH = Path("fast_watch_state.json")
 FRESHNESS_HOURS = 2   # cold-start window; "seen" set prevents re-alerting after that
 MAX_ALERTS_PER_RUN = 5
 SEEN_CAP = 3000        # bound state.json size — plain id list, no dates to prune by
+# 呢度冇 AI/clustering 分辨「同一單新聞」定「唔同新聞」（keyword_alert.py
+# 嗰邊有 build.py 計好嘅 cluster_id 可以用，呢度冇）。廣泛嘅 keyword（例如
+# 「交通意外」）一單意外俾好多 source 報，之前每篇都獨立 alert，連環彈
+# 幾次。用「同一個 keyword 幾耐內唔再送」做土法 dedup（2026-07-21，用戶
+# 反映；30 分鐘係用戶揀嘅預設）。
+KEYWORD_COOLDOWN_MINUTES = 30
 # fast-watch.yml's job timeout-minutes is 4 (240s), covering checkout +
 # setup-python + pip install + cache restore/save around this one step too
 # — unlike build.py, main() had no overall wait_for at all, so a hang here
-# could eat the whole job timeout and skip _save_seen() entirely, losing
+# could eat the whole job timeout and skip _save_state() entirely, losing
 # this run's dedup progress (2026-07-21 audit finding).
 MAIN_TIMEOUT = 150
 
 
-def _load_seen() -> dict[str, str]:
-    """Return {article_id: seen_at_iso}. Migrates the old plain-id-list
-    format (pre-2026-07-21) to the new dict shape, stamping migrated ids
-    with "now" since their real seen-time isn't recoverable."""
+def _load_state() -> dict:
+    """{"seen": {article_id: seen_at_iso}, "cooldown": {keyword: last_alerted_iso}}.
+    Migrates the old plain-id-list `seen` format (pre-2026-07-21)."""
     if STATE_PATH.exists():
         try:
             data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
             seen = data.get("seen")
-            if isinstance(seen, dict):
-                return seen
             if isinstance(seen, list):
                 now_iso = datetime.now(timezone.utc).isoformat()
-                return {aid: now_iso for aid in seen}
+                seen = {aid: now_iso for aid in seen}
+            elif not isinstance(seen, dict):
+                seen = {}
+            cooldown = data.get("cooldown")
+            if not isinstance(cooldown, dict):
+                cooldown = {}
+            return {"seen": seen, "cooldown": cooldown}
         except Exception as exc:
             print(f"[fast-watch] state load failed: {exc!r}")
-    return {}
+    return {"seen": {}, "cooldown": {}}
 
 
-def _save_seen(seen: dict[str, str]):
+def _save_state(state: dict):
+    seen = state.get("seen") or {}
     if len(seen) > SEEN_CAP:
         # article id 嚟自 url 嘅 md5 hash，同 recency 完全冇關係——之前
         # `sorted(seen)[-SEEN_CAP:]` 個 alphabetical 淘汰policy可以evict
@@ -71,7 +81,19 @@ def _save_seen(seen: dict[str, str]):
         # 淘汰真正最舊嘅 timestamp。
         newest = sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:SEEN_CAP]
         seen = dict(newest)
-    STATE_PATH.write_text(json.dumps({"seen": seen}, ensure_ascii=False), encoding="utf-8")
+    payload = {"seen": seen, "cooldown": state.get("cooldown") or {}}
+    STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime) -> bool:
+    ts = cooldown.get(keyword)
+    if not ts:
+        return False
+    try:
+        last = datetime.fromisoformat(ts)
+    except Exception:
+        return False
+    return (now - last).total_seconds() < KEYWORD_COOLDOWN_MINUTES * 60
 
 
 def _match_keyword(article: dict) -> str | None:
@@ -135,17 +157,20 @@ async def main() -> None:
         print("[fast-watch] skipped — WATCH_KEYWORDS empty")
         return
 
-    seen = _load_seen()
+    state = _load_state()
+    seen = state["seen"]
+    cooldown = state["cooldown"]
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
 
     # Mutated by _run() as it progresses, so a timeout mid-way still leaves
     # us with whatever was determined so far to persist below — unlike a
     # bare `asyncio.wait_for(main(), ...)` wrapper from outside, which would
-    # cancel everything including the never-reached _save_seen() call.
+    # cancel everything including the never-reached _save_state() call.
     articles: list[dict] = []
     matched: list[tuple[dict, str]] = []
     alerted_ids: set[str] = set()
+    alerted_keywords: set[str] = set()
     sent = 0
 
     async def _run():
@@ -156,14 +181,28 @@ async def main() -> None:
             matched = [(a, kw) for a in fresh if (kw := _match_keyword(a))]
             matched.sort(key=lambda pair: pair[0].get("date", ""), reverse=True)
 
-            for article, keyword in matched[:MAX_ALERTS_PER_RUN]:
+            # 呢度冇 AI clustering 分辨「同一單新聞」——用「keyword 幾耐內
+            # 唔再送」做土法 dedup（2026-07-21，用戶反映「交通意外」連環
+            # 彈嘅問題）。Cooldown status 要每篇文即時check、send完即時更新
+            # ——如果淨係響 loop 之前計一次 eligible list，同一個 run 入面
+            # A 篇送咗都唔會即時擋住跟住嘅 B、C（佢哋撞正同一個 keyword），
+            # 3 篇會齊齊送晒（試過真係中，先改做逐篇 check + 即時更新）。
+            sent_this_run = 0
+            for article, keyword in matched:
+                if sent_this_run >= MAX_ALERTS_PER_RUN:
+                    break
+                if _keyword_in_cooldown(keyword, cooldown, now):
+                    continue
                 try:
                     status = await _send_telegram(
                         session, _format_text(article, keyword), photo_url=article.get("thumbnail") or ""
                     )
                     if 200 <= status < 300:
                         sent += 1
+                        sent_this_run += 1
                         alerted_ids.add(article["id"])
+                        alerted_keywords.add(keyword)
+                        cooldown[keyword] = now.isoformat()
                         print(f"[fast-watch] Alerted ({keyword}): {article.get('title', '')[:50]}")
                     else:
                         print(f"[fast-watch] Telegram returned {status}")
@@ -175,11 +214,12 @@ async def main() -> None:
     except (asyncio.TimeoutError, TimeoutError):
         print(f"[fast-watch] timed out after {MAIN_TIMEOUT}s — saving partial progress")
 
-    # 唔好將 send 失敗／未過 MAX_ALERTS_PER_RUN cap 嘅 matched article 都計
-    # 做「已讀」——`seen` 係唯一嘅去重機制，一入咗就永遠唔會再檢查，之前
-    # 呢啲 article 嘅 alert 會永久遺失（2026-07-21 audit finding）。淨係將
-    # 「冇撞中任何 keyword」或者「成功 send 咗」嘅 article 計入 seen；
-    # matched 但送失敗/未輪到嘅留返俾下一輪（仲喺 freshness window 內）再試。
+    # 唔好將 send 失敗／未過 MAX_ALERTS_PER_RUN cap／仲喺 cooldown 嘅
+    # matched article 都計做「已讀」——`seen` 係唯一嘅去重機制，一入咗就
+    # 永遠唔會再檢查，之前呢啲 article 嘅 alert 會永久遺失（2026-07-21
+    # audit finding）。淨係將「冇撞中任何 keyword」或者「成功 send 咗」嘅
+    # article 計入 seen；matched 但送失敗/未輪到/仲喺 cooldown 嘅留返俾
+    # 下一輪（仲喺 freshness window 內）再試。
     now_iso = now.isoformat()
     matched_ids = {a["id"] for a, _ in matched}
     for a in articles:
@@ -187,7 +227,9 @@ async def main() -> None:
             seen[a["id"]] = now_iso
     for aid in alerted_ids:
         seen[aid] = now_iso
-    _save_seen(seen)
+    for kw in alerted_keywords:
+        cooldown[kw] = now_iso
+    _save_state({"seen": seen, "cooldown": cooldown})
     print(f"[fast-watch] fetched {len(articles)}, {len(matched)} matched, {sent} alerted, {len(seen)} tracked")
 
 

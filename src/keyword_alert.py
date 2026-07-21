@@ -173,18 +173,28 @@ def _haystack(article: dict) -> str:
     return f"{article.get('title', '')} {article.get('summary', '')} {tags}".lower()
 
 
-def detect_keyword_matches(articles: list, alerted_ids: set, *, now: datetime | None = None) -> list[dict]:
+def detect_keyword_matches(
+    articles: list,
+    alerted_ids: set,
+    alerted_cluster_ids: set | None = None,
+    *,
+    now: datetime | None = None,
+) -> list[dict]:
     """Return up to MAX_ALERTS_PER_BUILD fresh articles matching a watched
     keyword, newest first. Each result carries which keyword hit it."""
     if not WATCH_KEYWORDS:
         return []
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
+    alerted_cluster_ids = alerted_cluster_ids or set()
     keywords = [(kw, kw.lower()) for kw in WATCH_KEYWORDS if kw and kw.strip()]
 
     matches = []
     for a in articles:
         if not a.get("id") or a["id"] in alerted_ids or a.get("duplicate_of"):
+            continue
+        cid = a.get("cluster_id")
+        if cid and cid in alerted_cluster_ids:
             continue
         try:
             dt = datetime.fromisoformat(a.get("date", ""))
@@ -200,6 +210,25 @@ def detect_keyword_matches(articles: list, alerted_ids: set, *, now: datetime | 
             matches.append({**a, "_matched_keyword": hit})
 
     matches.sort(key=lambda a: a.get("date", ""), reverse=True)
+
+    # 同一單新聞成日有好多 source 一齊報，之前每篇都獨立 alert 一次——
+    # 一個廣泛嘅 keyword（例如「交通意外」）撞正一單多 source report 嘅
+    # 意外，會連環彈幾次。呢度用 build.py 已經計好嘅 AI topic clustering
+    # （cluster_id，breaking_alert.py 都係靠佢判斷「同一單」）做 dedup：
+    # 同一個 cluster 淨係揀最新嗰篇做代表，alert 一次（2026-07-21，用戶
+    # 反映呢個問題）。冇 cluster_id（singleton/未分組）嘅文章唔受影響，
+    # 照舊獨立 alert。
+    seen_clusters: set = set()
+    deduped = []
+    for a in matches:
+        cid = a.get("cluster_id")
+        if cid:
+            if cid in seen_clusters:
+                continue
+            seen_clusters.add(cid)
+        deduped.append(a)
+    matches = deduped
+
     if len(matches) > MAX_ALERTS_PER_BUILD:
         # 之前完全靜默 drop——冇任何 log 分辨「因為 cap 被截走」定係「本身
         # 冇咁多 match」，持續高於 5/build 嘅關鍵字（例如加咗突發事件字眼
@@ -261,7 +290,8 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
         return
 
     alerted = state.get("alerted") or {}
-    matches = detect_keyword_matches(articles, set(alerted.keys()))
+    alerted_clusters = state.get("alerted_clusters") or {}
+    matches = detect_keyword_matches(articles, set(alerted.keys()), set(alerted_clusters.keys()), now=now)
 
     if matches:
         async with aiohttp.ClientSession() as session:
@@ -271,6 +301,9 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
                     status = await _send_telegram(session, text, photo_url=a.get("thumbnail") or "")
                     if 200 <= status < 300:
                         alerted[a["id"]] = a.get("date", "")
+                        cid = a.get("cluster_id")
+                        if cid:
+                            alerted_clusters[cid] = a.get("date", "")
                         print(f"[keyword] Alerted ({a['_matched_keyword']}): {a.get('title', '')[:50]}")
                     else:
                         print(f"[keyword] Telegram returned {status}")
@@ -279,6 +312,8 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
 
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=STATE_TTL_HOURS)).isoformat()
     alerted = {aid: ts for aid, ts in alerted.items() if ts > cutoff_str}
+    alerted_clusters = {cid: ts for cid, ts in alerted_clusters.items() if ts > cutoff_str}
     state["alerted"] = alerted
+    state["alerted_clusters"] = alerted_clusters
     _save_state(state)
-    print(f"[keyword] {len(matches)} new alerts sent, {len(alerted)} tracked")
+    print(f"[keyword] {len(matches)} new alerts sent, {len(alerted)} tracked, {len(alerted_clusters)} clusters tracked")

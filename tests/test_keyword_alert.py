@@ -172,6 +172,50 @@ def test_detect_keyword_matches_skips_stale_and_already_alerted(monkeypatch):
     assert out == []
 
 
+def test_detect_keyword_matches_collapses_same_cluster_to_one_alert(monkeypatch):
+    # 用戶反映：「交通意外」呢類廣泛 keyword，如果同一單意外俾好多 source
+    # 報道，每篇都會獨立 alert，連環彈幾次。而家用 build.py 已經計好嘅
+    # cluster_id（AI topic clustering）做 dedup，同一 cluster 淨係揀最新
+    # 嗰篇。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["交通意外"])
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="a1", title="交通意外 A報道", source="A", cluster_id="c1",
+                 date=(now - timedelta(minutes=10)).isoformat()),
+        _article(id="a2", title="交通意外 B報道", source="B", cluster_id="c1",
+                 date=(now - timedelta(minutes=5)).isoformat()),
+        _article(id="a3", title="交通意外 C報道", source="C", cluster_id="c1",
+                 date=now.isoformat()),
+    ]
+    out = KA.detect_keyword_matches(articles, set(), now=now)
+    assert len(out) == 1
+    assert out[0]["id"] == "a3"  # 最新嗰篇
+
+
+def test_detect_keyword_matches_keeps_different_clusters_separate(monkeypatch):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["交通意外"])
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="a1", title="交通意外一", cluster_id="c1", date=now.isoformat()),
+        _article(id="a2", title="交通意外二", cluster_id="c2", date=now.isoformat()),
+        _article(id="a3", title="交通意外三", cluster_id=None, date=now.isoformat()),  # 冇 cluster
+    ]
+    out = KA.detect_keyword_matches(articles, set(), now=now)
+    assert {a["id"] for a in out} == {"a1", "a2", "a3"}
+
+
+def test_detect_keyword_matches_skips_already_alerted_cluster(monkeypatch):
+    # 上一輪已經 alert 過 c1 呢個 cluster（用另一篇文），今次 c1 有新文章
+    # 加入都唔應該再 alert。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["交通意外"])
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="a_new", title="交通意外 最新跟進", cluster_id="c1", date=now.isoformat()),
+    ]
+    out = KA.detect_keyword_matches(articles, set(), {"c1"}, now=now)
+    assert out == []
+
+
 def test_detect_keyword_matches_respects_cap(monkeypatch):
     monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["新聞"])
     monkeypatch.setattr(KA, "MAX_ALERTS_PER_BUILD", 2)
@@ -258,13 +302,45 @@ def test_send_keyword_alerts_dedupes_across_calls(monkeypatch, tmp_path):
     monkeypatch.setattr(KA, "_send_telegram", fake_send)
 
     daytime = datetime.now(timezone.utc).replace(hour=12)  # HKT 20:00, outside quiet hours
-    articles = [_article(id="hit1", title="樓市成交急升")]
+    # 而家 send_keyword_alerts 嘅 now 會傳埋落 detect_keyword_matches 做
+    # freshness cutoff（之前冇連埋，quiet-hours check 同 freshness check
+    # 各自睇唔同嘅 "now"）——article date 一定要同 daytime 一致，否則
+    # 如果真實 wall-clock hour 細過 12，人為 cutoff 會將呢篇文當「太舊」。
+    articles = [_article(id="hit1", title="樓市成交急升", date=daytime.isoformat())]
     asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
     assert calls["n"] == 1
 
     # 第二次 build 見到同一篇文（未過 FRESHNESS window）——唔應該再推
     asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
     assert calls["n"] == 1
+
+
+def test_send_keyword_alerts_tracks_cluster_across_builds(monkeypatch, tmp_path):
+    # 第一次 build：c1 呢個 cluster 得一篇文，alert 咗。第二次 build：
+    # 同一個 cluster 有第二篇新文章加入（唔同 id，同一 cluster_id）——
+    # 唔應該再 alert，因為個 cluster 已經記錄咗喺 alerted_clusters。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["交通意外"])
+    monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")
+    state_path = tmp_path / "keyword_alerts.json"
+    monkeypatch.setattr(KA, "STATE_PATH", state_path)
+    calls = {"n": 0}
+
+    async def fake_send(session, text, photo_url=""):
+        calls["n"] += 1
+        return 200
+    monkeypatch.setattr(KA, "_send_telegram", fake_send)
+
+    daytime = datetime.now(timezone.utc).replace(hour=12)
+    first = [_article(id="a1", title="交通意外首報", cluster_id="c1", date=daytime.isoformat())]
+    asyncio.run(KA.send_keyword_alerts(first, now=daytime))
+    assert calls["n"] == 1
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["alerted_clusters"].get("c1")
+
+    second = [_article(id="a2", title="交通意外跟進", cluster_id="c1", date=daytime.isoformat())]
+    asyncio.run(KA.send_keyword_alerts(second, now=daytime))
+    assert calls["n"] == 1  # 冇再送
 
 
 def test_send_keyword_alerts_skips_during_quiet_hours(monkeypatch, tmp_path):
