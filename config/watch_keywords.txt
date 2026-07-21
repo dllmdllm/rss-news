@@ -19,23 +19,29 @@ Satya Nadella
 Nvidia
 輝達
 黃仁勳
+context: 港人, 本港, 本地, 香港
 交通意外
 車禍
 撞車
 相撞
+context:
 火警
 大火
 三級火
 五級大火
 火燭
+context: 港人, 本港, 本地, 香港
 死亡
 斃命
 倒斃
 浮屍
+context:
 暴雨警告
 黑雨
 紅雨
 黃雨
+context: 港人, 本港, 本地, 香港
 自殺
 墮樓
 跳樓
+context:

@@ -31,6 +31,15 @@ def test_match_keyword_case_insensitive(monkeypatch):
     assert FW._match_keyword(_article(title="openai 宣布新進展")) == "OpenAI"
 
 
+def test_match_keyword_respects_context_requirement(monkeypatch):
+    # 快速通道跟返 keyword_alert.py 個 `context:` directive 規則（同一套
+    # KEYWORD_CONTEXT）——「死亡」呢類太闊嘅字要有 HK 脈絡先算 match。
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["死亡"])
+    monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {"死亡": ["港人", "本港", "本地", "香港"]})
+    assert FW._match_keyword(_article(title="外國男子離奇死亡")) is None
+    assert FW._match_keyword(_article(title="本港男子離奇死亡")) == "死亡"
+
+
 def test_format_text_includes_keyword_source_and_link():
     text = FW._format_text(_article(title="Nvidia 業績勝預期", url="https://x.com/1", source="TVB 新聞"), "Nvidia")
     assert "⚡ <b>快訊關鍵字</b>：Nvidia" in text
@@ -191,6 +200,10 @@ def test_main_collapses_same_keyword_matches_within_cooldown(monkeypatch, tmp_pa
     # 頂住：同一個 run 入面 3 篇文都撞中「交通意外」，應該淨係送最新嗰篇。
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外"])
+    # 呢個 test 專登唔想牽涉 context 要求（真.production config 而家有
+    # 幫「交通意外」加咗 context: 港人/本港/本地/香港）——淨係想孤立驗證
+    # cooldown 行為。
+    monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {})
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
 
     now = datetime.now(timezone.utc)
@@ -220,6 +233,7 @@ def test_main_collapses_same_keyword_matches_within_cooldown(monkeypatch, tmp_pa
 def test_main_resumes_alerting_after_cooldown_expires(monkeypatch, tmp_path):
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外"])
+    monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {})  # 孤立驗證 cooldown，唔理 context 要求
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
 
@@ -319,6 +333,7 @@ def test_main_cooldown_does_not_starve_other_keywords(monkeypatch, tmp_path):
     # 頂住 MAX_ALERTS_PER_RUN 個位、累到本身有得送嘅其他 keyword 都送唔到。
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["交通意外", "OpenAI"])
+    monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {})  # 孤立驗證 cap/cooldown 互動，唔理 context 要求
     monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 1)
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(FW, "STATE_PATH", state_path)

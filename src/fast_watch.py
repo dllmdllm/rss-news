@@ -28,7 +28,7 @@ import aiohttp
 from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
 from src.feeds import HTTP_HEADERS, RSS_FEEDS
 from src.fetch import _fetch_one
-from src.keyword_alert import WATCH_KEYWORDS
+from src.keyword_alert import KEYWORD_CONTEXT, WATCH_KEYWORDS
 
 HKT = timezone(timedelta(hours=8))
 WATCHED_SOURCES = {"星島頭條", "am730", "TVB 新聞"}
@@ -99,8 +99,16 @@ def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime) -> bool:
 def _match_keyword(article: dict) -> str | None:
     hay = f"{article.get('title', '')} {article.get('rss_content') or ''}".lower()
     for kw in WATCH_KEYWORDS:
-        if kw and kw.lower() in hay:
-            return kw
+        if not kw or kw.lower() not in hay:
+            continue
+        # 有啲 keyword（例如「死亡」「交通意外」）喺 keyword_alert.py 個
+        # vault 度用 `context:` directive 要求埋 HK 脈絡字眼一齊出現先算
+        # match（2026-07-21，減低海外新聞/歷史人物嗰類 false positive）——
+        # 快速通道跟返同一套規則。
+        required = KEYWORD_CONTEXT.get(kw)
+        if required and not any(c.lower() in hay for c in required):
+            continue
+        return kw
     return None
 
 

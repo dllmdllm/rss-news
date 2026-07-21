@@ -93,7 +93,9 @@ def _extract_keyword_lines(lines: list[str], start: int) -> list[str]:
 def _parse_keyword_lines(text: str) -> list[str]:
     """畀 config/watch_keywords.txt 嗰種冇說明文字嘅純清單用：跳過 YAML
     frontmatter，若見到 "## 關鍵字清單" 標題就淨處理佢之後嘅內容，搵唔到
-    就當全個 body 都係關鍵字（一行一個，`#` 開頭當 comment）。"""
+    就當全個 body 都係關鍵字（一行一個，`#` 開頭當 comment）。呢個 return
+    嘅係 RAW line（可能包含 `context:` directive），未經 _parse_keyword_rules
+    處理。"""
     lines = text.splitlines()
     start = _skip_frontmatter(lines)
     marker = _find_marker_index(lines, start)
@@ -105,7 +107,7 @@ def _parse_vault_keyword_lines(text: str) -> list[str] | None:
     搵唔到就 return None（唔會將標題之前自由寫嘅說明文字當成關鍵字），
     等 sync_watch_keywords_from_vault() 可以安全咁拒絕同步、保留舊 config，
     而唔係將成段中文說明寫咗落去（試過一次：標題漏咗，dry-run test 冧咗
-    真 config file）。"""
+    真 config file）。呢個都係 return RAW line，未經 _parse_keyword_rules。"""
     lines = text.splitlines()
     start = _skip_frontmatter(lines)
     marker = _find_marker_index(lines, start)
@@ -114,12 +116,39 @@ def _parse_vault_keyword_lines(text: str) -> list[str] | None:
     return _extract_keyword_lines(lines, marker)
 
 
-def _load_keywords_from_config() -> list[str]:
+_CONTEXT_DIRECTIVE_PREFIX = "context:"
+
+
+def _parse_keyword_rules(raw_lines: list[str]) -> tuple[list[str], dict[str, list[str]]]:
+    """將 raw keyword line（可能夾雜 `context:` directive）轉做
+    (WATCH_KEYWORDS, KEYWORD_CONTEXT)。`context: 港人, 本港, 本地, 香港`
+    呢種 line 會將「呢個 context 要求」套用落之後每一行關鍵字，直到下一個
+    `context:` line（一個淨係 `context:` 冇內容嘅 line 會清空要求）—— 有
+    context 要求嘅關鍵字，除咗自己個 substring 要 match 到，仲要 haystack
+    入面都出現至少一個 context word 先算真.match（2026-07-21，用戶要求
+    「死亡/自殺/交通意外」呢類太闊嘅字要同「港人/本港/本地/香港」等
+    HK 脈絡掛鈎，減低海外新聞/歷史人物嗰類 false positive）。"""
+    keywords: list[str] = []
+    context_map: dict[str, list[str]] = {}
+    active_context: list[str] = []
+    for line in raw_lines:
+        if line.lower().startswith(_CONTEXT_DIRECTIVE_PREFIX):
+            rest = line[len(_CONTEXT_DIRECTIVE_PREFIX):].strip()
+            active_context = [c.strip() for c in rest.split(",") if c.strip()]
+            continue
+        keywords.append(line)
+        if active_context:
+            context_map[line] = list(active_context)
+    return keywords, context_map
+
+
+def _load_keywords_from_config() -> tuple[list[str], dict[str, list[str]]]:
     try:
-        return _parse_keyword_lines(CONFIG_PATH.read_text(encoding="utf-8"))
+        raw = _parse_keyword_lines(CONFIG_PATH.read_text(encoding="utf-8"))
+        return _parse_keyword_rules(raw)
     except Exception as exc:
         print(f"[keyword] config load failed: {exc!r}")
-        return list(_DEFAULT_KEYWORDS)
+        return list(_DEFAULT_KEYWORDS), {}
 
 
 def sync_watch_keywords_from_vault() -> None:
@@ -134,22 +163,24 @@ def sync_watch_keywords_from_vault() -> None:
         print(f"[keyword] vault read failed: {exc!r}")
         return
 
-    keywords = _parse_vault_keyword_lines(text)
-    if keywords is None:
+    raw_lines = _parse_vault_keyword_lines(text)
+    if raw_lines is None:
         print(f"[keyword] vault missing '## 關鍵字清單' marker — skipping sync, check {VAULT_PATH.name} wasn't edited wrong")
         return
-    if not keywords:
+    if not raw_lines:
         print("[keyword] vault keyword section empty — keeping existing config")
         return
 
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text("\n".join(keywords) + "\n", encoding="utf-8")
-    global WATCH_KEYWORDS
-    WATCH_KEYWORDS = keywords
-    print(f"[keyword] synced {len(keywords)} keywords from vault")
+    CONFIG_PATH.write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
+    global WATCH_KEYWORDS, KEYWORD_CONTEXT
+    WATCH_KEYWORDS, KEYWORD_CONTEXT = _parse_keyword_rules(raw_lines)
+    print(f"[keyword] synced {len(WATCH_KEYWORDS)} keywords ({len(KEYWORD_CONTEXT)} context-scoped) from vault")
 
 
-WATCH_KEYWORDS: list[str] = _load_keywords_from_config()
+WATCH_KEYWORDS: list[str]
+KEYWORD_CONTEXT: dict[str, list[str]]
+WATCH_KEYWORDS, KEYWORD_CONTEXT = _load_keywords_from_config()
 
 
 def _load_state() -> dict:
@@ -171,6 +202,21 @@ def _save_state(state: dict):
 def _haystack(article: dict) -> str:
     tags = " ".join(article.get("tags") or [])
     return f"{article.get('title', '')} {article.get('summary', '')} {tags}".lower()
+
+
+def _first_qualifying_keyword(hay: str, keywords: list[tuple[str, str]]) -> str | None:
+    """揀第一個真.match嘅keyword：substring match到之餘，如果呢個keyword
+    喺 KEYWORD_CONTEXT 有登記context要求，仲要hay入面出現至少一個context
+    word先算數（例如「死亡」要求同「港人/本港/本地/香港」其中一個一齊
+    出現，減低海外新聞/歷史人物嗰類false positive）。"""
+    for kw, kw_lower in keywords:
+        if kw_lower not in hay:
+            continue
+        required = KEYWORD_CONTEXT.get(kw)
+        if required and not any(c.lower() in hay for c in required):
+            continue
+        return kw
+    return None
 
 
 def detect_keyword_matches(
@@ -205,7 +251,7 @@ def detect_keyword_matches(
         if dt < cutoff:
             continue
         hay = _haystack(a)
-        hit = next((kw for kw, kw_lower in keywords if kw_lower in hay), None)
+        hit = _first_qualifying_keyword(hay, keywords)
         if hit:
             matches.append({**a, "_matched_keyword": hit})
 

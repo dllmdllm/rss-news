@@ -79,9 +79,54 @@ def test_parse_vault_keyword_lines_returns_list_after_marker():
     assert KA._parse_vault_keyword_lines(text) == ["OpenAI", "ChatGPT"]
 
 
+def test_parse_keyword_rules_applies_context_to_following_keywords():
+    raw = ["OpenAI", "context: 港人, 本港, 本地, 香港", "死亡", "自殺", "context:", "交通意外"]
+    keywords, context = KA._parse_keyword_rules(raw)
+    assert keywords == ["OpenAI", "死亡", "自殺", "交通意外"]
+    assert context == {
+        "死亡": ["港人", "本港", "本地", "香港"],
+        "自殺": ["港人", "本港", "本地", "香港"],
+    }
+    assert "OpenAI" not in context
+    assert "交通意外" not in context  # 一個bare "context:" 清空咗要求
+
+
+def test_parse_keyword_rules_no_directive_means_no_context():
+    keywords, context = KA._parse_keyword_rules(["OpenAI", "ChatGPT"])
+    assert keywords == ["OpenAI", "ChatGPT"]
+    assert context == {}
+
+
+def test_first_qualifying_keyword_requires_context_word_present(monkeypatch):
+    monkeypatch.setattr(KA, "KEYWORD_CONTEXT", {"死亡": ["港人", "本港", "本地", "香港"]})
+    keywords = [("死亡", "死亡")]
+    assert KA._first_qualifying_keyword("外國一名男子死亡", keywords) is None  # 冇HK脈絡
+    assert KA._first_qualifying_keyword("本港一名男子死亡", keywords) == "死亡"  # 有「本港」
+
+
+def test_first_qualifying_keyword_unconditional_keyword_unaffected(monkeypatch):
+    monkeypatch.setattr(KA, "KEYWORD_CONTEXT", {"死亡": ["港人", "本港", "本地", "香港"]})
+    keywords = [("OpenAI", "openai")]
+    assert KA._first_qualifying_keyword("openai 發布新模型", keywords) == "OpenAI"
+
+
+def test_detect_keyword_matches_respects_context_requirement(monkeypatch):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["死亡"])
+    monkeypatch.setattr(KA, "KEYWORD_CONTEXT", {"死亡": ["港人", "本港", "本地", "香港"]})
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="overseas", title="外國男子離奇死亡", date=now.isoformat()),
+        _article(id="local", title="本港男子離奇死亡", date=now.isoformat()),
+    ]
+    out = KA.detect_keyword_matches(articles, set(), now=now)
+    assert {a["id"] for a in out} == {"local"}
+
+
 def test_load_keywords_from_config_falls_back_to_default_when_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(KA, "CONFIG_PATH", tmp_path / "missing.txt")
-    assert KA._load_keywords_from_config() == KA._DEFAULT_KEYWORDS
+    keywords, context = KA._load_keywords_from_config()
+    assert keywords == KA._DEFAULT_KEYWORDS
+    assert context == {}
 
 
 def test_sync_watch_keywords_noop_when_vault_missing(monkeypatch, tmp_path):
