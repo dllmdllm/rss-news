@@ -210,6 +210,17 @@ def detect_keyword_matches(articles: list, alerted_ids: set, *, now: datetime | 
     return matches[:MAX_ALERTS_PER_BUILD]
 
 
+def _format_hkt_time(article: dict) -> str:
+    """文章發布時間（HKT，HH:MM）。Parse 唔到就靜靜返空字串，唔阻住send。"""
+    try:
+        dt = datetime.fromisoformat(article.get("date", ""))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(HKT).strftime("%H:%M")
+    except Exception:
+        return ""
+
+
 def _format_alert_text(article: dict) -> str:
     esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     lines = [
@@ -220,7 +231,11 @@ def _format_alert_text(article: dict) -> str:
     if summary:
         points = [p.strip() for p in summary.replace("\\n", "\n").split("\n") if p.strip()]
         lines.extend(f"・{esc(p.lstrip('・'))}" for p in points[:3])
-    meta = " · ".join(filter(None, [article.get("category", ""), article.get("source", "")]))
+    meta = " · ".join(filter(None, [
+        article.get("category", ""),
+        article.get("source", ""),
+        _format_hkt_time(article),
+    ]))
     if meta:
         lines.append(esc(meta))
     url = article.get("url") or ""

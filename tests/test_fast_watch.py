@@ -39,6 +39,20 @@ def test_format_text_includes_keyword_source_and_link():
     assert 'href="https://x.com/1"' in text
 
 
+def test_format_text_includes_hkt_publish_time():
+    article = _article(
+        title="Nvidia 業績勝預期", source="TVB 新聞",
+        date="2026-07-21T06:32:00+00:00",  # UTC，對應 HKT 14:32
+    )
+    text = FW._format_text(article, "Nvidia")
+    assert "TVB 新聞 · 14:32 · 快速通道" in text
+
+
+def test_format_hkt_time_returns_empty_on_bad_date():
+    assert FW._format_hkt_time({"date": "not-a-date"}) == ""
+    assert FW._format_hkt_time({}) == ""
+
+
 def test_format_text_escapes_double_quote_in_url():
     # 2026-07-21 audit finding：url 入面一個 literal " 之前冇 escape，
     # 會提早結束 <a href="..."> 個 attribute，拆散成個 Telegram message。

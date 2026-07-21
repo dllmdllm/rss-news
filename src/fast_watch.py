@@ -30,6 +30,7 @@ from src.feeds import HTTP_HEADERS, RSS_FEEDS
 from src.fetch import _fetch_one
 from src.keyword_alert import WATCH_KEYWORDS
 
+HKT = timezone(timedelta(hours=8))
 WATCHED_SOURCES = {"星島頭條", "am730", "TVB 新聞"}
 # cwd-relative — the workflow restores/saves this exact path via actions/cache.
 STATE_PATH = Path("fast_watch_state.json")
@@ -81,12 +82,28 @@ def _match_keyword(article: dict) -> str | None:
     return None
 
 
+def _format_hkt_time(article: dict) -> str:
+    """文章發布時間（HKT，HH:MM）。Parse 唔到就靜靜返空字串，唔阻住send。"""
+    try:
+        dt = datetime.fromisoformat(article.get("date", ""))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(HKT).strftime("%H:%M")
+    except Exception:
+        return ""
+
+
 def _format_text(article: dict, keyword: str) -> str:
     esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    meta = " · ".join(filter(None, [
+        article.get("source", ""),
+        _format_hkt_time(article),
+        "快速通道（未經全文/AI 分析）",
+    ]))
     lines = [
         f"⚡ <b>快訊關鍵字</b>：{esc(keyword)}",
         esc(article.get("title", "")),
-        f"{esc(article.get('source', ''))} · 快速通道（未經全文/AI 分析）",
+        esc(meta),
     ]
     url = article.get("url") or ""
     if url:

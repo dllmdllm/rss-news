@@ -211,6 +211,21 @@ def test_format_alert_text_includes_keyword_summary_and_meta():
     assert text.rstrip().endswith("</a>")
 
 
+def test_format_alert_text_includes_hkt_publish_time():
+    article = _article(
+        title="樓市成交急升",
+        date="2026-07-21T06:32:00+00:00",  # UTC，對應 HKT 14:32
+    )
+    article["_matched_keyword"] = "樓市"
+    text = KA._format_alert_text(article)
+    assert "新聞 · RTHK 本地 · 14:32" in text
+
+
+def test_format_hkt_time_returns_empty_on_bad_date():
+    assert KA._format_hkt_time({"date": "not-a-date"}) == ""
+    assert KA._format_hkt_time({}) == ""
+
+
 def test_format_alert_text_omits_link_when_no_url():
     article = _article(title="樓市成交急升", url="")
     article["_matched_keyword"] = "樓市"
