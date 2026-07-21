@@ -545,6 +545,13 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
 
     monkeypatch.setattr(build, "generate_daily_brief", fake_daily_brief)
 
+    # sync_trending_keywords() 會真.打 Google Trends RSS endpoint——dry run
+    # 唔應該喺跑 test 嗰陣觸發真實網絡請求（同上面 daily_brief/telegram
+    # 嘅道理一樣）。
+    async def fake_sync_trending_keywords():
+        return []
+    monkeypatch.setattr(build, "sync_trending_keywords", fake_sync_trending_keywords)
+
     asyncio.run(build.main())
 
     articles = json.loads((data_dir / "articles.json").read_text(encoding="utf-8"))

@@ -2,7 +2,20 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src import fast_watch as FW
+
+
+@pytest.fixture(autouse=True)
+def _no_trending_keywords(monkeypatch):
+    """同 test_keyword_alert.py 嗰個 fixture 同一個原因：一旦 self-hosted
+    機真.跑過 sync_trending_keywords()，config/trending_keywords.txt 會有
+    真實 Google Trends 熱門字並提交入 repo，之後 FW.TRENDING_KEYWORDS 呢個
+    module-level list（喺 import 嗰下讀一次）就會唔係空，累到成堆用
+    curated 小 WATCH_KEYWORDS fixture 嘅 test 意外撞中唔相關嘅熱門字。
+    想測試 trending 合併行為嘅 test 自己再 override 呢個 patch。"""
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", [])
 
 
 def _article(**overrides):
@@ -38,6 +51,55 @@ def test_match_keyword_respects_context_requirement(monkeypatch):
     monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {"死亡": ["港人", "本港", "本地", "香港"]})
     assert FW._match_keyword(_article(title="外國男子離奇死亡")) is None
     assert FW._match_keyword(_article(title="本港男子離奇死亡")) == "死亡"
+
+
+def test_match_keyword_includes_trending_keyword_hits(monkeypatch):
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["陳嘉信"])
+    assert FW._match_keyword(_article(title="陳嘉信案上訴得直")) == "陳嘉信"
+    assert FW._match_keyword(_article(title="天氣預告")) is None
+
+
+def test_match_keyword_works_with_only_trending_keywords(monkeypatch):
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["陳嘉信"])
+    assert FW._match_keyword(_article(title="陳嘉信案上訴得直")) == "陳嘉信"
+
+
+def test_main_skips_when_watch_and_trending_both_empty(monkeypatch, tmp_path):
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", [])
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    async def fail_fetch(*a, **kw):
+        raise AssertionError("should not fetch")
+    monkeypatch.setattr(FW, "_fetch_watched", fail_fetch)
+
+    asyncio.run(FW.main())
+    assert not (tmp_path / "state.json").exists()
+
+
+def test_main_runs_when_only_trending_keywords_present(monkeypatch, tmp_path):
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["陳嘉信"])
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    async def fake_fetch(session, cutoff):
+        return [_article(id="hit1", title="陳嘉信案上訴得直")]
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+    assert len(sent) == 1
+    assert "陳嘉信" in sent[0]
 
 
 def test_format_text_includes_keyword_source_and_link():

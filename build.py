@@ -42,6 +42,7 @@ from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
 from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vault
+from src.trends_watch import sync_trending_keywords
 from src.daily_brief import generate_daily_brief
 from src.entity_digest import generate_entity_digests
 
@@ -1014,6 +1015,16 @@ async def main():
         sync_watch_keywords_from_vault()
     except Exception as exc:
         _tlog(f"watch_keywords vault sync: {exc!r}")
+
+    # Google Trends（香港）熱門字，每日一次（2026-07-21，用戶要求自動加入
+    # keyword 監控）。20s cap——fetch 失敗/逾時就用返舊 config，唔會阻住
+    # 之後嘅 fetch/scrape 步驟。
+    try:
+        await asyncio.wait_for(sync_trending_keywords(), timeout=20)
+    except (asyncio.TimeoutError, TimeoutError):
+        _tlog("trends sync timed out — keeping existing config")
+    except Exception as exc:
+        _tlog(f"trends sync: {exc!r}")
 
     # --- fetch (hard cap 150s) ---
     t = time.monotonic()

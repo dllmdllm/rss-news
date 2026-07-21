@@ -135,6 +135,10 @@ jobs:
             # 要 stage 先可以俾 fast-watch.yml（喺 ubuntu 跑，見唔到 vault）
             # 下次 checkout 攞到最新關鍵字。
             git add config/watch_keywords.txt 2>/dev/null || true
+            # config/trending_keywords.txt 同上——由 sync_trending_keywords()
+            # 寫（Google Trends 香港熱門字，每日一次），要 stage 先可以俾
+            # fast-watch.yml 攞到。
+            git add config/trending_keywords.txt 2>/dev/null || true
           }
 
           stage_outputs

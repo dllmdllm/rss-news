@@ -29,6 +29,7 @@ from pathlib import Path
 import aiohttp
 
 from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
+from src.trends_watch import load_trending_keywords
 
 STATE_PATH  = Path(__file__).parent.parent / "docs" / "data" / "keyword_alerts.json"
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "watch_keywords.txt"
@@ -227,13 +228,19 @@ def detect_keyword_matches(
     now: datetime | None = None,
 ) -> list[dict]:
     """Return up to MAX_ALERTS_PER_BUILD fresh articles matching a watched
-    keyword, newest first. Each result carries which keyword hit it."""
-    if not WATCH_KEYWORDS:
+    keyword, newest first. Each result carries which keyword hit it.
+
+    嘅監控字包括 WATCH_KEYWORDS（vault 人手維護）＋ Google Trends 香港熱門
+    字（load_trending_keywords()，2026-07-21，用戶要求自動加入監控）。
+    Trending 字冇喺 KEYWORD_CONTEXT 登記，_first_qualifying_keyword() 對
+    佢哋自然當冇 context 要求（不受限）。"""
+    trending = load_trending_keywords()
+    if not WATCH_KEYWORDS and not trending:
         return []
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
     alerted_cluster_ids = alerted_cluster_ids or set()
-    keywords = [(kw, kw.lower()) for kw in WATCH_KEYWORDS if kw and kw.strip()]
+    keywords = [(kw, kw.lower()) for kw in dict.fromkeys(WATCH_KEYWORDS + trending) if kw and kw.strip()]
 
     matches = []
     for a in articles:
@@ -324,7 +331,7 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
     state = _load_state()
     now = now or datetime.now(timezone.utc)
 
-    if not TELEGRAM_BOT_TOKEN or not WATCH_KEYWORDS:
+    if not TELEGRAM_BOT_TOKEN or (not WATCH_KEYWORDS and not load_trending_keywords()):
         _save_state(state)   # ensure the file always exists
         return
 

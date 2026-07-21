@@ -29,6 +29,13 @@ from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
 from src.feeds import HTTP_HEADERS, RSS_FEEDS
 from src.fetch import _fetch_one
 from src.keyword_alert import KEYWORD_CONTEXT, WATCH_KEYWORDS
+from src.trends_watch import load_trending_keywords
+
+# 一次過程一個 run，process 內冇再 resync（跟 WATCH_KEYWORDS 同一套做法）——
+# Google Trends 熱門字（2026-07-21，用戶要求自動加入監控）由 build.py 嗰邊
+# sync_trending_keywords() 寫落 repo-tracked config/trending_keywords.txt，
+# 呢度靠 fast-watch.yml 嘅 git checkout 攞到最新版。
+TRENDING_KEYWORDS = load_trending_keywords()
 
 HKT = timezone(timedelta(hours=8))
 WATCHED_SOURCES = {"星島頭條", "am730", "TVB 新聞"}
@@ -98,7 +105,7 @@ def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime) -> bool:
 
 def _match_keyword(article: dict) -> str | None:
     hay = f"{article.get('title', '')} {article.get('rss_content') or ''}".lower()
-    for kw in WATCH_KEYWORDS:
+    for kw in dict.fromkeys(WATCH_KEYWORDS + TRENDING_KEYWORDS):
         if not kw or kw.lower() not in hay:
             continue
         # 有啲 keyword（例如「死亡」「交通意外」）喺 keyword_alert.py 個
@@ -161,8 +168,8 @@ async def main() -> None:
     if not TELEGRAM_BOT_TOKEN:
         print("[fast-watch] skipped — no TELEGRAM_BOT_TOKEN")
         return
-    if not WATCH_KEYWORDS:
-        print("[fast-watch] skipped — WATCH_KEYWORDS empty")
+    if not WATCH_KEYWORDS and not TRENDING_KEYWORDS:
+        print("[fast-watch] skipped — WATCH_KEYWORDS and TRENDING_KEYWORDS both empty")
         return
 
     state = _load_state()

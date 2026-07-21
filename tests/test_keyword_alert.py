@@ -2,7 +2,20 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src import keyword_alert as KA
+
+
+@pytest.fixture(autouse=True)
+def _no_trending_keywords(monkeypatch):
+    """一旦 self-hosted 機真.跑過 sync_trending_keywords()，
+    config/trending_keywords.txt 會有真實 Google Trends 熱門字並提交入
+    repo，之後呢個 module 嘅 load_trending_keywords() 就會攞到非空清單，
+    累到成堆用 curated 小 WATCH_KEYWORDS fixture 嘅 test 意外多撞中一個
+    唔相關嘅熱門字（同 2026-07-21 KEYWORD_CONTEXT 嗰個 test-isolation bug
+    同一類）。想測試 trending 合併行為嘅 test 自己再 override 呢個 patch。"""
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: [])
 
 
 def _article(**overrides):
@@ -404,6 +417,61 @@ def test_send_keyword_alerts_skips_during_quiet_hours(monkeypatch, tmp_path):
     # 未 mark alerted——quiet hours 完咗之後如果仲喺 freshness window 應該照送
     state = json.loads((tmp_path / "keyword_alerts.json").read_text(encoding="utf-8"))
     assert state["alerted"] == {}
+
+
+def test_detect_keyword_matches_includes_trending_keyword_hits(monkeypatch):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["陳嘉信"])
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="trend", title="陳嘉信案上訴得直", date=now.isoformat()),
+        _article(id="miss", title="天氣預告", date=now.isoformat()),
+    ]
+    out = KA.detect_keyword_matches(articles, set(), now=now)
+    assert {a["id"] for a in out} == {"trend"}
+    assert out[0]["_matched_keyword"] == "陳嘉信"
+
+
+def test_detect_keyword_matches_works_with_only_trending_keywords(monkeypatch):
+    # WATCH_KEYWORDS 淨係得 curated 清單先算「冇關鍵字」——連 Google
+    # Trends 熱門字都冇嘅話先真.應該完全唔 match。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["陳嘉信"])
+    now = datetime.now(timezone.utc)
+    out = KA.detect_keyword_matches(
+        [_article(id="trend", title="陳嘉信案上訴得直", date=now.isoformat())], set(), now=now
+    )
+    assert {a["id"] for a in out} == {"trend"}
+
+
+def test_detect_keyword_matches_dedupes_keyword_appearing_in_both_lists(monkeypatch):
+    # 同一個字如果啱啱好 WATCH_KEYWORDS 同 trending 都有，唔應該行兩次
+    # match（結果一樣，純粹確保 dict.fromkeys 冇整壞正常 match）。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["樓市"])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["樓市"])
+    now = datetime.now(timezone.utc)
+    out = KA.detect_keyword_matches(
+        [_article(id="hit", title="樓市成交急升", date=now.isoformat())], set(), now=now
+    )
+    assert {a["id"] for a in out} == {"hit"}
+
+
+def test_send_keyword_alerts_sends_when_only_trending_keywords_present(monkeypatch, tmp_path):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["陳嘉信"])
+    monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(KA, "STATE_PATH", tmp_path / "keyword_alerts.json")
+    calls = {"n": 0}
+
+    async def fake_send(session, text, photo_url=""):
+        calls["n"] += 1
+        return 200
+    monkeypatch.setattr(KA, "_send_telegram", fake_send)
+
+    daytime = datetime.now(timezone.utc).replace(hour=12)
+    articles = [_article(id="trend", title="陳嘉信案上訴得直", date=daytime.isoformat())]
+    asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
+    assert calls["n"] == 1
 
 
 def test_in_quiet_hours_boundaries():

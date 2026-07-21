@@ -18,14 +18,16 @@ rss-news/
 │   ├── panel_digest.py   # 話題聚焦：共識 / 各媒體角度 / 張力（MiniMax）
 │   ├── embed.py          # 語義向量：計算 embeddings → similar.json
 │   ├── breaking_alert.py # 突發通知：Telegram bot 推送
-│   ├── keyword_alert.py  # 慢速關鍵字通道：隨 build（~20 分鐘）比對 WATCH_KEYWORDS → keyword_alerts.json + Telegram
+│   ├── keyword_alert.py  # 慢速關鍵字通道：隨 build（~20 分鐘）比對 WATCH_KEYWORDS（+ trending）→ keyword_alerts.json + Telegram
 │   ├── fast_watch.py     # 快速關鍵字通道：獨立 ubuntu workflow（5 分鐘），淨查 3 個最快 source 標題，唔碰 docs/data
+│   ├── trends_watch.py   # Google Trends（香港）熱門字：每日一次 sync → trending_keywords.txt，自動並入關鍵字監控
 │   ├── daily_brief.py    # 每日早報：HKT 06:00 後首個 build 綜合 24h top stories（MiniMax）→ daily_brief.json + Telegram
 │   ├── entity_digest.py  # 實體摘要：聚合人物 / 機構 → entities.json
 │   ├── minimax_client.py # MiniMax API thin wrapper（共用 HTTP shape + thinking 參數）
 │   └── feeds.py          # RSS 來源定義及常數
 ├── config/
-│   └── watch_keywords.txt  # keyword_alert.py / fast_watch.py 共用嘅關鍵字清單，由 vault sync 寫，唔好手改
+│   ├── watch_keywords.txt     # keyword_alert.py / fast_watch.py 共用嘅關鍵字清單，由 vault sync 寫，唔好手改
+│   └── trending_keywords.txt  # Google Trends 香港熱門字，由 trends_watch.py 每日 sync 寫，唔好手改
 ├── build.py              # 主程式：fetch → scrape → analyse → cluster → 輸出 JSON
 ├── docs/                 # GitHub Pages 根目錄
 │   ├── index.html        # 文章列表頁（含 AI tab）
@@ -76,7 +78,8 @@ RSS Feed
                           ├─ panel_digest.py  話題聚焦
                           ├─ embed.py         語義向量 + 相似文章
                           ├─ breaking_alert.py  Telegram 突發通知
-                          ├─ keyword_alert.py   慢速關鍵字通道（同時 sync vault → config/watch_keywords.txt）
+                          ├─ keyword_alert.py   慢速關鍵字通道（同時 sync vault → config/watch_keywords.txt
+                          │                      + trends_watch.py 每日 sync → config/trending_keywords.txt）
                           ├─ entity_digest.py   實體摘要
                           └─ save_json()  → docs/data/
 
@@ -460,6 +463,46 @@ vault（`RSS News - Watch Keywords.md`）隨時改，`build.main()` 開頭
 
 字面 substring match，唔分大小寫，OR 邏輯——淨係 "OpenAI" 唔會 match 到
 "ChatGPT"，要中英對照/品牌/人名全部列晒。
+
+**`context:` directive（2026-07-21）**：「死亡」「交通意外」呢類字面太闊嘅
+keyword，vault 入面可以喺一段關鍵字前面加一行 `context: 港人, 本港, 本地, 香港`，
+之後每個關鍵字都要「連同呢組字眼之一一齊出現」先算 match；落返一行淨係
+`context:`（冇內容）就解除限制。Parse 邏輯喺 `keyword_alert._parse_keyword_rules()`，
+產出 `WATCH_KEYWORDS` + `KEYWORD_CONTEXT`（dict），兩條通道嘅 match function
+（`_first_qualifying_keyword()` / `fast_watch._match_keyword()`）都食呢個 dict。
+而家套咗喺「交通意外/車禍/撞車/相撞」「死亡/斃命/倒斃/浮屍」「自殺/墮樓/跳樓」。
+
+**同一單新聞去重**：兩條通道各自實現，冇共用 state——慢速通道用 build.py
+已計好嘅 AI `cluster_id`（`detect_keyword_matches()` 同 cluster 淨揀最新一篇，
+記喺 `keyword_alerts.json` 嘅 `alerted_clusters`）；快速通道冇 clustering 可用，
+改用「同一個 keyword 30 分鐘內唔再送」嘅 cooldown（`fast_watch.py` 嘅
+`KEYWORD_COOLDOWN_MINUTES`，state 存喺 `cooldown` key）。Cooldown 一定要逐篇
+check + send 完即時更新，唔可以喺 loop 之前一次過計 eligible list——試過
+因為咁樣，同一個 run 入面 3 篇撞正同一 keyword 嘅文一齊送晒（2026-07-21）。
+
+**Google Trends 自動並入監控（`src/trends_watch.py`，2026-07-21）**：用戶要求
+Google 香港熱門搜尋自動加入監控清單，match 到就當普通 keyword alert 送
+（唔開獨立 channel、唔額外標記）。Google 冇官方「過去一小時」granularity 嘅
+trending API，用官方支援嘅 daily trending RSS feed（`trends.google.com/trending/rss?geo=HK`，
+免 auth，唔算 unofficial scraping）代替，所以粒度係日更新，唔係真.即時。
+`sync_trending_keywords()` 跟 `daily_brief.py` 嗰種「每日一次」冪等 pattern
+（sync 日期記喺 `config/trending_keywords.txt` 第一行 `# synced YYYY-MM-DD`），
+由 `build.py` 喺 vault sync 之後、fetch 之前 call（20s cap，失敗/逾時就保留
+舊清單）。每次成功都完全覆寫（唔似 `WATCH_KEYWORDS` 咁累積），避免舊日
+trending 詞賴喺個清單度。單字（例如「金」）撞正太多常見詞、substring match
+誤鳴風險太高，`MIN_KEYWORD_LEN=2` 過濾走；標題經 `zhconv` 轉做香港繁體
+（Google 有時返簡體，唔轉嘅話成隻詞永遠 match 唔中網站嘅繁體內文）。兩條
+通道都用 `load_trending_keywords()` 讀呢個 config，同 `WATCH_KEYWORDS` 合併
+（`dict.fromkeys()` 去重）先做 match——冇喺 `KEYWORD_CONTEXT` 登記，所以
+trending 字自動當冇 context 限制。
+
+⚠️ **Test isolation 陷阱**（同 2026-07-21 `KEYWORD_CONTEXT` 嗰個一樣，重複出現
+過兩次）：一旦 self-hosted 機真.跑過 `sync_trending_keywords()`，
+`config/trending_keywords.txt` 會有真實內容並提交入 repo，之後任何冇
+monkeypatch `load_trending_keywords()`（`keyword_alert.py`）/
+`TRENDING_KEYWORDS`（`fast_watch.py`，module-level，喺 import 讀一次）嘅
+test，都會意外撞中真實熱門字。兩個 test file 已加 autouse fixture 預設清空，
+新 test 唔使再手動處理。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 
