@@ -470,7 +470,11 @@ keyword，vault 入面可以喺一段關鍵字前面加一行 `context: 港人, 
 `context:`（冇內容）就解除限制。Parse 邏輯喺 `keyword_alert._parse_keyword_rules()`，
 產出 `WATCH_KEYWORDS` + `KEYWORD_CONTEXT`（dict），兩條通道嘅 match function
 （`_first_qualifying_keyword()` / `fast_watch._match_keyword()`）都食呢個 dict。
-而家套咗喺「交通意外/車禍/撞車/相撞」「死亡/斃命/倒斃/浮屍」「自殺/墮樓/跳樓」。
+而家套咗喺「交通意外/車禍/撞車/相撞」「死亡/斃命/倒斃/浮屍」「自殺/墮樓/跳樓」
+「暴雨警告/黑雨/紅雨/黃雨」（暴雨組 2026-07-21 補加——「紅雨」「黑雨」成日
+俾人喺同天氣完全無關嘅職場/生活八卦文度借用，例如「紅雨可WFH」。⚠️ 呢個
+唔係 100% 有效：如果篇八卦文本身都提到「港人」呢類字（同天氣無關嘅另一句），
+都會照樣漏網——已知取捨，唔係 bug）。
 
 **同一單新聞去重**：兩條通道各自實現，冇共用 state——慢速通道用 build.py
 已計好嘅 AI `cluster_id`（`detect_keyword_matches()` 同 cluster 淨揀最新一篇，
@@ -479,6 +483,15 @@ keyword，vault 入面可以喺一段關鍵字前面加一行 `context: 港人, 
 `KEYWORD_COOLDOWN_MINUTES`，state 存喺 `cooldown` key）。Cooldown 一定要逐篇
 check + send 完即時更新，唔可以喺 loop 之前一次過計 eligible list——試過
 因為咁樣，同一個 run 入面 3 篇撞正同一 keyword 嘅文一齊送晒（2026-07-21）。
+
+**Keyword-level cooldown（2026-07-21，慢速通道補加）**：用戶反映「六合彩」
+「陳嘉信」呢類持續事件跨越幾個唔同 `cluster_id`（AI 分到唔同角度＝唔同
+topic）都會分別觸發 alert，`alerted_clusters` 嘅 cluster dedup 唔夠。
+`keyword_alert.py` 而家都有 `KEYWORD_COOLDOWN_MINUTES`（30 分鐘），同
+`fast_watch.py` 同一套設計：`detect_keyword_matches()` 用 build 開始嗰陣嘅
+cooldown snapshot 預篩一次，`send_keyword_alerts()` 送嗰陣再逐篇 check +
+即時更新（避免同一個 run 入面唔同 cluster 撞正同一 keyword 齊齊送晒）。
+State 存喺 `keyword_alerts.json` 新增嘅 `cooldown` key。
 
 **Google Trends 自動並入監控（`src/trends_watch.py`，2026-07-21）**：用戶要求
 Google 香港熱門搜尋自動加入監控清單，match 到就當普通 keyword alert 送
@@ -497,6 +510,17 @@ pubDate 相隔 10-30 分鐘，個榜好快轉勻，「daily」淨係個 feed 個
 match 唔中網站嘅繁體內文）。兩條通道都用 `load_trending_keywords()` 讀
 呢個 config，同 `WATCH_KEYWORDS` 合併（`dict.fromkeys()` 去重）先做
 match——冇喺 `KEYWORD_CONTEXT` 登記，所以 trending 字自動當冇 context 限制。
+
+**Trending 字獨立節流（2026-07-21）**：Trending 字冇 curated `WATCH_KEYWORDS`
+咁「特登揀嘅」，成日對應緊持續幾個鐘嘅日常熱話（六合彩攪珠、八卦人物）——
+兩條通道都畀佢哋更長嘅 cooldown（`TRENDING_COOLDOWN_MINUTES=90`，curated
+keyword 用返 `KEYWORD_COOLDOWN_MINUTES=30`）+ 獨立細 quota
+（`MAX_TRENDING_ALERTS_PER_BUILD=2` / `MAX_TRENDING_ALERTS_PER_RUN=1`），
+避免佢哋洗晒成個 `MAX_ALERTS_PER_BUILD`/`MAX_ALERTS_PER_RUN`、擠走真正
+人手揀嘅 keyword。判斷「呢個 keyword 係咪 trending」：喺 trending 清單
+但唔喺 `WATCH_KEYWORDS`（兩邊都有嘅字當 curated，`WATCH_KEYWORDS` 贏）。
+探測過用 `ht:approx_traffic`（feed 附帶嘅搜尋量估算）做過濾——實測發現
+高流量同「值得 alert」冇關係（六合彩呢類例行內容流量反而最高），冇採用。
 
 ⚠️ **Test isolation 陷阱**（同 2026-07-21 `KEYWORD_CONTEXT` 嗰個一樣，重複出現
 過兩次）：一旦 self-hosted 機真.跑過 `sync_trending_keywords()`，

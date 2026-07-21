@@ -401,6 +401,109 @@ def test_send_keyword_alerts_tracks_cluster_across_builds(monkeypatch, tmp_path)
     assert calls["n"] == 1  # 冇再送
 
 
+def test_keyword_in_cooldown():
+    now = datetime.now(timezone.utc)
+    cooldown = {"六合彩": (now - timedelta(minutes=10)).isoformat()}
+    assert KA._keyword_in_cooldown("六合彩", cooldown, now, 30)          # 10 分鐘前，30 分鐘冷卻仲未過
+    assert not KA._keyword_in_cooldown("OpenAI", cooldown, now, 30)      # 冇記錄過，唔喺冷卻
+    stale = {"六合彩": (now - timedelta(minutes=31)).isoformat()}
+    assert not KA._keyword_in_cooldown("六合彩", stale, now, 30)          # 31 分鐘前，30 分鐘冷卻已過
+    assert KA._keyword_in_cooldown("六合彩", stale, now, 90)              # 31 分鐘前，90 分鐘冷卻仲未過
+
+
+def test_detect_keyword_matches_respects_keyword_cooldown_across_clusters(monkeypatch):
+    # 2026-07-21 用戶反映：「六合彩」「陳嘉信」呢類持續事件跨越幾個唔同
+    # cluster 都會分別觸發，cluster dedup 唔夠——加返 keyword-level cooldown。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["六合彩"])
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="a1", title="六合彩一億元頭獎", cluster_id="c1", date=now.isoformat()),
+        _article(id="a2", title="六合彩攪珠結果", cluster_id="c2", date=now.isoformat()),
+    ]
+    cooldown = {"六合彩": (now - timedelta(minutes=5)).isoformat()}  # 啱啱先送過
+    out = KA.detect_keyword_matches(articles, set(), now=now, cooldown=cooldown)
+    assert out == []
+
+
+def test_send_keyword_alerts_applies_cooldown_within_same_batch_across_clusters(monkeypatch, tmp_path):
+    # 同 fast_watch.py 2026-07-21 嗰個 bug 同一類：cooldown 一定要逐篇
+    # check + send 完即時更新，唔可以淨係喺 loop 之前一次過計 eligible
+    # list，否則同一個 run 入面唔同 cluster 撞正同一個 keyword 會齊齊送晒。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["六合彩"])
+    monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(KA, "STATE_PATH", tmp_path / "keyword_alerts.json")
+    calls = {"n": 0}
+
+    async def fake_send(session, text, photo_url=""):
+        calls["n"] += 1
+        return 200
+    monkeypatch.setattr(KA, "_send_telegram", fake_send)
+
+    daytime = datetime.now(timezone.utc).replace(hour=12)
+    articles = [
+        _article(id="a1", title="六合彩一億元頭獎", cluster_id="c1", date=daytime.isoformat()),
+        _article(id="a2", title="六合彩攪珠結果", cluster_id="c2", date=daytime.isoformat()),
+    ]
+    asyncio.run(KA.send_keyword_alerts(articles, now=daytime))
+    assert calls["n"] == 1
+
+
+def test_send_keyword_alerts_keyword_cooldown_persists_across_builds(monkeypatch, tmp_path):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["六合彩"])
+    monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(KA, "STATE_PATH", tmp_path / "keyword_alerts.json")
+    calls = {"n": 0}
+
+    async def fake_send(session, text, photo_url=""):
+        calls["n"] += 1
+        return 200
+    monkeypatch.setattr(KA, "_send_telegram", fake_send)
+
+    daytime = datetime.now(timezone.utc).replace(hour=12)
+    first = [_article(id="a1", title="六合彩一億元頭獎", cluster_id="c1", date=daytime.isoformat())]
+    asyncio.run(KA.send_keyword_alerts(first, now=daytime))
+    assert calls["n"] == 1
+
+    # 第二次 build（10 分鐘後）：唔同 cluster，但同一個 keyword 仲喺 30
+    # 分鐘冷卻期內——唔應該再送。
+    second = [_article(id="a2", title="六合彩攪珠結果", cluster_id="c2",
+                        date=(daytime + timedelta(minutes=10)).isoformat())]
+    asyncio.run(KA.send_keyword_alerts(second, now=daytime + timedelta(minutes=10)))
+    assert calls["n"] == 1
+
+
+def test_detect_keyword_matches_uses_longer_cooldown_for_trending_keywords(monkeypatch):
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["六合彩"])
+    now = datetime.now(timezone.utc)
+    articles = [_article(id="a1", title="六合彩攪珠結果", date=now.isoformat())]
+    # 40 分鐘前送過——過咗 curated 嘅 30 分鐘 cooldown，但未過 trending
+    # 嘅 90 分鐘 cooldown，所以應該仲係俾擋住。
+    cooldown = {"六合彩": (now - timedelta(minutes=40)).isoformat()}
+    out = KA.detect_keyword_matches(articles, set(), now=now, cooldown=cooldown)
+    assert out == []
+
+
+def test_detect_keyword_matches_caps_trending_matches_separately(monkeypatch):
+    # Trending 字（Google 熱搜）唔應該洗晒成個 MAX_ALERTS_PER_BUILD，擠走
+    # curated WATCH_KEYWORDS 嘅 match。
+    monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(KA, "load_trending_keywords", lambda: ["六合彩", "陳嘉信", "沃倫·巴菲特"])
+    monkeypatch.setattr(KA, "MAX_TRENDING_ALERTS_PER_BUILD", 1)
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="t1", title="六合彩攪珠結果", date=(now - timedelta(minutes=3)).isoformat()),
+        _article(id="t2", title="陳嘉信案上訴得直", date=(now - timedelta(minutes=2)).isoformat()),
+        _article(id="t3", title="沃倫·巴菲特退休", date=(now - timedelta(minutes=1)).isoformat()),
+        _article(id="c1", title="OpenAI 發布新模型", date=now.isoformat()),
+    ]
+    out = KA.detect_keyword_matches(articles, set(), now=now)
+    ids = {a["id"] for a in out}
+    assert "c1" in ids            # curated keyword 唔受 trending cap 影響
+    assert len(ids & {"t1", "t2", "t3"}) == 1   # trending 淨係得 1 個入圍
+    assert ids & {"t1", "t2", "t3"} == {"t3"}   # 揀最新嗰個
+
+
 def test_send_keyword_alerts_skips_during_quiet_hours(monkeypatch, tmp_path):
     monkeypatch.setattr(KA, "WATCH_KEYWORDS", ["樓市"])
     monkeypatch.setattr(KA, "TELEGRAM_BOT_TOKEN", "token")

@@ -201,6 +201,82 @@ def test_keyword_in_cooldown_survives_bad_timestamp():
     assert not FW._keyword_in_cooldown("x", {"x": "not-a-date"}, now)
 
 
+def test_keyword_in_cooldown_respects_custom_minutes():
+    now = datetime.now(timezone.utc)
+    cooldown = {"六合彩": (now - timedelta(minutes=40)).isoformat()}
+    assert not FW._keyword_in_cooldown("六合彩", cooldown, now, 30)  # 過咗 30 分鐘冷卻
+    assert FW._keyword_in_cooldown("六合彩", cooldown, now, 90)      # 未過 90 分鐘冷卻
+
+
+def test_is_trending_keyword(monkeypatch):
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["六合彩"])
+    assert FW._is_trending_keyword("六合彩") is True
+    assert FW._is_trending_keyword("OpenAI") is False
+    # 兩邊都有嘅字當curated（WATCH_KEYWORDS贏），唔算trending
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["六合彩", "OpenAI"])
+    assert FW._is_trending_keyword("OpenAI") is False
+
+
+def test_main_applies_longer_cooldown_to_trending_keywords(monkeypatch, tmp_path):
+    # 2026-07-21 用戶反映太密集：trending 字（Google 熱搜）冇 curated
+    # WATCH_KEYWORDS 咁「特登揀嘅」，用長啲 cooldown。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", [])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["六合彩"])
+    state_path = tmp_path / "state.json"
+    now = datetime.now(timezone.utc)
+    # 40 分鐘前送過——過咗 curated 嘅 30 分鐘，但未過 trending 嘅 90 分鐘。
+    state_path.write_text(
+        json.dumps({"seen": {}, "cooldown": {"六合彩": (now - timedelta(minutes=40)).isoformat()}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(FW, "STATE_PATH", state_path)
+
+    async def fake_fetch(session, cutoff):
+        return [_article(id="a1", title="六合彩攪珠結果")]
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    async def fail_send(*a, **kw):
+        raise AssertionError("trending keyword should still be in its own 90-min cooldown")
+    monkeypatch.setattr(FW, "_send_telegram", fail_send)
+
+    asyncio.run(FW.main())
+
+
+def test_main_caps_trending_alerts_separately_from_curated(monkeypatch, tmp_path):
+    # Trending 字唔應該洗晒成個 MAX_ALERTS_PER_RUN，擠走 curated keyword。
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])
+    monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["六合彩", "陳嘉信"])
+    monkeypatch.setattr(FW, "MAX_TRENDING_ALERTS_PER_RUN", 1)
+    monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 5)
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+
+    now = datetime.now(timezone.utc)
+    articles = [
+        _article(id="t1", title="六合彩攪珠結果", date=(now - timedelta(minutes=2)).isoformat()),
+        _article(id="t2", title="陳嘉信案上訴得直", date=(now - timedelta(minutes=1)).isoformat()),
+        _article(id="c1", title="OpenAI 發布新模型", date=now.isoformat()),
+    ]
+
+    async def fake_fetch(session, cutoff):
+        return articles
+    monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    asyncio.run(FW.main())
+    assert len(sent) == 2  # OpenAI + 1 個 trending（唔係兩個 trending 都送）
+    assert any("OpenAI" in t for t in sent)
+    assert sum("六合彩" in t or "陳嘉信" in t for t in sent) == 1
+
+
 def test_main_skips_without_token(monkeypatch, tmp_path):
     monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "")
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["OpenAI"])

@@ -51,6 +51,16 @@ FRESHNESS_HOURS      = 2    # 只揀呢個窗口內先出嘅文，避免每次 b
 MAX_ALERTS_PER_BUILD = 5    # 防止太闊嘅關鍵字（例如「香港」）一次過洗版
 STATE_TTL_HOURS      = 48   # prune 舊 alerted record
 
+# 2026-07-21，用戶反映「六合彩」「陳嘉信」呢類 keyword 持續事件跨越幾個
+# cluster 都會分別觸發 alert，太密集——cluster dedup 唔夠，加返同
+# fast_watch.py 同一套 keyword-level cooldown。Trending 字（Google 熱搜）
+# 冇 curated WATCH_KEYWORDS 咁「特登揀嘅」，成日對應緊持續幾個鐘嘅日常
+# 熱話（六合彩攪珠、八卦人物），用長啲 cooldown + 獨立細 quota，避免
+# 佢哋洗晒成個 MAX_ALERTS_PER_BUILD、擠走真正人手揀嘅 keyword。
+KEYWORD_COOLDOWN_MINUTES      = 30
+TRENDING_COOLDOWN_MINUTES     = 90
+MAX_TRENDING_ALERTS_PER_BUILD = 2
+
 HKT = timezone(timedelta(hours=8))
 QUIET_HOURS_HKT = range(0, 7)   # 00:00–07:00 HKT，跟 fast_watch.py 一致，唔想瞓緊覺俾嘢吵醒
 
@@ -205,6 +215,17 @@ def _haystack(article: dict) -> str:
     return f"{article.get('title', '')} {article.get('summary', '')} {tags}".lower()
 
 
+def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime, minutes: int) -> bool:
+    ts = cooldown.get(keyword)
+    if not ts:
+        return False
+    try:
+        last = datetime.fromisoformat(ts)
+    except Exception:
+        return False
+    return (now - last).total_seconds() < minutes * 60
+
+
 def _first_qualifying_keyword(hay: str, keywords: list[tuple[str, str]]) -> str | None:
     """揀第一個真.match嘅keyword：substring match到之餘，如果呢個keyword
     喺 KEYWORD_CONTEXT 有登記context要求，仲要hay入面出現至少一個context
@@ -226,6 +247,7 @@ def detect_keyword_matches(
     alerted_cluster_ids: set | None = None,
     *,
     now: datetime | None = None,
+    cooldown: dict | None = None,
 ) -> list[dict]:
     """Return up to MAX_ALERTS_PER_BUILD fresh articles matching a watched
     keyword, newest first. Each result carries which keyword hit it.
@@ -240,6 +262,8 @@ def detect_keyword_matches(
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
     alerted_cluster_ids = alerted_cluster_ids or set()
+    cooldown = cooldown or {}
+    trending_only = set(trending) - set(WATCH_KEYWORDS)
     keywords = [(kw, kw.lower()) for kw in dict.fromkeys(WATCH_KEYWORDS + trending) if kw and kw.strip()]
 
     matches = []
@@ -260,7 +284,7 @@ def detect_keyword_matches(
         hay = _haystack(a)
         hit = _first_qualifying_keyword(hay, keywords)
         if hit:
-            matches.append({**a, "_matched_keyword": hit})
+            matches.append({**a, "_matched_keyword": hit, "_trending_keyword": hit in trending_only})
 
     matches.sort(key=lambda a: a.get("date", ""), reverse=True)
 
@@ -281,6 +305,30 @@ def detect_keyword_matches(
             seen_clusters.add(cid)
         deduped.append(a)
     matches = deduped
+
+    # keyword-level cooldown（2026-07-21）：cluster dedup 淨係擋到「同一
+    # cluster」，擋唔到「六合彩」「陳嘉信」呢類持續事件跨越幾個唔同 cluster
+    # 分別觸發。Trending 字用更長 cooldown（見常數）。
+    before_cooldown = len(matches)
+    matches = [
+        a for a in matches
+        if not _keyword_in_cooldown(
+            a["_matched_keyword"], cooldown, now,
+            TRENDING_COOLDOWN_MINUTES if a["_trending_keyword"] else KEYWORD_COOLDOWN_MINUTES,
+        )
+    ]
+    dropped_cooldown = before_cooldown - len(matches)
+    if dropped_cooldown:
+        print(f"[keyword] {dropped_cooldown} match(es) skipped — keyword still in cooldown")
+
+    # Trending 字獨立、更細嘅 quota——避免 Google Trends 嘅日常熱話（例如
+    # 六合彩攪珠）洗晒成個 MAX_ALERTS_PER_BUILD，擠走真正人手揀嘅 keyword。
+    trending_matches = [a for a in matches if a["_trending_keyword"]]
+    if len(trending_matches) > MAX_TRENDING_ALERTS_PER_BUILD:
+        dropped = len(trending_matches) - MAX_TRENDING_ALERTS_PER_BUILD
+        print(f"[keyword] {dropped} trending match(es) dropped by MAX_TRENDING_ALERTS_PER_BUILD cap")
+        keep_ids = {a["id"] for a in trending_matches[:MAX_TRENDING_ALERTS_PER_BUILD]}
+        matches = [a for a in matches if not a["_trending_keyword"] or a["id"] in keep_ids]
 
     if len(matches) > MAX_ALERTS_PER_BUILD:
         # 之前完全靜默 drop——冇任何 log 分辨「因為 cap 被截走」定係「本身
@@ -344,11 +392,23 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
 
     alerted = state.get("alerted") or {}
     alerted_clusters = state.get("alerted_clusters") or {}
-    matches = detect_keyword_matches(articles, set(alerted.keys()), set(alerted_clusters.keys()), now=now)
+    cooldown = state.get("cooldown") or {}
+    matches = detect_keyword_matches(
+        articles, set(alerted.keys()), set(alerted_clusters.keys()), now=now, cooldown=cooldown,
+    )
 
     if matches:
         async with aiohttp.ClientSession() as session:
             for a in matches:
+                keyword = a["_matched_keyword"]
+                minutes = TRENDING_COOLDOWN_MINUTES if a["_trending_keyword"] else KEYWORD_COOLDOWN_MINUTES
+                if _keyword_in_cooldown(keyword, cooldown, now, minutes):
+                    # detect_keyword_matches() 攞緊 build 開始嗰陣嘅 cooldown
+                    # snapshot 篩過一次，但呢個 batch 入面之前一篇（同一個
+                    # keyword）啱啱先送咗都要即時擋住——唔可以淨係喺 loop
+                    # 之前一次過計 eligible list（同 fast_watch.py 2026-07-21
+                    # 嗰個 bug 同一類）。
+                    continue
                 text = _format_alert_text(a)
                 try:
                     status = await _send_telegram(session, text, photo_url=a.get("thumbnail") or "")
@@ -357,7 +417,8 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
                         cid = a.get("cluster_id")
                         if cid:
                             alerted_clusters[cid] = a.get("date", "")
-                        print(f"[keyword] Alerted ({a['_matched_keyword']}): {a.get('title', '')[:50]}")
+                        cooldown[keyword] = now.isoformat()
+                        print(f"[keyword] Alerted ({keyword}): {a.get('title', '')[:50]}")
                     else:
                         print(f"[keyword] Telegram returned {status}")
                 except Exception as exc:
@@ -366,7 +427,12 @@ async def send_keyword_alerts(articles: list, *, now: datetime | None = None) ->
     cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=STATE_TTL_HOURS)).isoformat()
     alerted = {aid: ts for aid, ts in alerted.items() if ts > cutoff_str}
     alerted_clusters = {cid: ts for cid, ts in alerted_clusters.items() if ts > cutoff_str}
+    # cooldown 用最長嘅 TRENDING_COOLDOWN_MINUTES 做 prune 門檻（呢度分唔到
+    # 邊個 keyword 屬於邊類，寧願留耐啲都唔好未夠鐘就被 prune 走）。
+    cooldown_cutoff = (now - timedelta(minutes=TRENDING_COOLDOWN_MINUTES)).isoformat()
+    cooldown = {kw: ts for kw, ts in cooldown.items() if ts > cooldown_cutoff}
     state["alerted"] = alerted
     state["alerted_clusters"] = alerted_clusters
+    state["cooldown"] = cooldown
     _save_state(state)
     print(f"[keyword] {len(matches)} new alerts sent, {len(alerted)} tracked, {len(alerted_clusters)} clusters tracked")

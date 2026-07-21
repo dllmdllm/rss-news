@@ -50,6 +50,12 @@ SEEN_CAP = 3000        # bound state.json size — plain id list, no dates to pr
 # 幾次。用「同一個 keyword 幾耐內唔再送」做土法 dedup（2026-07-21，用戶
 # 反映；30 分鐘係用戶揀嘅預設）。
 KEYWORD_COOLDOWN_MINUTES = 30
+# Trending 字（Google 熱搜）冇 curated WATCH_KEYWORDS 咁「特登揀嘅」，成日
+# 對應緊持續幾個鐘嘅日常熱話（六合彩攪珠、八卦人物）——用長啲 cooldown +
+# 獨立細 quota，避免佢哋洗晒成個 MAX_ALERTS_PER_RUN（2026-07-21，用戶反映
+# 太密集）。
+TRENDING_COOLDOWN_MINUTES = 90
+MAX_TRENDING_ALERTS_PER_RUN = 1
 # fast-watch.yml's job timeout-minutes is 4 (240s), covering checkout +
 # setup-python + pip install + cache restore/save around this one step too
 # — unlike build.py, main() had no overall wait_for at all, so a hang here
@@ -92,7 +98,7 @@ def _save_state(state: dict):
     STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
-def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime) -> bool:
+def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime, minutes: int = KEYWORD_COOLDOWN_MINUTES) -> bool:
     ts = cooldown.get(keyword)
     if not ts:
         return False
@@ -100,7 +106,11 @@ def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime) -> bool:
         last = datetime.fromisoformat(ts)
     except Exception:
         return False
-    return (now - last).total_seconds() < KEYWORD_COOLDOWN_MINUTES * 60
+    return (now - last).total_seconds() < minutes * 60
+
+
+def _is_trending_keyword(keyword: str) -> bool:
+    return keyword in TRENDING_KEYWORDS and keyword not in WATCH_KEYWORDS
 
 
 def _match_keyword(article: dict) -> str | None:
@@ -203,10 +213,15 @@ async def main() -> None:
             # A 篇送咗都唔會即時擋住跟住嘅 B、C（佢哋撞正同一個 keyword），
             # 3 篇會齊齊送晒（試過真係中，先改做逐篇 check + 即時更新）。
             sent_this_run = 0
+            trending_sent_this_run = 0
             for article, keyword in matched:
                 if sent_this_run >= MAX_ALERTS_PER_RUN:
                     break
-                if _keyword_in_cooldown(keyword, cooldown, now):
+                is_trending = _is_trending_keyword(keyword)
+                if is_trending and trending_sent_this_run >= MAX_TRENDING_ALERTS_PER_RUN:
+                    continue
+                minutes = TRENDING_COOLDOWN_MINUTES if is_trending else KEYWORD_COOLDOWN_MINUTES
+                if _keyword_in_cooldown(keyword, cooldown, now, minutes):
                     continue
                 try:
                     status = await _send_telegram(
@@ -215,6 +230,8 @@ async def main() -> None:
                     if 200 <= status < 300:
                         sent += 1
                         sent_this_run += 1
+                        if is_trending:
+                            trending_sent_this_run += 1
                         alerted_ids.add(article["id"])
                         alerted_keywords.add(keyword)
                         cooldown[keyword] = now.isoformat()
