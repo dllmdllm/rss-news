@@ -439,14 +439,26 @@ schema 唔齊（舊 build）會 fallback `articles.json`。改 build.py 嗰段 i
 兩條獨立 Telegram 提示通道，共用同一份關鍵字清單：
 
 - **慢速通道**（`keyword_alert.py`）：隨主 build（~20 分鐘一輪，self-hosted），
-  比對全部 source 嘅 title/summary/tags，去重靠 `docs/data/keyword_alerts.json`
+  比對全部 source 嘅 title/summary/tags，去重靠 `docs/data/keyword_alerts.json`。
+  ⚠️ **2026-07-22 起停用**——同快速通道職能重疊，兩條一齊開太密集
+  （用戶反映）。`build.py` 頂部 `SLOW_KEYWORD_ALERTS_ENABLED = False`
+  常數控制，`main()` 淨係唔 call `send_keyword_alerts()`；module 本身
+  同 test 保持齊全冇刪，想返都係一行 flip
 - **快速通道**（`fast_watch.py`）：獨立 `fast-watch.yml`（ubuntu，5 分鐘一輪，
   00:00-07:00 HKT 除外），淨查星島頭條/am730/TVB新聞三個最快 source 嘅標題
   （唔 scrape 全文、唔叫 AI），去重靠 GitHub Actions cache（跟 `guardian.yml`
-  pattern）。**刻意唔碰 `docs/data`、唔 git push**——避免同主 build 嘅 push 撞
+  pattern）。**刻意唔碰 `docs/data`、唔 git push**——避免同主 build 嘅 push 撞。
+  慢速通道停用之後，呢條係現時**唯一**仲活躍嘅 keyword alert 通道
 
 兩條通道格式故意唔同（⚡ 快訊 vs 🔔 提醒），因為兩邊冇共用 dedup 狀態，
-偶爾會見到同一篇文兩邊各推一次——呢個係已知取捨，唔係 bug。
+偶爾會見到同一篇文兩邊各推一次——呢個已知取捨喺慢速通道停用之後其實
+唔再出現（淨返一條通道跑緊）。
+
+**Trending 字標籤（2026-07-22）**：Match 到嘅 keyword 若嚟自 Google Trends
+（`_is_trending_keyword()` / `_trending_keyword` flag——喺 curated
+`WATCH_KEYWORDS` 揾唔到）,訊息嘅 keyword 後面會加 ` (From Google Trend)`，
+等用戶一眼分到係人手揀嘅字定係 Google 熱搜自動撞中。兩條通道（`fast_watch.py`
+嘅 `_format_text()` / `keyword_alert.py` 嘅 `_format_alert_text()`）都套用。
 
 **關鍵字清單來源**：`WATCH_KEYWORDS` 唔再係 hardcode 喺 code——用戶喺 Obsidian
 vault（`RSS News - Watch Keywords.md`）隨時改，`build.main()` 開頭

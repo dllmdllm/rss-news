@@ -140,15 +140,16 @@ def _format_hkt_time(article: dict) -> str:
         return ""
 
 
-def _format_text(article: dict, keyword: str) -> str:
+def _format_text(article: dict, keyword: str, is_trending: bool = False) -> str:
     esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     meta = " · ".join(filter(None, [
         article.get("source", ""),
         _format_hkt_time(article),
         "快速通道（未經全文/AI 分析）",
     ]))
+    keyword_label = esc(keyword) + (" (From Google Trend)" if is_trending else "")
     lines = [
-        f"⚡ <b>快訊關鍵字</b>：{esc(keyword)}",
+        f"⚡ <b>快訊關鍵字</b>：{keyword_label}",
         esc(article.get("title", "")),
         esc(meta),
     ]
@@ -225,7 +226,7 @@ async def main() -> None:
                     continue
                 try:
                     status = await _send_telegram(
-                        session, _format_text(article, keyword), photo_url=article.get("thumbnail") or ""
+                        session, _format_text(article, keyword, is_trending), photo_url=article.get("thumbnail") or ""
                     )
                     if 200 <= status < 300:
                         sent += 1

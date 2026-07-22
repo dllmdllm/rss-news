@@ -119,6 +119,16 @@ def test_format_text_includes_hkt_publish_time():
     assert "TVB 新聞 · 14:32 · 快速通道" in text
 
 
+def test_format_text_labels_trending_keyword():
+    text = FW._format_text(_article(title="六合彩攪珠結果"), "六合彩", is_trending=True)
+    assert "⚡ <b>快訊關鍵字</b>：六合彩 (From Google Trend)" in text
+
+
+def test_format_text_omits_trending_label_for_curated_keyword():
+    text = FW._format_text(_article(title="Nvidia 業績勝預期"), "Nvidia")
+    assert "(From Google Trend)" not in text
+
+
 def test_format_hkt_time_returns_empty_on_bad_date():
     assert FW._format_hkt_time({"date": "not-a-date"}) == ""
     assert FW._format_hkt_time({}) == ""

@@ -323,6 +323,22 @@ def test_format_alert_text_includes_hkt_publish_time():
     assert "新聞 · RTHK 本地 · 14:32" in text
 
 
+def test_format_alert_text_labels_trending_keyword():
+    article = _article(title="六合彩攪珠結果")
+    article["_matched_keyword"] = "六合彩"
+    article["_trending_keyword"] = True
+    text = KA._format_alert_text(article)
+    assert text.startswith("🔔 <b>關鍵字提醒</b>：六合彩 (From Google Trend)")
+
+
+def test_format_alert_text_omits_trending_label_for_curated_keyword():
+    article = _article(title="樓市成交急升")
+    article["_matched_keyword"] = "樓市"
+    article["_trending_keyword"] = False
+    text = KA._format_alert_text(article)
+    assert "(From Google Trend)" not in text
+
+
 def test_format_hkt_time_returns_empty_on_bad_date():
     assert KA._format_hkt_time({"date": "not-a-date"}) == ""
     assert KA._format_hkt_time({}) == ""

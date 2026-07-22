@@ -59,6 +59,12 @@ GRAPH_MAX_NODES = 150        # browser ceiling — cytoscape gets sluggish above
 GRAPH_MAX_EDGES = 300
 GRAPH_ENTITY_TYPES = ("people", "companies", "places")
 
+# 2026-07-22，用戶決定停用慢速通道（隨 build ~20 分鐘一輪）——同
+# fast_watch.py（獨立 ubuntu workflow，5 分鐘一輪）職能重疊，兩條一齊開
+# 太密集。keyword_alert.py 本身連 test 保持齊全，淨係唔喺呢度 call，
+# 想返都係一行 flip。
+SLOW_KEYWORD_ALERTS_ENABLED = False
+
 # ⚠️ Canonical 名要用「唔會過時」嘅主題式命名（伊朗局勢／蘋果動態），
 # 唔好用事件式命名（蘋果CEO交接）——事件完咗個標籤仍然日日掛喺話題聚焦度，
 # 用戶會以為成個 grid 冇更新過（2026-07-17 實際投訴）。
@@ -1171,14 +1177,15 @@ async def main():
         mark_step("breaking_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     _tlog(f"breaking done {time.monotonic()-t:.1f}s")
 
-    t = time.monotonic()
-    try:
-        await asyncio.wait_for(send_keyword_alerts(articles), timeout=30)
-        mark_step("keyword_alert", seconds=time.monotonic() - t)
-    except Exception as exc:
-        _tlog(f"keyword_alert: {exc!r}")
-        mark_step("keyword_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
-    _tlog(f"keyword done {time.monotonic()-t:.1f}s")
+    if SLOW_KEYWORD_ALERTS_ENABLED:
+        t = time.monotonic()
+        try:
+            await asyncio.wait_for(send_keyword_alerts(articles), timeout=30)
+            mark_step("keyword_alert", seconds=time.monotonic() - t)
+        except Exception as exc:
+            _tlog(f"keyword_alert: {exc!r}")
+            mark_step("keyword_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+        _tlog(f"keyword done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("daily_brief start")

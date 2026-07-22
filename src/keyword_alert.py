@@ -353,8 +353,11 @@ def _format_hkt_time(article: dict) -> str:
 
 def _format_alert_text(article: dict) -> str:
     esc = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    keyword_label = esc(article["_matched_keyword"]) + (
+        " (From Google Trend)" if article.get("_trending_keyword") else ""
+    )
     lines = [
-        f"🔔 <b>關鍵字提醒</b>：{esc(article['_matched_keyword'])}",
+        f"🔔 <b>關鍵字提醒</b>：{keyword_label}",
         esc(article.get("title", "")),
     ]
     summary = str(article.get("summary") or "").strip()

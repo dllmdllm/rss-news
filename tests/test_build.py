@@ -572,6 +572,9 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     for stage in ("fetch", "retranslate", "scrape", "analyse", "translate"):
         assert stage in steps, f"{stage} missing from build_status.json"
         assert steps[stage]["ok"] is True
+    # 2026-07-22：慢速通道停用（SLOW_KEYWORD_ALERTS_ENABLED = False），
+    # send_keyword_alerts() 唔應該再被 call，呢個 stage 唔應該出現。
+    assert "keyword_alert" not in steps
 
 
 def test_timeout_status_records_build_failure(tmp_path, monkeypatch):
