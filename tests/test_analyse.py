@@ -74,6 +74,26 @@ def test_prompt_schema_summary_is_rejected():
     assert _parse_analysis(raw) is None
 
 
+def test_prose_summary_is_rejected():
+    # Model occasionally drops the ・bullet schema and returns prose. The
+    # case that motivated this guard was HP BIOS article 1c81d678187d —
+    # ~116 chars, single line, no ・ characters. Reject so the retry path
+    # re-asks for a properly formatted summary.
+    prose = (
+        "HP透過Windows Update強制推送BIOS更新，多款高階筆電更新後變磚陷入無限重啟，"
+        "受影響機型為ZBook Ultra G1a及EliteBook X G1a系列"
+    )
+    raw = '{"summary":"' + prose + '","score":5,"tags":[],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw) is None
+
+
+def test_short_summary_passes_prose_guard():
+    # The length gate keeps the prose detector from rejecting short stubs
+    # that are too brief to credibly be a real prose summary.
+    raw = '{"summary":"x","score":5,"tags":[],"sentiment":"neutral","topic":""}'
+    assert _parse_analysis(raw) is not None
+
+
 def test_parse_plain_json():
     raw = '{"summary":"・a\\n・b","score":7,"tags":["x","y"],"sentiment":"negative","topic":"test","event_type":"事故","entities":{"people":["張三"],"companies":["港鐵"],"places":["大埔"],"dates":["4月22日"],"numbers":["8人"]}}'
     out = _parse_analysis(raw)
@@ -201,6 +221,19 @@ def test_needs_when_summary_is_list_repr():
 def test_needs_when_summary_is_prompt_schema_echo():
     assert _needs_full_analysis({
         "summary": "單一字串（非array），每點用「・」開頭，每點之間用換行符",
+        "score": 5,
+        "version": ANALYSIS_VERSION,
+    }) is True
+
+
+def test_needs_when_summary_is_prose():
+    # Cached prose summaries (no ・, no \n, long enough to be a real sentence)
+    # should be flagged stale so the next build re-runs analysis.
+    assert _needs_full_analysis({
+        "summary": (
+            "HP透過Windows Update強制推送BIOS更新，多款高階筆電更新後變磚陷入無限重啟，"
+            "受影響機型為ZBook Ultra G1a及EliteBook X G1a系列"
+        ),
         "score": 5,
         "version": ANALYSIS_VERSION,
     }) is True

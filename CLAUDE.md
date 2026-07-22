@@ -404,6 +404,12 @@ img.referrerPolicy = "no-referrer";
 
 - `score: null` → migrate 過來的舊 entry，下次 build 重新分析
 - `topic` 用於 `cluster_articles()`：相同 topic 歸為一組
+- **散文式 summary 拒收**（`_summary_looks_acceptable()`，2026-07-22）：
+  SYSTEM_PROMPT 要求 5-8 個 ・bullet，但 MiniMax 偶爾會吐返成段散文（HP
+  BIOS 文章 `1c81d678187d` 個案：116 字單行、冇 ・冇 \n）。≥40 字而又
+  完全冇 ・冇 \n 就當 parse 失敗——`_normalise_parsed()` 拒收觸發 retry，
+  `_needs_full_analysis()` 令已 cache 嘅散文 entry 下次 build 重新分析。
+  40 字長度 gate 防止誤殺短 placeholder（測試用嘅 "x" 呢類）
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
   highlight，而家淨係喺 article.js 打做「關鍵句」plain list（`docs/js/index.js`
   嘅摘要拼接都有用到）。translate_content.py 一定要行喺 analyse.py 之前嘅

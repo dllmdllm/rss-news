@@ -121,6 +121,23 @@ def looks_like_prompt_schema_summary(summary: str) -> bool:
     return hits >= 2
 
 
+# Length gate keeps the prose detector from tripping on short placeholders
+# (e.g. test stubs, ad-hoc "x" summaries). Real prose summaries that escape
+# the schema run well past this — the HP BIOS case that motivated this was
+# 116 chars on a single line.
+_PROSE_REJECT_MIN_CHARS = 40
+
+
+def _summary_looks_acceptable(summary: str) -> bool:
+    """Return False for long-form prose with no ・bullets and no newlines —
+    i.e. summaries that violate the ・-bullet schema SYSTEM_PROMPT demands.
+    Caller treats False the same as a parse failure so the retry path runs."""
+    text = str(summary or "")
+    if len(text) < _PROSE_REJECT_MIN_CHARS:
+        return True
+    return "・" in text or "\n" in text
+
+
 def _normalise_string_list(raw, *, limit: int = 4, max_len: int = 24) -> list[str]:
     if raw is None:
         return []
@@ -226,6 +243,8 @@ def _normalise_parsed(data: dict) -> dict | None:
         summary = _normalise_summary(data.get("summary"))
         if looks_like_prompt_schema_summary(summary):
             return None
+        if not _summary_looks_acceptable(summary):
+            return None
         # headline_fit 係 optional——舊 cache entry / 模型漏答就係 None，
         # 前端 None 唔顯示 badge。
         try:
@@ -326,6 +345,8 @@ def _needs_full_analysis(cached: dict) -> bool:
     if summary.startswith("[") and summary.endswith("]") and "', '" in summary:
         return True
     if looks_like_prompt_schema_summary(summary):
+        return True
+    if not _summary_looks_acceptable(summary):
         return True
     return False
 
