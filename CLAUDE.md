@@ -525,6 +525,20 @@ Parse 喺 `_parse_keyword_rules()` → `WATCH_KEYWORDS` + `KEYWORD_CONTEXT`，�
 ⚠️ **Cooldown 一定要逐篇 check + send 完即時更新**，唔可以喺 loop 之前一次過計
 eligible list（試過一個 run 內 3 篇同 keyword 齊齊送晒）。
 
+⚠️ **快速通道嘅 `seen` 唔可以淨靠 article id**（2026-07-25）：id 係 `md5(url)`，
+而好多 source 個 url 帶住分類同標題 slug（am730 個樣係
+`/財經/1043642/黃仁勳開x帳號談ai-...`）。網站改分類、執下標題就換咗 md5，
+成篇文喺 `seen` 眼中「復活」再 alert 一次——實際中過（同一篇 am730 文 12:02
+同 13:02 各推一次；查過 cache 鏈完整、`seen` 由 1918 升到 1934，唔關 state
+遺失事）。`_seen_keys()` 而家同時記 `id` 同 `source|標題`。**兩個都要記**，
+唔係 deploy 嗰下舊 state 只有 md5 id，窗口內全部文會一次過當新文洗版。
+Now 新聞 換 `newsId` 重發同一篇都係同一個病（實測 articles.json 有 5 組）。
+
+⚠️ **「5 分鐘」係輪詢間隔，唔係端到端延遲**：實測一篇 am730 文標示 11:15
+出街，但 11:17–11:57 每 5 分鐘一次嘅 run 全部見唔到，12:02 先 match 到——
+即係篇文到 ~12:00 先入到 am730 個 sitemap。源頭幾時放出嚟控制唔到，
+workflow 再密都冇用。
+
 **Google Trends**（`src/trends_watch.py`）：`sync_trending_keywords()` 跟 build 同
 頻率 fetch，**每次完全覆寫**（唔累積）。`MIN_KEYWORD_LEN=2` 濾走單字；標題經
 `zhconv` 轉香港繁體（唔轉就永遠 match 唔中繁體內文）。兩條通道合併
