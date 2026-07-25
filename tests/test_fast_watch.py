@@ -339,7 +339,11 @@ def test_main_alerts_new_match_and_persists_seen(monkeypatch, tmp_path):
     assert len(sent) == 1
     assert "OpenAI" in sent[0]
     seen = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["seen"]
-    assert set(seen) == {"hit1", "miss1"}
+    # 每篇文記兩個 key（id + source|標題）——id 係 md5(url)，網站改分類／
+    # 執標題就會變，單靠佢會令同一篇文「復活」再 alert（2026-07-25 真實個案）。
+    assert {"hit1", "miss1"} <= set(seen), "article id 要照記"
+    assert any(k.startswith("t:") for k in seen), "要有 source|標題 key"
+    assert "t:am730|OpenAI發布新模型" in seen
 
 
 def test_main_collapses_same_keyword_matches_within_cooldown(monkeypatch, tmp_path):
@@ -560,4 +564,70 @@ def test_main_does_not_mark_seen_when_capped_out(monkeypatch, tmp_path):
     seen = set(json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["seen"])
     sent_count = sum(1 for i in range(3) if f"hit{i}" in seen)
     assert sent_count == 1          # 淨係真正 send 咗嗰個入 seen
-    assert len(seen) == 1           # 另外 2 個未輪到嘅冇入 seen，下一輪可以再撞返
+    # 一篇文兩個 key，所以係 2 唔係 1；重點係「另外 2 個未輪到嘅冇入 seen」，
+    # 下一輪可以再撞返。
+    assert len(seen) == 2
+
+
+# ── URL 一變就「復活」再 alert（2026-07-25 用戶影相報告）──
+
+def test_seen_keys_include_both_id_and_title():
+    keys = FW._seen_keys({"id": "abc", "source": "am730", "title": "黃仁勳 開 X 帳號"})
+    assert "abc" in keys
+    assert "t:am730|黃仁勳開X帳號" in keys, "標題要去空白做 key"
+
+
+def test_seen_keys_survive_a_url_change():
+    # 真實個案：同一篇 am730 文章 12:02 同 13:02 各推咗一次。cache 鏈完整、
+    # seen 一路增長，即係唔關 state 遺失事——係 id 變咗。id 係 md5(url)，
+    # 而 am730 個 url 帶住分類同標題 slug（/財經/1043642/黃仁勳開x帳號...），
+    # 網站改個分類就換咗 id。
+    before = FW._seen_keys({"id": "id-v1", "source": "am730", "title": "黃仁勳開X帳號談AI"})
+    after  = FW._seen_keys({"id": "id-v2", "source": "am730", "title": "黃仁勳開X帳號談AI"})
+    assert set(before) & set(after), "換咗 url 都要至少有一個 key 對得返"
+
+
+def test_seen_keys_do_not_collide_across_sources():
+    # 唔同 source 報同一單新聞係兩篇文（cooldown 先係處理呢種情況嘅機制），
+    # dedup key 唔可以撞埋一齊。
+    a = FW._seen_keys({"id": "a", "source": "am730", "title": "同一個標題"})
+    b = FW._seen_keys({"id": "b", "source": "TVB 新聞", "title": "同一個標題"})
+    assert not (set(k for k in a if k.startswith("t:")) & set(k for k in b if k.startswith("t:")))
+
+
+def test_seen_keys_tolerate_missing_fields():
+    assert FW._seen_keys({"id": "only-id"}) == ["only-id"]
+    assert FW._seen_keys({}) == []
+
+
+def test_main_does_not_realert_after_url_change(monkeypatch, tmp_path):
+    # End-to-end：第一輪 alert，第二輪同一篇文換咗 id（url 改咗）就唔應該再送。
+    import asyncio
+    monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
+    monkeypatch.setattr(FW, "WATCH_KEYWORDS", ["黃仁勳"])
+    monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {})
+    monkeypatch.setattr(FW, "TELEGRAM_BOT_TOKEN", "x")
+
+    sent = []
+
+    async def fake_send(session, text, photo_url=""):
+        sent.append(text)
+        return 200
+    monkeypatch.setattr(FW, "_send_telegram", fake_send)
+
+    def run_with(article_id):
+        async def fake_fetch(session, cutoff):
+            return [_article(id=article_id, title="黃仁勳開X帳號談AI", source="am730")]
+        monkeypatch.setattr(FW, "_fetch_watched", fake_fetch)
+        asyncio.run(FW.main())
+
+    run_with("id-v1")
+    assert len(sent) == 1, "第一次要送"
+
+    # 真實個案兩次相隔 60 分鐘，即係 KEYWORD_COOLDOWN_MINUTES(30) 已經過咗
+    # ——唔關 cooldown 事，純粹靠 `seen` 擋。cooldown 設 0 模擬呢個狀態，
+    # 唔係佢會幫手擋住，令呢個 test 就算用返舊 code 都照 pass（差啲中招）。
+    monkeypatch.setattr(FW, "KEYWORD_COOLDOWN_MINUTES", 0)
+    monkeypatch.setattr(FW, "TRENDING_COOLDOWN_MINUTES", 0)
+    run_with("id-v2")   # 同一篇文，但 url 變咗所以 md5 id 變咗
+    assert len(sent) == 1, f"換咗 url 唔應該再送一次，實際送咗 {len(sent)} 次"

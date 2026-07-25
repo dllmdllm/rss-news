@@ -20,6 +20,7 @@ not worth building cross-system dedup for a personal keyword watch.
 """
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -43,7 +44,8 @@ WATCHED_SOURCES = {"星島頭條", "am730", "TVB 新聞"}
 STATE_PATH = Path("fast_watch_state.json")
 FRESHNESS_HOURS = 2   # cold-start window; "seen" set prevents re-alerting after that
 MAX_ALERTS_PER_RUN = 5
-SEEN_CAP = 3000        # bound state.json size — plain id list, no dates to prune by
+# 每篇文記兩個 key（見 _seen_keys），所以呢個上限約等於 3000 篇文。
+SEEN_CAP = 6000
 # 呢度冇 AI/clustering 分辨「同一單新聞」定「唔同新聞」（keyword_alert.py
 # 嗰邊有 build.py 計好嘅 cluster_id 可以用，呢度冇）。廣泛嘅 keyword（例如
 # 「交通意外」）一單意外俾好多 source 報，之前每篇都獨立 alert，連環彈
@@ -96,6 +98,33 @@ def _save_state(state: dict):
         seen = dict(newest)
     payload = {"seen": seen, "cooldown": state.get("cooldown") or {}}
     STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _seen_keys(article: dict) -> list[str]:
+    """記低一篇文嘅 dedup key。
+
+    唔可以淨靠 article id：個 id 係 `md5(url)`，而 url 帶住分類同標題 slug
+    （am730 個樣係 `/財經/1043642/黃仁勳開x帳號談ai-...`）。網站改個分類、
+    執一執標題、甚至加個 tracking param，md5 就變——成篇文喺 `seen` 眼中
+    「復活」做新文，再 alert 多次。2026-07-25 用戶影相報告：同一篇 am730
+    文章 12:02 同 13:02 各推咗一次，期間 cache 鏈完整、`seen` 由 1918 一路
+    升到 1934，即係唔關 state 遺失事，係 id 變咗。
+
+    所以連 `source|標題` 一齊記。標題係用戶眼中「同一單新聞」嘅真正身份，
+    亦順手擋埋同一個 source 換 URL 重發嘅情況（Now 新聞 會換 newsId 重發，
+    實測 articles.json 有 5 組同 source 同標題但唔同 id）。
+
+    ⚠️ 兩個 key 都記係為咗向下兼容——deploy 嗰陣舊 state 淨係有 md5 id，
+    淨用新 key 會令窗口內所有文章一次過當新文，即刻洗版。
+    """
+    keys = []
+    aid = str(article.get("id") or "")
+    if aid:
+        keys.append(aid)
+    title = re.sub(r"\s+", "", str(article.get("title") or ""))
+    if title:
+        keys.append(f"t:{article.get('source', '')}|{title}")
+    return keys
 
 
 def _keyword_in_cooldown(keyword: str, cooldown: dict, now: datetime, minutes: int = KEYWORD_COOLDOWN_MINUTES) -> bool:
@@ -203,7 +232,8 @@ async def main() -> None:
         nonlocal articles, matched, sent
         async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
             articles = await _fetch_watched(session, cutoff)
-            fresh = [a for a in articles if a.get("id") and a["id"] not in seen]
+            fresh = [a for a in articles
+                     if a.get("id") and not any(k in seen for k in _seen_keys(a))]
             matched = [(a, kw) for a in fresh if (kw := _match_keyword(a))]
             matched.sort(key=lambda pair: pair[0].get("date", ""), reverse=True)
 
@@ -255,11 +285,15 @@ async def main() -> None:
     # 下一輪（仲喺 freshness window 內）再試。
     now_iso = now.isoformat()
     matched_ids = {a["id"] for a, _ in matched}
+    by_id = {a["id"]: a for a in articles if a.get("id")}
     for a in articles:
         if a.get("id") and a["id"] not in matched_ids:
-            seen[a["id"]] = now_iso
+            for key in _seen_keys(a):
+                seen[key] = now_iso
     for aid in alerted_ids:
-        seen[aid] = now_iso
+        article = by_id.get(aid)
+        for key in (_seen_keys(article) if article else [aid]):
+            seen[key] = now_iso
     for kw in alerted_keywords:
         cooldown[kw] = now_iso
     _save_state({"seen": seen, "cooldown": cooldown})
