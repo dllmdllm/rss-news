@@ -614,6 +614,34 @@ generate 咗但冇出街：
 
 `entities.json` / `graph.json` **唔屬於呢類**：佢哋有專屬頁（`entities.html` /
 `graph.html`），只係入口收喺 AI 欄底部一行細連結，屬「入口太隱蔽」而唔係「冇人讀」。
+2026-07-25 起 entities 有一格 🏷️ 今日焦點入咗 rail（每類最多 2 個，撳落去用
+`article_ids` 篩文——唔好夾實體名，AI 抽到嘅名唔一定逐字出現喺標題/摘要）。
+
+**`graph.json` 特登唔入 rail**，唔係漏咗：
+- top 12 連結有 8 條係「人物 ←→ 佢自己個地方」（天文台↔香港、特朗普↔美國），
+  資訊量低
+- 48 KB，而首頁本身已經載 451 KB
+- force-directed 圖喺 320px 闊嘅欄基本上撳唔到（cytoscape 過 150 節點仲會 lag）
+
+### 實體別名合併（`entity_digest.ENTITY_ALIASES`）
+
+同一個實體俾 AI 抽成幾個名，count 被拆散——「天文台」21 篇 +「香港天文台」
+13 篇，合埋 34 先係真相。`canonical_entity(etype, name)` 做簡繁 normalize +
+查表合併，`entity_digest.py` 同 `build.py` 個 graph builder **兩邊都要 call**
+（2026-07-25 之前 graph builder 用 raw name、連 zhconv 都冇，所以「李慧琼」
+同「李慧瓊」係兩個節點，同 entities.json 對唔上）。
+
+⚠️ **一定要人手維護張表，唔可以用 substring 自動 merge。** 真數據反例：
+
+```
+「東京都」contains「京都」          ← 兩個唔同城市
+「天文台」contains「歐洲南方天文台」
+「香港」contains「香港會議展覽中心」  ← 唔同粒度
+```
+
+地點只合併「同一地方嘅寫法差異」，唔合併粒度差異——「廣東東部」唔會 merge
+落「廣東」，因為打風報道講嘅正正係東部沿岸。`ENTITY_MIN_ARTICLES = 3` 已經
+濾走長尾，所以只需要處理「合併之後會影響排名」嗰幾個。
 
 ### 手機 AI tab 三個分頁
 

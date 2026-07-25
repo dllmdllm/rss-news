@@ -45,7 +45,7 @@ from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vaul
 from src.source_health import check_source_health
 from src.trends_watch import sync_trending_keywords
 from src.daily_brief import generate_daily_brief
-from src.entity_digest import generate_entity_digests
+from src.entity_digest import canonical_entity, generate_entity_digests
 
 DOCS_DIR    = ROOT / "docs"
 DATA_DIR    = DOCS_DIR / "data"
@@ -397,7 +397,10 @@ def build_knowledge_graph(
         keys: list[str] = []
         for etype in GRAPH_ENTITY_TYPES:
             for raw in entities.get(etype) or []:
-                label = str(raw or "").strip()
+                # 同 entity_digest.py 行同一套 canonicalisation。之前呢度用
+                # raw name（連簡繁 normalize 都冇），所以「李慧琼」同「李慧瓊」
+                # 喺 graph.json 係兩個節點，同 entities.json 對唔上。
+                label = canonical_entity(etype, raw)
                 if not label or len(label) < 2:
                     continue
                 key = f"{etype}:{label}"

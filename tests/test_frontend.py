@@ -1215,3 +1215,50 @@ def test_analysis_mode_does_not_leak_category_filter():
     fn = _extract_js_function(js, "syncStateFromMobile")
     assert 'state.mobile.aiMode === "category" ? state.mobile.aiCat : "全部"' in fn
     assert 'state.mobile.aiMode === "category" ? state.mobile.aiSource : ""' in fn
+
+
+def test_entity_block_mixes_types_instead_of_all_places():
+    # 地點嘅 count 遠高過人物/機構（「香港」128 篇），照 count 排就成格得曬
+    # 地點，冇資訊量。每類最多 2 個。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        """
+        const state = { entity: "", entityIndex: null };
+        const nodes = {};
+        function $(id){ return nodes[id] || (nodes[id] = { hidden: true, innerHTML: "", textContent: "" }); }
+        function esc(s){ return String(s); }
+        const ENTITY_TYPE_ICON = { people:"👤", companies:"🏢", places:"📍" };
+        """,
+        _extract_js_function(source, "renderEntities"),
+        """
+        const entities = [];
+        for (let i = 0; i < 5; i++) entities.push({ type:"places", name:"地"+i, count:100-i, article_ids:["a"] });
+        for (let i = 0; i < 5; i++) entities.push({ type:"people", name:"人"+i, count:10-i, article_ids:["b"] });
+        for (let i = 0; i < 5; i++) entities.push({ type:"companies", name:"司"+i, count:9-i, article_ids:["c"] });
+        renderEntities({ entities });
+        if ($("entityBlock").hidden) throw new Error("block 應該顯示");
+        const html = $("entityList").innerHTML;
+        const n = (re) => (html.match(re) || []).length;
+        if (n(/👤/g) !== 2 || n(/🏢/g) !== 2 || n(/📍/g) !== 2) {
+          throw new Error("每類要 2 個: " + html);
+        }
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_entity_filter_uses_article_ids_not_name_matching():
+    # AI 抽到嘅實體名唔一定逐字出現喺標題／摘要，夾字會漏一大截——
+    # 一定要用 entities.json 記低嘅 article_ids。
+    js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(js, "filteredArticles")
+    assert "article_ids" in fn, "實體篩選要用 article_ids"
+    assert "entityIds" in fn
+
+
+def test_entity_filter_has_an_exit():
+    js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert 'id="clearEntity"' in js
+    assert 'closest("#clearEntity")' in js

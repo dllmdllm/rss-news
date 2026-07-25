@@ -866,6 +866,42 @@
       background: rgba(70, 194, 166, .12);
     }
     .mood-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    /* 今日焦點（entities.json）：實體 + AI 近況摘要，撳落去篩返嗰批文。
+       之前呢批數據淨係喺 entities.html 出現，入口收埋喺 rail 最底一行細字。 */
+    .entity-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-top: 1px solid var(--line);
+      background: none;
+      color: var(--muted);
+      padding: 9px 0;
+      font: inherit;
+      font-size: .84rem;
+      line-height: 1.5;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .entity-item:first-child { border-top: 0; padding-top: 0; }
+    .entity-item.active .entity-name { color: var(--accent); }
+    .entity-name {
+      color: var(--text);
+      font-weight: 700;
+      margin-right: 6px;
+    }
+    .entity-count {
+      color: var(--accent-2);
+      font-size: .78rem;
+    }
+    .entity-digest {
+      display: block;
+      margin-top: 3px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
     .timeline-item {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -921,20 +957,25 @@
       font-size: .8rem;
       white-space: nowrap;
     }
+    /* 呢三頁（graph / entities / upcoming）本身有齊內容，問題一直係入口
+       收埋喺 rail 最底一行細字，冇人撳。加大打擊面積 + emoji，睇落似
+       「仲有嘢睇」而唔似 footer 連結。graph 特登唔搬入 rail：佢 48 KB，
+       而且 force-directed 圖喺 320px 闊嘅欄度基本上撳唔到。 */
     .ai-links {
       display: flex;
       gap: 6px;
-      margin-top: 4px;
+      margin-top: 10px;
     }
     .ai-links a {
       flex: 1;
       text-align: center;
       border: 1px solid var(--line);
       background: var(--panel);
-      border-radius: 999px;
-      padding: 7px 4px;
-      color: var(--muted);
-      font-size: .8rem;
+      border-radius: 10px;
+      padding: 11px 4px;
+      color: var(--text);
+      font-size: .82rem;
+      font-weight: 600;
     }
     .ai-links a:hover { color: var(--text); border-color: var(--accent); }
 
@@ -1445,14 +1486,18 @@
         <h2>📈 事件時間軸</h2>
         <div id="timelineList"></div>
       </section>
+      <section class="ai-block" id="entityBlock" hidden>
+        <h2>🏷️ 今日焦點 <span id="entityHint">撳一下睇相關報道</span></h2>
+        <div id="entityList"></div>
+      </section>
       <section class="ai-block" id="upcomingBlock" hidden>
         <h2>📅 未來事件</h2>
         <div id="upcomingList"></div>
       </section>
       <div class="ai-links">
-        <a href="graph.html">知識圖譜</a>
-        <a href="entities.html">實體摘要</a>
-        <a href="upcoming.html">全部預測</a>
+        <a href="graph.html">🕸️ 知識圖譜</a>
+        <a href="entities.html">🏷️ 全部實體</a>
+        <a href="upcoming.html">📅 全部預測</a>
       </div>
     </aside>
   </div>

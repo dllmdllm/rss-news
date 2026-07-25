@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from src import entity_digest as ED
 
@@ -71,3 +72,50 @@ def test_aggregate_entities_caps_per_type(monkeypatch):
     ]
     out = ED.aggregate_entities(articles)
     assert len(out) == 2
+
+
+# ── 別名合併（2026-07-25）──
+
+def test_canonical_entity_merges_known_aliases():
+    from src.entity_digest import canonical_entity
+    assert canonical_entity("companies", "香港天文台") == "天文台"
+    assert canonical_entity("companies", "港鐵公司") == "港鐵"
+    assert canonical_entity("companies", "無綫集團") == "TVB"
+    assert canonical_entity("companies", "電視廣播有限公司") == "TVB"
+
+
+def test_canonical_entity_still_normalises_simplified():
+    # 簡繁 normalize 要保留——AI 偶爾出簡體，唔轉就同繁體版拆成兩個實體。
+    from src.entity_digest import canonical_entity
+    assert canonical_entity("people", "李慧琼") == "李慧瓊"
+
+
+def test_canonical_entity_is_type_scoped():
+    # 「香港海關」係 companies、「香港」係 places——alias 一定要連 type 一齊
+    # 比對，唔係會跨類撞名。
+    from src.entity_digest import canonical_entity
+    assert canonical_entity("companies", "海關") == "香港海關"
+    assert canonical_entity("places", "海關") == "海關"
+
+
+def test_canonical_entity_does_not_merge_lookalikes():
+    # 呢個係唔可以用 substring 自動合併嘅原因——全部都係真數據入面出現過。
+    from src.entity_digest import canonical_entity
+    assert canonical_entity("places", "京都") == "京都"          # ⊂ 東京都
+    assert canonical_entity("places", "東京都") == "東京都"
+    assert canonical_entity("companies", "歐洲南方天文台") == "歐洲南方天文台"  # ⊂ 天文台
+    assert canonical_entity("places", "香港會議展覽中心") == "香港會議展覽中心"  # ⊂ 香港
+
+
+def test_canonical_entity_keeps_place_granularity():
+    # 「廣東東部」唔可以 merge 落「廣東」——打風報道講嘅正正係東部沿岸。
+    from src.entity_digest import canonical_entity
+    assert canonical_entity("places", "廣東東部") == "廣東東部"
+    assert canonical_entity("places", "廣東東部沿岸") == "廣東東部"
+
+
+def test_graph_builder_uses_same_canonicalisation():
+    # build.py 個 graph builder 之前用 raw name（連 zhconv 都冇），所以
+    # graph.json 同 entities.json 嘅實體名對唔上。
+    source = (Path(__file__).resolve().parents[1] / "build.py").read_text(encoding="utf-8")
+    assert "canonical_entity(etype, raw)" in source, "graph builder 要用返同一套 canonicalisation"

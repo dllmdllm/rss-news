@@ -29,6 +29,52 @@ ENTITY_CONCURRENCY   = 3
 ENTITY_MAX_ATTEMPTS  = 3
 ENTITY_VERSION       = "e1"
 
+# 別名合併表（2026-07-25）。同一個真實實體俾 AI 抽成幾個名，各自嘅 count
+# 被稀釋——「天文台」21 篇 +「香港天文台」13 篇，合埋 34 先係真相，拆開就
+# 一個排第二一個排第四。
+#
+# ⚠️ **一定要人手維護，唔可以用 substring 自動 merge。** 實測過真數據，
+# 自動化會冧得好肉酸：
+#     「東京都」contains「京都」   ← 兩個唔同城市
+#     「天文台」contains「歐洲南方天文台」
+#     「香港」contains「香港會議展覽中心」  ← 唔同粒度
+# Key 係 (type, 別名)，value 係 canonical 名——連 type 一齊 scope，
+# 免得跨類撞名（「香港海關」係 companies、「香港」係 places）。
+#
+# 只需要處理「合併之後會影響排名」嗰啲：ENTITY_MIN_ARTICLES = 3 已經濾走
+# 長尾，count 1-2 嘅變體唔使理。
+ENTITY_ALIASES: dict[tuple[str, str], str] = {
+    ("companies", "香港天文台"): "天文台",
+    ("companies", "港鐵公司"): "港鐵",
+    ("companies", "海關"): "香港海關",
+    # TVB 2026-07 正式更名做無綫集團，法定名係電視廣播有限公司——全部同一間。
+    ("companies", "無綫"): "TVB",
+    ("companies", "無綫集團"): "TVB",
+    ("companies", "無綫電視"): "TVB",
+    ("companies", "無綫集團有限公司"): "TVB",
+    ("companies", "電視廣播"): "TVB",
+    ("companies", "電視廣播有限公司"): "TVB",
+    ("companies", "攜程"): "攜程集團",
+    ("companies", "攜程集團有限公司"): "攜程集團",
+    ("companies", "國家市場監管總局"): "市場監管總局",
+    ("companies", "中國海警"): "中國海警局",
+    ("companies", "聯邦調查局"): "美國聯邦調查局",
+    ("companies", "中國公安部"): "公安部",
+    # 地點只合併「同一地方嘅寫法差異」，唔合併粒度差異——「廣東東部」唔會
+    # merge 落「廣東」，因為打風報道講嘅正正係東部沿岸，資訊會蒸發。
+    ("places", "廣東東部沿岸"): "廣東東部",
+    ("places", "大埔宏福苑"): "宏福苑",
+    ("places", "中國內地"): "內地",
+}
+
+
+def canonical_entity(etype: str, name: str) -> str:
+    """簡繁 normalize + 別名合併。`build.py` 個 graph builder 都要 call 呢個
+    ——之前佢淨係用 raw name（連 zhconv 都冇），所以「李慧琼」同「李慧瓊」
+    喺 graph.json 係兩個節點，同 entities.json 對唔上（2026-07-25 發現）。"""
+    name = zhconv.convert(str(name or "").strip(), "zh-hk")
+    return ENTITY_ALIASES.get((etype, name), name)
+
 ENTITY_SUMMARY_PROMPT = (
     "你係一個新聞分析助手。根據以下新聞摘要，為指定嘅人物/機構/地點生成近況摘要。\n"
     "輸出一個 JSON object，唔好有任何其他文字。\n"
@@ -94,7 +140,7 @@ def aggregate_entities(articles: list) -> list[dict]:
                 # finding）。呢個淨係解決簡繁變體，唔處理稱謂/別名變體（例如
                 # 「美國總統特朗普」vs「特朗普」）——嗰類要靠 alias table，
                 # 冇一個安全嘅自動 heuristic 唔會誤merge唔同實體，未做。
-                name = zhconv.convert(name, "zh-hk")
+                name = canonical_entity(etype, name)
                 key = (etype, name)
                 if aid:
                     entity_articles.setdefault(key, set()).add(aid)

@@ -39,6 +39,8 @@
     source: "",
     topic: "",
     sentiment: "",   // 今日輿情格撳落去篩（negative / neutral / positive）
+    entity: "",      // 今日焦點撳落去篩，格式 "type:name"
+    entityIndex: null,  // Map("type:name" -> entity object，攞 article_ids 用
     // 撳 topic chip 之前嘅 category/source snapshot，等「✕ 清除話題」
     // 可以還原返（唔係一律跌落「全部」），見 clearTopic handler。
     preTopicFilter: null,
@@ -192,6 +194,14 @@
 
   function filteredArticles() {
     const query = state.query.trim().toLowerCase();
+    // 實體篩選靠 entities.json 記低嘅 article_ids——AI 抽到嘅實體名唔一定
+    // 逐字出現喺標題／摘要，自己夾字會漏一大截。
+    const entityEntry = state.entity && state.entityIndex
+      ? state.entityIndex.get(state.entity)
+      : null;
+    const entityIds = entityEntry && Array.isArray(entityEntry.article_ids)
+      ? new Set(entityEntry.article_ids)
+      : null;
     const selectedTopic = state.topic
       ? state.topics.find((topic) => topic.topic === state.topic)
       : null;
@@ -206,6 +216,7 @@
       if (state.category !== "全部" && article.category !== state.category) return false;
       if (state.source && article.source !== state.source) return false;
       if (state.sentiment && article.sentiment !== state.sentiment) return false;
+      if (entityIds && !entityIds.has(article.id)) return false;
       if (!query) return true;
       const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
       return haystack.includes(query);
@@ -456,7 +467,7 @@
     // 加 isMobile() gate，唔係 desktop layout 會被殘留嘅 mobile.view 影響
     // （mobile.view 預設 "home"，冇 gate 嘅話 desktop 永遠行平鋪）。
     const mobileFlat = isMobile() && state.mobile.view === "home";
-    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment) {
+    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment && !state.entity) {
       feed.classList.remove("feed-grid");
       disconnectFeedObserver();
       renderCategorySections();
@@ -470,12 +481,16 @@
       ? `${list.length} 篇 <button class="clear-filter" id="clearTopic" type="button">✕ 清除話題</button>`
       : (state.sentiment
         ? `${list.length} 篇 <button class="clear-filter" id="clearSentiment" type="button">✕ 清除輿情</button>`
-        : `${list.length} 篇`);
+        : (state.entity
+          ? `${list.length} 篇 <button class="clear-filter" id="clearEntity" type="button">✕ 清除焦點</button>`
+          : `${list.length} 篇`));
     // 「分類重點」只喺真係 render sections 嗰陣先啱；手機時間線係平鋪，
     // 叫返「最新新聞流」。
     $("feedTitle").textContent = state.source
       ? `${state.source}新聞流`
-      : (state.sentiment
+      : (state.entity
+        ? `${state.entity.split(":")[1] || ""} · 焦點`
+        : state.sentiment
         ? `${MOOD_META[state.sentiment]?.label || ""}新聞流`
         : state.topic
         ? `${state.topic} · 話題`
@@ -486,7 +501,7 @@
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
     // keeps showing global picks the user has filtered away.
-    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment;
+    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment || state.entity;
     const pool = filterActive ? (filteredList || filteredArticles()) : state.articles;
     // Score each article once; reuse for sorting, min/max, and badge rendering.
     const scored = pool.map((article) => ({ article, score: criticalScore(article) }));
@@ -1006,6 +1021,14 @@
       showHomeOnMobile();
       renderAll();
     });
+    $("entityList")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-entity]");
+      if (!button) return;
+      const picked = button.dataset.entity;
+      state.entity = state.entity === picked ? "" : picked;
+      showHomeOnMobile();
+      renderAll();
+    });
     $("modeNav").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-mode]");
       if (!button) return;
@@ -1074,6 +1097,10 @@
       }
       if (event.target.closest("#clearSentiment")) {
         state.sentiment = "";
+        renderAll();
+      }
+      if (event.target.closest("#clearEntity")) {
+        state.entity = "";
         renderAll();
       }
     });
@@ -1373,12 +1400,42 @@
     }).join("");
   }
 
+  const ENTITY_TYPE_ICON = { people: "👤", companies: "🏢", places: "📍" };
+
+  function renderEntities(data) {
+    const host = $("entityList");
+    const block = $("entityBlock");
+    if (!host || !block || !data || !Array.isArray(data.entities)) return;
+    // 每類挑最多 2 個，湊夠 6 個——唔想成格得曬地點（「香港」128 篇之類
+    // 永遠排頭幾位，全部塞晒就冇資訊量）。
+    const picked = [];
+    for (const type of ["people", "companies", "places"]) {
+      const rows = data.entities.filter((e) => e && e.type === type && e.name).slice(0, 2);
+      picked.push(...rows);
+    }
+    if (!picked.length) return;
+    state.entityIndex = new Map(picked.map((e) => [`${e.type}:${e.name}`, e]));
+    block.hidden = false;
+    host.innerHTML = picked.map((e) => {
+      const key = `${e.type}:${e.name}`;
+      const active = state.entity === key ? " active" : "";
+      const digest = String(e.digest || e.summary || "").trim();
+      return `<button class="entity-item${active}" data-entity="${esc(key)}" type="button">
+        <span class="entity-name">${ENTITY_TYPE_ICON[e.type] || ""} ${esc(e.name)}</span>
+        <span class="entity-count">${Number(e.count || 0)} 篇</span>
+        ${digest ? `<span class="entity-digest">${esc(digest)}</span>` : ""}
+      </button>`;
+    }).join("");
+  }
+
   async function loadAiInsights() {
     try {
-      const [panelRes, upRes] = await Promise.all([
+      const [panelRes, upRes, entRes] = await Promise.all([
         fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
         fetch("data/upcoming.json", { cache: "no-cache" }).catch(() => null),
+        fetch("data/entities.json", { cache: "no-cache" }).catch(() => null),
       ]);
+      if (entRes && entRes.ok) renderEntities(await entRes.json());
       if (panelRes && panelRes.ok) {
         const panelMap = await panelRes.json();
         renderContradictions(panelMap);
