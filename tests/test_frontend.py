@@ -937,3 +937,95 @@ def test_service_worker_cache_key_strips_query_string():
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _tts_chunk_max() -> int:
+    """讀 production 真實常數，唔好喺 test 度自己寫死一個——
+    寫死嘅話有人將 production 改返做 9999，test 一樣照 pass（親身踩過）。"""
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    m = re.search(r"const TTS_CHUNK_MAX = (\d+);", source)
+    assert m, "揾唔到 TTS_CHUNK_MAX"
+    return int(m.group(1))
+
+
+def test_tts_chunk_max_stays_within_ios_safe_range():
+    # iOS Safari 對長 utterance 會靜靜哋失敗，實測安全範圍大約 200 字以下。
+    assert 40 <= _tts_chunk_max() <= 200, (
+        "TTS_CHUNK_MAX 超出 iOS 安全範圍——正正係 2026-07-25『ios 聽早報冇聲』"
+        "嗰個 bug（當時成篇 487 字塞一個 utterance）"
+    )
+
+
+def test_split_for_tts_chunks_stay_under_ios_limit():
+    # iOS Safari 對長 utterance 會靜靜哋唔出聲／讀到一半死（2026-07-25 用戶
+    # 報告「ios 聽早報冇聲」，實測當時全文 487 字塞晒落一個 utterance）。
+    # 桌面 Chrome 冇事，所以之前一直冇為意。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        f"const TTS_CHUNK_MAX = {_tts_chunk_max()};",
+        _extract_js_function(source, "splitForTts"),
+        """
+        const brief = "港聞一。".repeat(60) + "最後一句冇句號收尾";
+        const chunks = splitForTts(brief);
+        if (!chunks.length) throw new Error("no chunks produced");
+        for (const c of chunks) {
+          if (c.length > TTS_CHUNK_MAX) {
+            throw new Error("chunk too long: " + c.length);
+          }
+        }
+        // 冇漏字：接返埋要同原文一樣
+        if (chunks.join("") !== brief) {
+          throw new Error("text lost while chunking");
+        }
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_split_for_tts_handles_one_giant_unpunctuated_sentence():
+    # 斷句靠標點，但一句冇標點嘅超長句唔可以令個 chunk 爆上限。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        f"const TTS_CHUNK_MAX = {_tts_chunk_max()};",
+        _extract_js_function(source, "splitForTts"),
+        """
+        const chunks = splitForTts("字".repeat(500));
+        if (chunks.some((c) => c.length > TTS_CHUNK_MAX)) {
+          throw new Error("hard split failed");
+        }
+        if (chunks.join("").length !== 500) throw new Error("length changed");
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_morning_brief_is_collapsible():
+    # 用戶要求「今日早報想可以一 click 就收埋」。
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert 'id="briefToggle"' in source, "缺少摺疊掣"
+    assert 'class="morning-brief-body"' in source, "缺少可摺疊嘅 body wrapper"
+    assert "BRIEF_COLLAPSE_KEY" in source, "摺疊狀態要 persist"
+    css = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert ".morning-brief.collapsed .morning-brief-body" in css, "缺少收埋嘅 CSS"
+
+
+def test_brief_tts_button_does_not_toggle_collapse():
+    # TTS 掣坐喺可撳嘅標題行入面，冇 stopPropagation 就會撳播放連帶摺埋。
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    idx = source.index('$("briefTts")?.addEventListener')
+    handler = source[idx:idx + 220]
+    assert "stopPropagation" in handler, "TTS 掣要 stopPropagation"
+
+
+def test_source_health_heading_not_duplicated():
+    # 2026-07-25 用戶影相：手機設定頁見到兩個「來源健康」。
+    # renderMobileSideHealth() 直接 copy sideSourceHealth 嘅 innerHTML 落
+    # 一個已經有 <h2>來源健康</h2> 嘅 section，所以個 innerHTML 唔可以自帶標題。
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    idx = source.index('$("sideSourceHealth").innerHTML =')
+    assign = source[idx:idx + 160]
+    assert "來源健康" not in assign, "sideSourceHealth 唔應該自帶標題（手機會重複）"

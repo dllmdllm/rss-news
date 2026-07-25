@@ -386,6 +386,32 @@
       margin-bottom: 8px;
     }
     .morning-brief-head strong { font-size: 1.02rem; }
+    /* 標題整行可撳收埋（用戶要求「一 click 就收埋」）——所以個 head 要係
+       button-like，但 TTS 掣喺佢入面，要 stopPropagation 免得撳播放連帶摺埋。 */
+    .morning-brief-toggle {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .morning-brief-caret {
+      color: var(--muted);
+      font-size: .8rem;
+      transition: transform .18s ease;
+      flex: none;
+    }
+    .morning-brief.collapsed .morning-brief-caret { transform: rotate(-90deg); }
+    .morning-brief.collapsed .morning-brief-body { display: none; }
+    .morning-brief.collapsed .morning-brief-head { margin-bottom: 0; }
     .morning-brief-tts {
       border: 1px solid var(--line);
       background: var(--panel);

@@ -11,6 +11,7 @@
   };
   const RECENT_SEARCH_KEY = "search.recent";
   const RECENT_SEARCH_MAX = 5;
+  const BRIEF_COLLAPSE_KEY = "brief.collapsed";
 
   function loadRecentSearches() {
     try {
@@ -515,7 +516,11 @@
     const sources = Object.entries(state.sources || {})
       .sort((a, b) => Number(b[1].effective_count ?? b[1].count ?? 0) - Number(a[1].effective_count ?? a[1].count ?? 0))
       .slice(0, 8);
-    $("sideSourceHealth").innerHTML = `<strong>來源健康</strong>` + sources.map(([name, source]) => `
+    // 冇 <strong>來源健康</strong> 標題：desktop 個 <summary> 同手機設定面板
+    // 個 <h2> 都已經係 label，加返就變咗重複兩次（2026-07-25 用戶影相報告
+    // 手機設定頁見到兩個「來源健康」——renderMobileSideHealth() 係直接
+    // copy 呢段 innerHTML 落已經有 <h2> 嘅 section 度）。
+    $("sideSourceHealth").innerHTML = sources.map(([name, source]) => `
       <div class="side-health-row">
         <span>${esc(name)}</span>
         <span>${Number(source.effective_count ?? source.count ?? 0)} 篇</span>
@@ -1104,37 +1109,109 @@
     const textHtml = paras.filter((p) => p.trim())
       .map((p) => `<p>${esc(p.trim())}</p>`).join("");
     host.hidden = false;
+    const collapsed = localStorage.getItem(BRIEF_COLLAPSE_KEY) === "1";
+    host.classList.toggle("collapsed", collapsed);
     host.innerHTML = `
       <div class="morning-brief-head">
-        <strong>🌅 今日早報 · ${dateLabel}</strong>
+        <button class="morning-brief-toggle" id="briefToggle" type="button"
+                aria-expanded="${collapsed ? "false" : "true"}" aria-controls="briefBody">
+          <span class="morning-brief-caret" aria-hidden="true">▼</span>
+          <strong>🌅 今日早報 · ${dateLabel}</strong>
+        </button>
         <button class="morning-brief-tts" id="briefTts" type="button">🔊 聽早報</button>
       </div>
-      ${brief.title ? `<strong class="morning-brief-title">${esc(brief.title)}</strong>` : ""}
-      ${textHtml}
-      ${highlights ? `<ul>${highlights}</ul>` : ""}`;
-    $("briefTts")?.addEventListener("click", () => toggleBriefTts(brief));
+      <div class="morning-brief-body" id="briefBody">
+        ${brief.title ? `<strong class="morning-brief-title">${esc(brief.title)}</strong>` : ""}
+        ${textHtml}
+        ${highlights ? `<ul>${highlights}</ul>` : ""}
+      </div>`;
+    $("briefToggle")?.addEventListener("click", () => {
+      const nowCollapsed = host.classList.toggle("collapsed");
+      localStorage.setItem(BRIEF_COLLAPSE_KEY, nowCollapsed ? "1" : "0");
+      $("briefToggle")?.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+      // 摺埋時仲讀緊就停埋把聲，唔係會有把聲喺度但見唔到停止掣。
+      if (nowCollapsed) stopBriefTts();
+    });
+    $("briefTts")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleBriefTts(brief);
+    });
+  }
+
+  // iOS Safari 靜音之謎（2026-07-25 用戶報告）：舊版將成篇早報（實測 487 字）
+  // 塞落一個 utterance。iOS 對長 utterance 會靜靜哋唔出聲或者讀到一半死，
+  // 桌面 Chrome 就冇事，所以之前一直冇為意。而家斬做細段順序播。
+  const TTS_CHUNK_MAX = 160;
+  let briefChunks = [];
+  let briefSpeaking = false;
+
+  function splitForTts(text) {
+    const out = [];
+    let buf = "";
+    // 喺句號類標點斷句，斷唔到（超長句）就硬切，總之唔好超過上限。
+    for (const piece of String(text).split(/(?<=[。！？；\n])/)) {
+      for (let rest = piece; rest.length; ) {
+        const take = rest.slice(0, TTS_CHUNK_MAX);
+        rest = rest.slice(TTS_CHUNK_MAX);
+        if ((buf + take).length > TTS_CHUNK_MAX && buf) { out.push(buf); buf = ""; }
+        buf += take;
+      }
+    }
+    if (buf.trim()) out.push(buf);
+    return out.filter((s) => s.trim());
+  }
+
+  function pickChineseVoice() {
+    // iOS 唔會因為 lang="zh-HK" 就自動揀到粵語聲；voice 留空有機會完全唔出聲。
+    // 明確揀一把，粵語優先，跟住台灣／普通話，最後任何中文。
+    const voices = window.speechSynthesis.getVoices() || [];
+    const byLang = (re) => voices.find((v) => re.test(v.lang || "") || re.test(v.name || ""));
+    return byLang(/zh[-_]HK|Cantonese|粵/i)
+        || byLang(/zh[-_]TW/i)
+        || byLang(/zh[-_]CN/i)
+        || byLang(/^zh/i)
+        || null;
+  }
+
+  function resetBriefTtsBtn() {
+    const btn = $("briefTts");
+    btn?.classList.remove("active");
+    if (btn) btn.textContent = "🔊 聽早報";
+  }
+
+  function stopBriefTts() {
+    briefChunks = [];
+    briefSpeaking = false;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    resetBriefTtsBtn();
+  }
+
+  function speakNextChunk(voice) {
+    if (!briefChunks.length) { stopBriefTts(); return; }
+    const utterance = new SpeechSynthesisUtterance(briefChunks.shift());
+    if (voice) utterance.voice = voice;
+    utterance.lang = voice?.lang || "zh-HK";
+    utterance.rate = 1.05;
+    utterance.onend = () => { if (briefSpeaking) speakNextChunk(voice); };
+    utterance.onerror = () => stopBriefTts();
+    window.speechSynthesis.speak(utterance);
   }
 
   function toggleBriefTts(brief) {
     if (!("speechSynthesis" in window)) return;
-    const btn = $("briefTts");
-    const resetBtn = () => {
-      btn?.classList.remove("active");
-      if (btn) btn.textContent = "🔊 聽早報";
-    };
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      resetBtn();
-      return;
-    }
+    if (briefSpeaking || window.speechSynthesis.speaking) { stopBriefTts(); return; }
+
     const text = [brief.title, brief.text, ...(brief.highlights || []).map((h) => h.point)]
       .filter(Boolean).join("。");
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "zh-HK";
-    utterance.rate = 1.05;
-    utterance.onend = resetBtn;
-    utterance.onerror = resetBtn;
-    window.speechSynthesis.speak(utterance);
+    briefChunks = splitForTts(text);
+    if (!briefChunks.length) return;
+    briefSpeaking = true;
+
+    // 一定要喺呢個 click handler 之內同步 call speak()，否則 iOS 當唔係
+    // user gesture、直接唔出聲。所以就算 getVoices() 仲係空都照播（用系統
+    // 預設聲），唔可以等 voiceschanged。
+    speakNextChunk(pickChineseVoice());
+    const btn = $("briefTts");
     btn?.classList.add("active");
     if (btn) btn.textContent = "⏹ 停止";
   }
