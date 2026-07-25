@@ -1292,6 +1292,11 @@
          .main，分析係 .ai，靠 body class 二選一。 */
       body.mobile-ai.ai-mode-analysis .main { display: none; }
       body.mobile-ai:not(.ai-mode-analysis) .ai { display: none; }
+      /* 三個分頁要各有各睇：之前「優先」同「分類重點」都 render 成個
+         .brief（優先排行＋今日AI摘要），所以兩個 tab 頂部都係優先排行，
+         用戶分唔清自己撳咗邊個（2026-07-25 反映「好混亂」）。 */
+      body.mobile-ai.ai-mode-priority .brief-category { display: none; }
+      body.mobile-ai.ai-mode-category .brief-priority { display: none; }
       body.mobile-settings .mobile-settings-panel { display: flex; }
       body.mobile-home .mobile-sub-home,
       body.mobile-ai .mobile-sub-ai { display: flex; }
@@ -1421,10 +1426,14 @@
       <section class="morning-brief" id="morningBrief" hidden></section>
       <article class="lead" id="leadStory"></article>
       <aside class="brief">
-        <h2 class="section-title"><strong>🔥 優先排行</strong><span id="priorityRange"></span></h2>
-        <div id="criticalList"></div>
-        <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
-        <ul class="brief-list" id="dailyBrief"></ul>
+        <div class="brief-part brief-priority">
+          <h2 class="section-title"><strong>🔥 優先排行</strong><span id="priorityRange"></span></h2>
+          <div id="criticalList"></div>
+        </div>
+        <div class="brief-part brief-category">
+          <h2 class="section-title"><strong>今日 AI 摘要</strong><span>每類 3 則</span></h2>
+          <ul class="brief-list" id="dailyBrief"></ul>
+        </div>
       </aside>
 
       <div class="content-head">

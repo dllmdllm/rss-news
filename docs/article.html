@@ -245,13 +245,23 @@
       line-height: 1.6;
     }
     .summary-box li + li, .fact-list li + li { margin-top: 3px; }
-    .fact-list li {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    /* 冇 line-clamp：關鍵句係原文逐字摘錄（10-80 字），之前喺窄嘅右欄
+       夾硬 clamp 落 2 行，長啲嘅句就變咗「……」睇唔到重點（2026-07-25
+       用戶報告）。搬咗落主欄之後有闊度，直接完整顯示。 */
+    .key-facts {
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent-2);
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 18px;
     }
+    .key-facts h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      color: var(--accent-2);
+    }
+    .key-facts .fact-list { margin: 0; }
     .toolbar {
       position: sticky;
       top: 0;
@@ -610,7 +620,7 @@
           <button class="tool" id="fontNormal" type="button">中</button>
           <button class="tool active" id="fontLarge" type="button">大</button>
           <button class="tool" id="textOnly" type="button" title="隱藏圖片，純文字閱讀">純文字</button>
-          <button class="tool" id="aiToggle" type="button" title="摺埋／展開右欄（關鍵句＋相關新聞）">AI</button>
+          <button class="tool" id="aiToggle" type="button" title="摺埋／展開右欄（各媒體點講＋相關新聞）">AI</button>
         </div>
       </div>
       <article>
@@ -621,6 +631,12 @@
         </header>
         <figure class="hero" id="hero"></figure>
         <section class="summary-box" id="summaryBox"></section>
+        <!-- 關鍵句由右欄搬落嚟緊貼 AI 摘要（2026-07-25 用戶要求）——兩樣都
+             係「開始睇正文之前想知嘅嘢」，分開兩邊要撳個 AI 掣先見到。 -->
+        <section class="key-facts" id="keyFacts" hidden>
+          <h2>關鍵句</h2>
+          <ul class="fact-list" id="facts"></ul>
+        </section>
         <section class="content" id="content"></section>
         <a class="source-link" id="sourceLink" target="_blank" rel="noopener noreferrer">查看原文</a>
         <a class="next-article" id="nextArticle" hidden>
@@ -637,10 +653,6 @@
         <div class="ai-note" id="priorityNote"></div>
       </section>
       <section class="ai-block" id="panelBlock" hidden></section>
-      <section class="ai-block">
-        <h2>關鍵句</h2>
-        <ul class="fact-list" id="facts"></ul>
-      </section>
       <section class="ai-block">
         <h2>相關新聞</h2>
         <div class="related-list" id="relatedList"></div>

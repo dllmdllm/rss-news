@@ -763,12 +763,13 @@
       (state.mobile.view === "home" && state.mobile.homeMode === "category") ||
       (state.mobile.view === "ai" && state.mobile.aiMode === "category");
     document.body.classList.toggle("cat-chips-on", showChips);
-    // 分析頁顯示 .ai 分析欄、收起 .main；另外兩個分頁反過嚟（見 index.html
-    // 嘅 body.mobile-ai.ai-mode-analysis 規則）。
-    document.body.classList.toggle(
-      "ai-mode-analysis",
-      state.mobile.view === "ai" && state.mobile.aiMode === "analysis",
-    );
+    // AI tab 三個分頁各自對應一個 body class（CSS 喺 index.html 嘅
+    // @media (max-width: 900px) 入面）：analysis 顯示 .ai 分析欄收起 .main，
+    // priority / category 就喺 .brief 入面二選一顯示。
+    const onAi = state.mobile.view === "ai";
+    for (const mode of ["priority", "category", "analysis"]) {
+      document.body.classList.toggle(`ai-mode-${mode}`, onAi && state.mobile.aiMode === mode);
+    }
     renderMobileCatChips();
     renderMobileSourceChips();
   }

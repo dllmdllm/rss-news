@@ -342,7 +342,10 @@
     const facts = (article.key_sentences && article.key_sentences.length)
       ? article.key_sentences
       : summaryPoints(article, 5);
-    $("facts").innerHTML = facts.slice(0, 5).map((fact) => `<li>${esc(fact)}</li>`).join("");
+    const factItems = facts.slice(0, 5).filter((fact) => String(fact || "").trim());
+    $("facts").innerHTML = factItems.map((fact) => `<li>${esc(fact)}</li>`).join("");
+    // 冇關鍵句就唔好留個空框喺 AI 摘要同正文之間。
+    $("keyFacts").hidden = !factItems.length;
     $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, similarMap).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
   }
 

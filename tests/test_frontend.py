@@ -1205,8 +1205,11 @@ def test_mobile_analysis_tab_swaps_rail_for_list():
     assert "body.mobile-ai:not(.ai-mode-analysis) .ai { display: none; }" in html
     js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     fn = _extract_js_function(js, "updateMobileSubUi")
-    assert "ai-mode-analysis" in fn, "updateMobileSubUi 要 toggle 個 body class"
-    assert 'state.mobile.aiMode === "analysis"' in fn
+    # 驗行為唔驗寫法：三個 mode 都要覆蓋，個 class 要跟 aiMode 走。
+    assert "ai-mode-" in fn, "updateMobileSubUi 要 toggle ai-mode-* body class"
+    for mode in ("priority", "category", "analysis"):
+        assert mode in fn, f"updateMobileSubUi 冇處理 {mode}"
+    assert "state.mobile.aiMode" in fn
 
 
 def test_analysis_mode_does_not_leak_category_filter():
@@ -1262,3 +1265,38 @@ def test_entity_filter_has_an_exit():
     js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     assert 'id="clearEntity"' in js
     assert 'closest("#clearEntity")' in js
+
+
+def test_key_sentences_sit_under_the_ai_summary():
+    # 用戶要求（2026-07-25）：關鍵句由右欄搬去 AI 摘要下面——兩樣都係
+    # 「睇正文之前想知」，之前要撳 AI 掣展開右欄先見到。
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    summary_at = html.index('id="summaryBox"')
+    facts_at = html.index('id="facts"')
+    content_at = html.index('id="content"')
+    assert summary_at < facts_at < content_at, "關鍵句要喺 AI 摘要同正文之間"
+    # 唔可以仲留喺右欄
+    aside = html[html.index('<aside class="ai">'):]
+    assert 'id="facts"' not in aside, "關鍵句唔應該仲喺右欄"
+
+
+def test_key_sentences_are_not_line_clamped():
+    # 關鍵句係原文逐字摘錄（10-80 字），clamp 落 2 行會變「……」睇唔到重點。
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    block_start = html.index(".fact-list li")
+    block = html[block_start:block_start + 220]
+    assert "-webkit-line-clamp" not in block, "關鍵句唔應該有 line-clamp"
+
+
+def test_key_facts_block_hides_when_empty():
+    js = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert '$("keyFacts").hidden' in js, "冇關鍵句就要收起成個框"
+
+
+def test_ai_priority_and_category_tabs_show_different_things():
+    # 用戶反映「一 click 入去優先 tab、同分類重點 tab 都係 show 優先排行，
+    # 好混亂」——.brief 一次過 render 兩樣嘢，兩個 tab 分唔開。
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert "brief-priority" in html and "brief-category" in html, "兩截要分開包住"
+    assert "body.mobile-ai.ai-mode-priority .brief-category { display: none; }" in html
+    assert "body.mobile-ai.ai-mode-category .brief-priority { display: none; }" in html

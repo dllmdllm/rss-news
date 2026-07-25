@@ -648,6 +648,17 @@ generate 咗但冇出街：
 落「廣東」，因為打風報道講嘅正正係東部沿岸。`ENTITY_MIN_ARTICLES = 3` 已經
 濾走長尾，所以只需要處理「合併之後會影響排名」嗰幾個。
 
+### 文章頁：關鍵句擺位
+
+關鍵句（`key_sentences`，AI 由原文逐字摘錄嘅 3-5 句）2026-07-25 由右欄
+`<aside class="ai">` 搬去主欄 `summaryBox` 下面——同 AI 摘要一樣都係「睇正文
+之前想知嘅嘢」，之前擺喺右欄要撳個 AI 掣展開先見到。
+
+⚠️ `.fact-list li` **唔可以有 `-webkit-line-clamp`**。喺右欄嗰陣為咗夾窄闊度
+clamp 咗 2 行，但關鍵句每句 10-80 字，長啲嘅直接變「……」——用戶睇唔到重點
+先反映。搬咗落主欄有闊度，完整顯示。冇關鍵句就 `$("keyFacts").hidden = true`，
+唔好喺摘要同正文之間留個空框。
+
 ### 手機 AI tab 三個分頁
 
 `mobile-sub-ai` 有三個 mode：`priority` / `category` / `analysis`。
@@ -656,6 +667,12 @@ generate 咗但冇出街：
 呢個 class 二選一（CSS 喺 `index.html` 嘅 `@media (max-width: 900px)` 入面，
 class 由 `updateMobileSubUi()` toggle）。
 `analysis` 同 `priority` 一樣唔帶 `aiCat`/`aiSource` 篩選（見 `syncStateFromMobile()`）。
+
+⚠️ **三個分頁一定要各有各睇。** `.brief` 入面有兩截（`.brief-priority` 優先排行
+／`.brief-category` 今日AI摘要），2026-07-25 之前兩個 tab 都 render 晒成個
+`.brief`，所以「優先」同「分類重點」頂部都係優先排行，用戶反映「好混亂」。
+而家靠 `body.ai-mode-priority` / `body.ai-mode-category` 二選一。
+Desktop 唔受影響（兩截照樣一齊出）。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 
