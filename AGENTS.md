@@ -148,22 +148,16 @@ Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
 法庭線、The Collective HK、香港法庭新聞
 
 ### 已移除來源（2026-07-25）
-兩個都靜靜哋 0 篇超過一個月先發現，成因見下面「靜默 0 篇」一節：
+兩個都靜靜哋 0 篇超過一個月先發現（成因見「靜默 0 篇」一節）：
 
-- **Engadget 中文**：`chinese.engadget.com` 連 DNS 都解析唔到，網站已停運。
-  Yahoo 香港吸收咗佢嘅中文科技內容（Engadget 中文版本身就係 Yahoo 旗下），
-  所以加咗 `Yahoo 科技` 頂上。⚠️ Yahoo 個 `/rss` 係空殼（767 bytes、0 個
-  `<item>`，2026-07-25 實測），一定要行 HTML fetcher；listing 頁亦冇日期，
-  要逐篇開文攞 `<time datetime>`（listing→逐篇嘅 N+1 pattern）。
-  全文交返 trafilatura 就得，唔使 custom parser（實測 2500-2900 字、9 張圖）
-- **SkyPost 要聞**：晴報轉型做「健康、娛樂、家庭生活資訊頻道」，唔再出港聞
-  ——`/news/` 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇係 `港聞`。佢個
-  sitemap 亦凍結咗喺 2023 年（最大 article id 3614960，實際站上已去到
-  4165870），所以連「修好 sitemap」都救唔返——唔係 parser 壞，係個 source 冇咗
-  新聞。**相關 code 已全部刪走**（`fetch.py` 嘅 `_fetch_skypost` 同 `_skypost_*`
-  helper、`scrape.py` 嘅 `_build_skypost_content` / `_is_skypost_url` /
-  hket inline-image regex、2 個 test），要翻查就睇 git history
+- **Engadget 中文** → 網站停運（DNS 都解析唔到），由 `Yahoo 科技` 頂上
+- **SkyPost 要聞** → 晴報唔再出港聞，唔係 parser 壞。相關 code（約 370 行）
+  已全部刪走，翻查睇 git history
 
+⚠️ Yahoo 個 `/rss` 係空殼（0 個 `<item>`），一定要行 HTML fetcher；listing 頁
+亦冇日期，要逐篇開文攞 `<time datetime>`（N+1 pattern，所以佢係現時最慢嘅 feed）。
+
+→ 點解係「移除」而唔係「修」：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#removed-sources)
 ---
 
 ## 開發階段
@@ -363,25 +357,22 @@ trafilatura 在 TVB 只能抽出「繁简 無相關新聞內容」，必須用�
 
 ### Yahoo 科技全文抓取（`_build_yahoo_content`）
 
-Yahoo 新聞喺文章下面有個「其他人也在看」欄，**嵌住成篇完整推薦文章**（唔止
-連結）。所以 trafilatura 會一鑊過將完全無關嘅新聞掃埋入正文——實際見過一篇
-Claude Opus 5 嘅科技文夾住自助餐優惠同 LeBron James 轉會（2026-07-25 用戶
-報告，正正係加咗呢個 source 之後）。呢啲垃圾會餵落 `analyse.py`，摘要／標籤／
-topic 全部污染。
+Yahoo 嘅「其他人也在看」欄**嵌住成篇完整推薦文章**（唔止連結），所以 trafilatura
+會將完全無關嘅新聞掃埋入正文，再餵落 `analyse.py` 污染摘要／標籤／topic。
 
-解法係鎖死最窄嗰個純內文容器：
+鎖死最窄嘅純內文容器：
 
 ```python
 _YAHOO_BODY_SELECTOR = "section.module-article-body div.atoms"
 ```
 
-`div.atoms` 之外嘅嘢（麵包屑、重複標題、byline、出版商 logo、推薦欄）全部係
-chrome。另外 `div.atoms` 入面仲會夾住「廣告」字樣嘅 spacer 段落，要用
-`_YAHOO_AD_MARKER_RE` 濾走。
+`div.atoms` 以外全部係 chrome（麵包屑、重複標題、byline、出版商 logo、推薦欄）。
+入面仲有「廣告」spacer 段落，用 `_YAHOO_AD_MARKER_RE` 濾走。
 
-⚠️ **教訓**：當初驗證只量咗字數（2,500-2,900 字）就當合格——但垃圾正正係
-**撐大**字數嗰樣嘢，所以個數字睇落好健康。驗 parser 一定要真係讀返抽到嘅
-文字，唔可以淨係睇長度。清乾淨之後每篇得 500-1,800 字（Yahoo 科技多數係短快訊）。
+⚠️ **驗 parser 要讀返抽到嘅文字，唔可以淨係量長度**——垃圾正正係撐大字數嗰樣嘢，
+所以污染咗嘅版本反而「睇落健康」。乾淨版每篇得 500-1,800 字（多數係短快訊）。
+
+→ DOM 調查數據同當時個判斷失誤：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#yahoo-body)
 
 ### NowsNews 瀏覽器兼容提示
 
@@ -493,159 +484,94 @@ schema 唔齊（舊 build）會 fallback `articles.json`。改 build.py 嗰段 i
 
 ### 關鍵字監控：雙通道 + vault sync（`src/keyword_alert.py` / `src/fast_watch.py`）
 
-兩條獨立 Telegram 提示通道，共用同一份關鍵字清單：
+兩條 Telegram 通道，共用同一份關鍵字清單：
 
-- **慢速通道**（`keyword_alert.py`）：隨主 build（~20 分鐘一輪，self-hosted），
-  比對全部 source 嘅 title/summary/tags，去重靠 `docs/data/keyword_alerts.json`。
-  ⚠️ **2026-07-22 起停用**——同快速通道職能重疊，兩條一齊開太密集
-  （用戶反映）。`build.py` 頂部 `SLOW_KEYWORD_ALERTS_ENABLED = False`
-  常數控制，`main()` 淨係唔 call `send_keyword_alerts()`；module 本身
-  同 test 保持齊全冇刪，想返都係一行 flip
-- **快速通道**（`fast_watch.py`）：獨立 `fast-watch.yml`（ubuntu，5 分鐘一輪，
-  00:00-07:00 HKT 除外），淨查星島頭條/am730/TVB新聞三個最快 source 嘅標題
-  （唔 scrape 全文、唔叫 AI），去重靠 GitHub Actions cache（跟 `guardian.yml`
-  pattern）。**刻意唔碰 `docs/data`、唔 git push**——避免同主 build 嘅 push 撞。
-  慢速通道停用之後，呢條係現時**唯一**仲活躍嘅 keyword alert 通道
+- **慢速**（`keyword_alert.py`）：隨主 build，比對全 source 嘅 title/summary/tags。
+  ⚠️ **2026-07-22 起停用**——`build.py` 嘅 `SLOW_KEYWORD_ALERTS_ENABLED = False`；
+  module 同 test 完整保留，一行 flip 就返到轉頭
+- **快速**（`fast_watch.py`）：獨立 `fast-watch.yml`（ubuntu，5 分鐘，00:00-07:00
+  HKT 除外），淨查星島頭條/am730/TVB新聞嘅標題，唔 scrape 唔叫 AI。
+  **刻意唔碰 `docs/data`、唔 git push**（避免同主 build 撞）。慢速停用後，
+  **呢條係唯一活躍嘅通道**
 
-兩條通道格式故意唔同（⚡ 快訊 vs 🔔 提醒），因為兩邊冇共用 dedup 狀態，
-偶爾會見到同一篇文兩邊各推一次——呢個已知取捨喺慢速通道停用之後其實
-唔再出現（淨返一條通道跑緊）。
+**清單來源**：vault（`RSS News - Watch Keywords.md`）→
+`sync_watch_keywords_from_vault()` → `config/watch_keywords.txt`。
+⚠️ 呢個 config **同 `trending_keywords.txt` 都要喺 `update.yml` 嘅
+`stage_outputs()` 入面**（快速通道喺 ubuntu 見唔到 vault，靠 checkout 攞）。
+⚠️ Vault note **一定要有 `## 關鍵字清單` 標題**，搵唔到就整個拒絕同步（fail-closed，
+避免將說明文字當關鍵字寫入）。
 
-**Trending 字標籤（2026-07-22）**：Match 到嘅 keyword 若嚟自 Google Trends
-（`_is_trending_keyword()` / `_trending_keyword` flag——喺 curated
-`WATCH_KEYWORDS` 揾唔到）,訊息嘅 keyword 後面會加 ` (From Google Trend)`，
-等用戶一眼分到係人手揀嘅字定係 Google 熱搜自動撞中。兩條通道（`fast_watch.py`
-嘅 `_format_text()` / `keyword_alert.py` 嘅 `_format_alert_text()`）都套用。
+**Match 規則**：字面 substring、唔分大小寫、OR——"OpenAI" 唔會 match "ChatGPT"，
+中英對照/品牌/人名要列晒。
 
-**關鍵字清單來源**：`WATCH_KEYWORDS` 唔再係 hardcode 喺 code——用戶喺 Obsidian
-vault（`RSS News - Watch Keywords.md`）隨時改，`build.main()` 開頭
-`sync_watch_keywords_from_vault()`（self-hosted 先有 vault access）讀 vault、
-寫落 repo-tracked `config/watch_keywords.txt`，兩條通道都讀呢個檔（快速通道
-喺 ubuntu 見唔到 vault，靠 git checkout 攞到最新版，所以 `config/watch_keywords.txt`
-一定要喺 `update.yml` 嘅 `stage_outputs()` 入面 add）。
+**`context:` directive**：關鍵字前面一行 `context: 港人, 本港, 本地, 香港`，令之後
+每個字都要連同其中一個 context word 一齊出現先算 match；單獨一行 `context:` 解除。
+Parse 喺 `_parse_keyword_rules()` → `WATCH_KEYWORDS` + `KEYWORD_CONTEXT`，兩條通道
+嘅 match function 都食呢個 dict。現套用喺交通意外組／死亡組／自殺組／暴雨組。
 
-⚠️ Vault note 一定要有 `## 關鍵字清單` 呢個標題，sync 先識分「上面自由寫嘅
-說明文字」同「下面真正嘅關鍵字」——搵唔到標題就當成 invalid input 整個拒絕
-同步（保留舊 config），**唔會**將說明文字當成關鍵字寫落去。2026-07-20
-第一版冇呢層保護，`tests/test_build.py` 嘅 dry-run 冧咗真 `config/watch_keywords.txt`
-（vault 說明文字全部變咗「關鍵字」），先加返呢個 fail-closed 設計 + regression test。
+**去重**：慢速用 AI `cluster_id`（同 cluster 揀最新一篇）＋ keyword cooldown
+（`KEYWORD_COOLDOWN_MINUTES=30`）；快速冇 clustering，淨用 cooldown。
+⚠️ **Cooldown 一定要逐篇 check + send 完即時更新**，唔可以喺 loop 之前一次過計
+eligible list（試過一個 run 內 3 篇同 keyword 齊齊送晒）。
 
-字面 substring match，唔分大小寫，OR 邏輯——淨係 "OpenAI" 唔會 match 到
-"ChatGPT"，要中英對照/品牌/人名全部列晒。
+**Google Trends**（`src/trends_watch.py`）：`sync_trending_keywords()` 跟 build 同
+頻率 fetch，**每次完全覆寫**（唔累積）。`MIN_KEYWORD_LEN=2` 濾走單字；標題經
+`zhconv` 轉香港繁體（唔轉就永遠 match 唔中繁體內文）。兩條通道合併
+`WATCH_KEYWORDS` + trending 先 match；trending 字冇喺 `KEYWORD_CONTEXT` 登記，
+所以自動當冇 context 限制。
 
-**`context:` directive（2026-07-21）**：「死亡」「交通意外」呢類字面太闊嘅
-keyword，vault 入面可以喺一段關鍵字前面加一行 `context: 港人, 本港, 本地, 香港`，
-之後每個關鍵字都要「連同呢組字眼之一一齊出現」先算 match；落返一行淨係
-`context:`（冇內容）就解除限制。Parse 邏輯喺 `keyword_alert._parse_keyword_rules()`，
-產出 `WATCH_KEYWORDS` + `KEYWORD_CONTEXT`（dict），兩條通道嘅 match function
-（`_first_qualifying_keyword()` / `fast_watch._match_keyword()`）都食呢個 dict。
-而家套咗喺「交通意外/車禍/撞車/相撞」「死亡/斃命/倒斃/浮屍」「自殺/墮樓/跳樓」
-「暴雨警告/黑雨/紅雨/黃雨」（暴雨組 2026-07-21 補加——「紅雨」「黑雨」成日
-俾人喺同天氣完全無關嘅職場/生活八卦文度借用，例如「紅雨可WFH」。⚠️ 呢個
-唔係 100% 有效：如果篇八卦文本身都提到「港人」呢類字（同天氣無關嘅另一句），
-都會照樣漏網——已知取捨，唔係 bug）。
+**Trending 獨立節流**：`TRENDING_COOLDOWN_MINUTES=90`（curated 用 30）+ 細 quota
+（`MAX_TRENDING_ALERTS_PER_BUILD=2` / `PER_RUN=1`），免得日常熱話擠走人手揀嘅字。
+判斷「係咪 trending」：喺 trending 清單但唔喺 `WATCH_KEYWORDS`（兩邊都有當 curated）。
+訊息會加 ` (From Google Trend)` 標籤。
 
-**同一單新聞去重**：兩條通道各自實現，冇共用 state——慢速通道用 build.py
-已計好嘅 AI `cluster_id`（`detect_keyword_matches()` 同 cluster 淨揀最新一篇，
-記喺 `keyword_alerts.json` 嘅 `alerted_clusters`）；快速通道冇 clustering 可用，
-改用「同一個 keyword 30 分鐘內唔再送」嘅 cooldown（`fast_watch.py` 嘅
-`KEYWORD_COOLDOWN_MINUTES`，state 存喺 `cooldown` key）。Cooldown 一定要逐篇
-check + send 完即時更新，唔可以喺 loop 之前一次過計 eligible list——試過
-因為咁樣，同一個 run 入面 3 篇撞正同一 keyword 嘅文一齊送晒（2026-07-21）。
+⚠️ **Test isolation**：任何用到關鍵字嘅 test 都要 monkeypatch
+`load_trending_keywords()`（`keyword_alert`）/ `TRENDING_KEYWORDS`（`fast_watch`，
+module-level）同 `KEYWORD_CONTEXT`，否則會撞中真實 synced config。兩個 test file
+已有 autouse fixture。
 
-**Keyword-level cooldown（2026-07-21，慢速通道補加）**：用戶反映「六合彩」
-「陳嘉信」呢類持續事件跨越幾個唔同 `cluster_id`（AI 分到唔同角度＝唔同
-topic）都會分別觸發 alert，`alerted_clusters` 嘅 cluster dedup 唔夠。
-`keyword_alert.py` 而家都有 `KEYWORD_COOLDOWN_MINUTES`（30 分鐘），同
-`fast_watch.py` 同一套設計：`detect_keyword_matches()` 用 build 開始嗰陣嘅
-cooldown snapshot 預篩一次，`send_keyword_alerts()` 送嗰陣再逐篇 check +
-即時更新（避免同一個 run 入面唔同 cluster 撞正同一 keyword 齊齊送晒）。
-State 存喺 `keyword_alerts.json` 新增嘅 `cooldown` key。
-
-**Google Trends 自動並入監控（`src/trends_watch.py`，2026-07-21）**：用戶要求
-Google 香港熱門搜尋自動加入監控清單，match 到就當普通 keyword alert 送
-（唔開獨立 channel、唔額外標記）。Google 冇官方「過去一小時」granularity 嘅
-trending API，用官方支援嘅 daily trending RSS feed（`trends.google.com/trending/rss?geo=HK`，
-免 auth，唔算 unofficial scraping）代替——但實測（2026-07-21）item 嘅
-pubDate 相隔 10-30 分鐘，個榜好快轉勻，「daily」淨係個 feed 個名，唔係
-實際更新頻率。`sync_trending_keywords()` 跟返 `build.py` 主 pipeline 同頻率
-（~20 分鐘一次 build 都真.去 fetch，冇 gate），由 `build.py` 喺 vault sync
-之後、fetch 之前 call（20s cap，失敗/逾時就保留舊清單）。每次成功都完全
-覆寫（唔似 `WATCH_KEYWORDS` 咁累積），避免舊嘅 trending 詞賴喺個清單度；
-`config/trending_keywords.txt` 第一行 `# synced <ISO timestamp>` 純粹記錄
-「上次成功 fetch 幾時」，冇 gating 邏輯食呢個值。單字（例如「金」）撞正
-太多常見詞、substring match 誤鳴風險太高，`MIN_KEYWORD_LEN=2` 過濾走；
-標題經 `zhconv` 轉做香港繁體（Google 有時返簡體，唔轉嘅話成隻詞永遠
-match 唔中網站嘅繁體內文）。兩條通道都用 `load_trending_keywords()` 讀
-呢個 config，同 `WATCH_KEYWORDS` 合併（`dict.fromkeys()` 去重）先做
-match——冇喺 `KEYWORD_CONTEXT` 登記，所以 trending 字自動當冇 context 限制。
-
-**Trending 字獨立節流（2026-07-21）**：Trending 字冇 curated `WATCH_KEYWORDS`
-咁「特登揀嘅」，成日對應緊持續幾個鐘嘅日常熱話（六合彩攪珠、八卦人物）——
-兩條通道都畀佢哋更長嘅 cooldown（`TRENDING_COOLDOWN_MINUTES=90`，curated
-keyword 用返 `KEYWORD_COOLDOWN_MINUTES=30`）+ 獨立細 quota
-（`MAX_TRENDING_ALERTS_PER_BUILD=2` / `MAX_TRENDING_ALERTS_PER_RUN=1`），
-避免佢哋洗晒成個 `MAX_ALERTS_PER_BUILD`/`MAX_ALERTS_PER_RUN`、擠走真正
-人手揀嘅 keyword。判斷「呢個 keyword 係咪 trending」：喺 trending 清單
-但唔喺 `WATCH_KEYWORDS`（兩邊都有嘅字當 curated，`WATCH_KEYWORDS` 贏）。
-探測過用 `ht:approx_traffic`（feed 附帶嘅搜尋量估算）做過濾——實測發現
-高流量同「值得 alert」冇關係（六合彩呢類例行內容流量反而最高），冇採用。
-
-⚠️ **Test isolation 陷阱**（同 2026-07-21 `KEYWORD_CONTEXT` 嗰個一樣，重複出現
-過兩次）：一旦 self-hosted 機真.跑過 `sync_trending_keywords()`，
-`config/trending_keywords.txt` 會有真實內容並提交入 repo，之後任何冇
-monkeypatch `load_trending_keywords()`（`keyword_alert.py`）/
-`TRENDING_KEYWORDS`（`fast_watch.py`，module-level，喺 import 讀一次）嘅
-test，都會意外撞中真實熱門字。兩個 test file 已加 autouse fixture 預設清空，
-新 test 唔使再手動處理。
+→ 點解會演變成咁（五次改動嘅來龍去脈、試過唔得嘅方向）：
+[DESIGN-HISTORY.md](DESIGN-HISTORY.md#keyword-watch)
 
 ### 靜默 0 篇：來源斷更偵測（`src/source_health.py`）
 
-**呢個坑中過三次**：東網娛樂（2026-07-15）、SkyPost + Engadget（2026-07-25，
-兩個都死咗成個月先發現）。共同模式係 fetcher 攞到 0 篇但 `error=None`
-（當時 `_fetch_skypost` 最尾無條件 `return articles, None, False`——呢個
-fetcher 已隨 source 一齊刪走，但同一個形狀喺其他 fetcher 仍然存在），
-於是 build 全綠、每個 stage 都 ok、`articles.json` 淨係靜靜哋寫住
-`effective_count: 0`，冇任何嘢會嘈。
+Fetcher 攞到 0 篇但返 `error=None` → build 全綠、冇人知個 source 死咗。
+**已中三次**（東網娛樂、SkyPost、Engadget，後兩個死咗一個月先發現）。
 
-`check_source_health()` 喺 `build.py` 每次 build 尾段跑，將每個 source 嘅
-`effective_count` 摺入 `docs/data/source_health.json`：
+`check_source_health()` 每次 build 尾段跑，將各 source 嘅 `effective_count`
+摺入 `docs/data/source_health.json`：
 
-- 一次 0 篇唔算數（上游斷線／深夜冇新聞／HTTP 304 都會 0）——要**連續
-  `ZERO_ALERT_AFTER_HOURS`（24 小時）**都係 0 先當斷更
-- 告警形狀跟 `guardian.yml`：健康→死嗰下嗌一次 🟠，恢復發 🟢，
-  持續死就每 `REMIND_EVERY_HOURS`（24 小時）先提一次，唔會每 20 分鐘洗版
-- `evaluate_sources()` 係純函數（收 `now` / `state` 參數，冇 I/O），
-  所以 test 可以直接餵假時鐘行完成個生命週期
+- 連續 `ZERO_ALERT_AFTER_HOURS`（24h）都係 0 先當斷更（單次 0 篇太常見：
+  上游斷線／深夜冇新聞／HTTP 304）
+- 告警跟 `guardian.yml` 形狀：轉態嗌一次 🟠、恢復 🟢、持續死每
+  `REMIND_EVERY_HOURS` 先提一次
+- `evaluate_sources()` 係純函數（收 `now`/`state`，冇 I/O），test 可餵假時鐘
 
-⚠️ `docs/data/source_health.json` **一定要喺 `update.yml` 嘅 `stage_outputs()`
-入面 add**——唔 stage 嘅話下次 checkout 清走佢，「連續幾耐 0 篇」永遠由零開始，
-24 小時門檻夠唔到，成個偵測機制等於冇。（同 `daily_brief.json` /
-`translated_content.json` 中過嘅伏一模一樣。）
-Test 亦要 monkeypatch `STATE_PATH` 同 `TELEGRAM_BOT_TOKEN`，見「測試唔可以寫真
-docs/data/」一節。
+⚠️ `source_health.json` **一定要入 `update.yml` 嘅 `stage_outputs()`**——唔 stage
+就每次 checkout 清零，24h 門檻永遠夠唔到，機制等於冇（同 `daily_brief.json` /
+`translated_content.json` 中過嘅伏一樣）。Test 要 monkeypatch `STATE_PATH` +
+`TELEGRAM_BOT_TOKEN`，見「測試唔可以寫真 docs/data/」。
+
+→ 三次案例同點解門檻要 24h：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#silent-zero)
 
 ### GitHub cron 唔可靠：兩個 workflow 都要本機 dispatch 補位
 
-GitHub 原生 cron 對高頻排程 throttle 得好犀利。2026-07-25 實測
-`fast-watch.yml`（cron 寫住 `*/5`）**實際 run 之間相隔 80–480 分鐘**，
-即係「5 分鐘 tripwire」真身係 1.5–8 小時一次。慢速通道 2026-07-22 停用之後
-佢係唯一嘅 keyword 通道，所以等於 keyword alert 靜靜哋失效。
+GitHub 對高頻 cron throttle 得好犀利——`fast-watch.yml` 寫住 `*/5`，實測真身係
+1.5–8 小時一次。兩個 workflow 而家都由本機 Task Scheduler 推：
 
-兩個 workflow 而家都由本機 Task Scheduler 推：
-
-| Task | 頻率 | Script | 推邊個 workflow |
+| Task | 頻率 | Script | Workflow |
 |---|---|---|---|
 | `rss-news-dispatch` | 20 分鐘 | `C:\actions-runner\dispatch-update.ps1` | `update.yml` |
 | `rss-news-fast-dispatch` | 5 分鐘 | `C:\actions-runner\dispatch-fast-watch.ps1` | `fast-watch.yml` |
 
-兩個 script 都有同一個 race guard：見到有 run `queued`/`in_progress` 就唔再
-dispatch（2026-06-09 撞過——第二個 dispatch 會 cancel 緊行緊嗰個）。
+兩個 script 都有 race guard：見到有 run `queued`/`in_progress` 就唔 dispatch
+（第二個 dispatch 會 cancel 緊行緊嗰個）。
 
-⚠️ `fast_watch.py` **本身冇 quiet-hours 檢查**，00:00-07:00 HKT 唔嘈全靠
-cron 個 `23,0-15 UTC` 時段擋住。所以 `dispatch-fast-watch.ps1` 自己重複咗
-一次呢個時段判斷——手動 dispatch 或者改個 script 嘅時候記住呢層，
-唔係會半夜彈 Telegram。
+⚠️ `fast_watch.py` **本身冇 quiet-hours 檢查**，00:00-07:00 HKT 唔嘈全靠 cron 個
+`23,0-15 UTC` 時段擋住——所以 `dispatch-fast-watch.ps1` 自己重複咗一次呢個判斷。
+手動 dispatch 或者改 script 前記住呢層，唔係會半夜彈 Telegram。
+
+→ 實測數字：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#github-cron)
 
 ### 分類色彩系統（`docs/css/categories.css`）
 
