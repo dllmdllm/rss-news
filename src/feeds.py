@@ -52,7 +52,9 @@ RSS_FEEDS = [
     # sitemap」都救唔返 —— 唔係 parser 壞，係個 source 冇咗新聞。
     # 想翻查舊 code（_fetch_skypost / _build_skypost_content）就睇 git history。
     # 科技
-    {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技"},
+    # 30 小時窗口內有 109 篇（2026-07-25 實測），畀 45 係想科技版厚啲，
+    # 但唔想佢一個 source 就食晒成版——同 TVB 一樣刻意寫死唔跟預設 cap。
+    {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技", "max_items": 45},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
     {"name": "Unwire",            "url": "https://unwire.hk/feed/",                                               "category": "科技"},
     # Engadget 中文（chinese.engadget.com）2026-07-25 移除：個 domain 連 DNS
@@ -75,13 +77,22 @@ RSS_FEEDS = [
     {"name": "HK01 熱話",          "url": "https://web-data.api.hk01.com/v2/feed/zone/7",                          "category": "消閒", "fetcher": "hk01"},
     {"name": "HK01 深圳",          "url": "https://web-data.api.hk01.com/v2/feed/zone/25",                         "category": "消閒", "fetcher": "hk01"},
     # 電視台新聞
-    {"name": "TVB 新聞",           "url": "https://news.tvb.com/sitemap.xml",                                      "category": "新聞", "fetcher": "tvb"},
+    # ⚠️ TVB 個 sitemap 30 小時窗口內有 245 篇（2026-07-25 實測）——冇呢個
+    # override 就會浸曬新聞版。刻意寫死，唔好跟 MAX_ITEMS_PER_FEED 走。
+    {"name": "TVB 新聞",           "url": "https://news.tvb.com/sitemap.xml",                                      "category": "新聞", "fetcher": "tvb", "max_items": 30},
     {"name": "Now 新聞",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=119&pageNo=1&pageSize=30", "category": "新聞", "fetcher": "nowtv"},
     # 中國版（category=122）2026-07 起 API 回傳空，probe 過 121-130 都冇——121 係財經
     {"name": "Now 國際",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=120&pageNo=1&pageSize=30", "category": "國際", "fetcher": "nowtv"},
 ]
 
-MAX_ITEMS_PER_FEED = 20
+# 2026-07-25：20 → 30。之前 13 個 source 啱啱好停喺 20，即係俾 cap 截住而唔係
+# 冇料（實測 30 小時窗口內：明報本地 34、東網本地 36、Now 新聞 30）。呢個 cap
+# 一提高，新聞版嘅 source 分佈就平均啲——星島佔比由 28% 跌到約 24%。
+# ⚠️ 唔可以無腦再調高：TVB（245 篇）同 cnBeta（109 篇）係消防喉，各自有
+# max_items override 擋住，見上面 RSS_FEEDS。星島（100）同 am730（40）唔郁
+# ——佢哋係跨分類 feed，靠 url_category 拆去 4 個分類，攤開之後同其他 source
+# 差唔多，唔係霸位。
+MAX_ITEMS_PER_FEED = 30
 SCRAPE_CONCURRENCY = 15
 
 # Sources that publish in Simplified Chinese — will be auto-converted to HK Traditional
