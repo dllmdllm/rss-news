@@ -376,63 +376,6 @@ def test_build_am730_content_returns_none_without_article_body():
     assert scrape._build_am730_content("<html><body><p>no article body here</p></body></html>") is None
 
 
-def test_build_skypost_content_preserves_inline_image_order():
-    html = """
-    <html>
-      <body>
-        <div class="hiddenOG">
-          <div class="prefixHidden">https://resource01-proxy.ulifestyle.com.hk/res/v3/image/content/2255000/2255133/</div>
-        </div>
-        <div class="article-details-img-container">
-          <img src="https://resource01-proxy.ulifestyle.com.hk/res/v3/image/content/2255000/2255133/cover1_1024.jpeg" alt="封面圖">
-        </div>
-        <div class="article-details-content-container">
-          <p>第一段文字。</p>
-          <p style="display:none;">{{hket:inline-image name="5.jpg"}}{{/hket:inline-image}}</p>
-          <p>第二段文字。</p>
-          <p style="display:none;">{{hket:inline-image name="3.jpg"}}{{/hket:inline-image}}</p>
-        </div>
-      </body>
-    </html>
-    """
-
-    out = scrape._build_skypost_content(html, "https://skypost.hk/article/2255133/")
-
-    assert out is not None
-    assert out.index("cover1_1024.jpeg") < out.index("第一段文字。") < out.index("/2255133/5.jpg") < out.index("第二段文字。") < out.index("/2255133/3.jpg")
-    assert out.count("/2255133/5.jpg") == 1
-    assert out.count("/2255133/3.jpg") == 1
-    # 2026-07-21 audit finding（live-fetch 確認正式 SkyPost 頁面用嘅正正係
-    # 呢種 `{{hket:inline-image name="..."}}{{/hket:inline-image}}` 開/close
-    # tag pair）：純 placeholder 嘅段落唔應該有任何 placeholder syntax
-    # 殘留喺輸出度，包括開 tag 同 close tag。
-    assert "hket:inline-image" not in out
-    assert "{{" not in out and "}}" not in out
-
-
-def test_build_skypost_content_mixed_text_and_placeholder_paragraph():
-    # 一個段落入面同時有真.文字同 inline-image placeholder（唔止純
-    # placeholder嗰種）——兩者都要保留，placeholder syntax 唔應該殘留。
-    html = """
-    <html>
-      <body>
-        <div class="hiddenOG">
-          <div class="prefixHidden">https://img.example.com/2255133/</div>
-        </div>
-        <div class="article-details-content-container">
-          <p>圖片說明文字 {{hket:inline-image name="7.jpg"}}{{/hket:inline-image}} 後續文字。</p>
-        </div>
-      </body>
-    </html>
-    """
-    out = scrape._build_skypost_content(html, "https://skypost.hk/article/2255133/")
-    assert out is not None
-    assert "圖片說明文字" in out
-    assert "後續文字" in out
-    assert "/2255133/7.jpg" in out
-    assert "hket:inline-image" not in out
-
-
 def test_build_oncc_content_preserves_text_image_order():
     html = """
     <html><body>
@@ -749,3 +692,84 @@ def test_build_lookmedia_content_extracts_paged_listicle_with_lazy_images():
 
 def test_build_lookmedia_content_returns_none_without_container():
     assert scrape._build_lookmedia_content("<html><body><p>plain page</p></body></html>") is None
+
+
+def test_build_yahoo_content_excludes_recommendation_rail():
+    # Yahoo 新聞's "其他人也在看" rail embeds WHOLE recommended articles, not
+    # links — trafilatura pulled an unrelated NBA story and a buffet promo
+    # into a tech article (reported 2026-07-25). Only div.atoms is the body.
+    html = """
+    <html><body>
+      <div class="article-wrapper">
+        <section class="module-article-body">
+          <div class="mx-auto">
+            <nav>Yahoo新聞 新聞總覽</nav>
+            <h1>Anthropic 推出 Claude Opus 5</h1>
+            <div class="atoms">
+              <p>Anthropic 今日正式發佈最新的大型 AI 模型 Claude Opus 5。</p>
+              <img src="https://s.yimg.com/a.jpg">
+              <h2>價格與可用性</h2>
+              <p>即日起在所有平台上線，定價與 Opus 4.8 相同。</p>
+            </div>
+          </div>
+        </section>
+        <section class="mt-module-gap">
+          <h2>其他人也在看</h2>
+          <div class="atoms">
+            <p>LeBron James 將以 2 年 800 萬美元合約加盟 Philadelphia 76ers。</p>
+          </div>
+        </section>
+      </div>
+    </body></html>
+    """
+    out = scrape._build_yahoo_content(html)
+
+    assert "Claude Opus 5" in out
+    assert "價格與可用性" in out
+    assert 'src="https://s.yimg.com/a.jpg"' in out
+    # The rail must not leak in.
+    assert "LeBron" not in out
+    assert "其他人也在看" not in out
+
+
+def test_build_yahoo_content_strips_inline_ad_markers():
+    html = """
+    <section class="module-article-body"><div class="atoms">
+      <p>真正的新聞內容，需要夠長先可以通過最短字數門檻檢查，所以呢句刻意寫長啲。</p>
+      <p>廣告</p>
+      <p>第二段真正的新聞內容，同樣需要有足夠長度先唔會被短內容過濾器擋走。</p>
+    </div></section>
+    """
+    out = scrape._build_yahoo_content(html)
+
+    assert "<p>廣告</p>" not in out
+    assert "第二段真正的新聞內容" in out
+
+
+def test_build_yahoo_content_dedupes_repeated_images():
+    html = """
+    <section class="module-article-body"><div class="atoms">
+      <p>足夠長度的新聞內文，用嚟通過最短字數門檻，所以要寫得長少少先得，唔係會返 None。</p>
+      <img src="https://s.yimg.com/dup.jpg">
+      <img src="https://s.yimg.com/dup.jpg">
+    </div></section>
+    """
+    out = scrape._build_yahoo_content(html)
+
+    assert out.count('src="https://s.yimg.com/dup.jpg"') == 1
+
+
+def test_build_yahoo_content_returns_none_without_body_container():
+    # No div.atoms → let the caller fall back to trafilatura rather than
+    # emitting an empty shell.
+    assert scrape._build_yahoo_content("<html><body><p>x</p></body></html>") is None
+
+
+def test_build_yahoo_content_returns_none_when_too_short():
+    html = '<section class="module-article-body"><div class="atoms"><p>短</p></div></section>'
+    assert scrape._build_yahoo_content(html) is None
+
+
+def test_is_yahoo_url_matches_hk_news_yahoo():
+    assert scrape._is_yahoo_url("https://hk.news.yahoo.com/a-123456.html") is True
+    assert scrape._is_yahoo_url("https://www.hk01.com/a/1") is False

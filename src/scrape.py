@@ -60,10 +60,6 @@ def _is_oncc_url(url: str) -> bool:
     return "hk.on.cc" in (url or "").lower()
 
 
-def _is_skypost_url(url: str) -> bool:
-    return "skypost.hk" in (url or "").lower()
-
-
 def _is_tvb_url(url: str) -> bool:
     return "news.tvb.com" in (url or "").lower()
 
@@ -84,6 +80,10 @@ def _is_lookmedia_url(url: str) -> bool:
     """GoTrip and WeekendHK share 新傳媒's "look-child" WordPress theme."""
     u = (url or "").lower()
     return "gotrip.hk" in u or "weekendhk.com" in u
+
+
+def _is_yahoo_url(url: str) -> bool:
+    return "news.yahoo.com" in (url or "").lower()
 
 
 def _hk01_tokens_to_text(tokens: list) -> str:
@@ -553,97 +553,6 @@ def _strip_related_reading(content: str) -> str:
             tag.decompose()
     return str(soup)
 
-_SKYPOST_INLINE_IMAGE_RE = re.compile(r'\{\{hket:inline-image name="([^"]+)"\}\}')
-# Matches both the opening tag (with name=) and the closing {{/hket:inline-image}}
-# — used only to strip placeholder syntax out of get_text() output so a
-# placeholder-only paragraph's "real text" check isn't fooled by the tag
-# text itself (2026-07-21 audit finding).
-_SKYPOST_INLINE_IMAGE_STRIP_RE = re.compile(r'\{\{/?hket:inline-image(?:\s+name="[^"]*")?\}\}')
-
-
-def _skypost_hidden_text(soup: BeautifulSoup, field: str) -> str:
-    node = soup.select_one(f".hiddenOG .{field}")
-    return _normalise_oncc_text(node.get_text(" ", strip=True) if node else "")
-
-
-def _build_skypost_content(html: str, url: str) -> str | None:
-    """Extract SkyPost article content while preserving inline image order.
-
-    SkyPost renders the article body as sequential <p> nodes, with inline image
-    placeholders hidden inside display:none paragraphs. The actual image base
-    path is exposed via hiddenOG.prefixHidden, so we can reconstruct inline
-    <img> tags in DOM order instead of flattening the story.
-    """
-    soup = BeautifulSoup(html or "", "html.parser")
-    root = soup.select_one(".article-details-content-container")
-    if not root:
-        return None
-
-    prefix = _skypost_hidden_text(soup, "prefixHidden")
-    hero = soup.select_one(".article-details-img-container img")
-    parts: list[str] = []
-
-    def _emit_image(src: str, alt: str = ""):
-        src = (src or "").strip()
-        if not src:
-            return
-        safe_src = _html_escape(src, quote=True)
-        safe_alt = _html_escape(alt or "", quote=True)
-        if alt:
-            parts.append(
-                f'<figure><img src="{safe_src}" alt="{safe_alt}">'
-                f'<figcaption>{_html_escape(alt)}</figcaption></figure>'
-            )
-        else:
-            parts.append(f'<img src="{safe_src}" alt="{safe_alt}">')
-
-    if hero and (hero.get("src") or hero.get("data-src")):
-        _emit_image(hero.get("src") or hero.get("data-src") or "", hero.get("alt") or "")
-
-    def walk(node):
-        if getattr(node, "name", None) is None:
-            return
-        if node.name in {"script", "style", "noscript"}:
-            return
-        if node.name == "img":
-            _emit_image(node.get("src") or node.get("data-src") or "", node.get("alt") or "")
-            return
-        if node.name == "p":
-            raw = node.decode_contents() or ""
-            names = _SKYPOST_INLINE_IMAGE_RE.findall(raw)
-            # 2026-07-21 audit finding + live-fetch confirmed: 之前直接用
-            # node.get_text() 做 text，如果段落淨係得 placeholder（`{{hket:
-            # inline-image name="..."}}`），get_text() 會將呢串 literal
-            # placeholder syntax 都計做 text，令 text 必然非空——「if names
-            # and not text」呢個分支（畀 placeholder-only 段落用嘅）永遠冧
-            # 唔到，placeholder syntax 會當正文顯示畀讀者。先由 text 度剝走
-            # 已經匹配到嘅 placeholder syntax 先 check 剩返幾多真.文字。
-            text_stripped = _SKYPOST_INLINE_IMAGE_STRIP_RE.sub("", node.get_text(" ", strip=True))
-            text = _normalise_oncc_text(text_stripped)
-            if names and not text:
-                for name in names:
-                    if prefix:
-                        _emit_image(prefix.rstrip("/") + "/" + name, "")
-                return
-            if names and text:
-                parts.append(f"<p>{_html_escape(text)}</p>")
-                for name in names:
-                    if prefix:
-                        _emit_image(prefix.rstrip("/") + "/" + name, "")
-                return
-            if text:
-                parts.append(f"<p>{_html_escape(text)}</p>")
-            return
-        for child in list(getattr(node, "children", [])):
-            walk(child)
-
-    walk(root)
-    if not parts:
-        return None
-    content = "<html><body>" + "".join(parts) + "</body></html>"
-    return content
-
-
 _LOOKMEDIA_SKIP_RE = re.compile(
     r"(read_btn|adbox|ad-slot|advert|social|share|related|lrec|code-block|sponsor)",
     re.IGNORECASE,
@@ -781,6 +690,55 @@ _AM730_SKIP_CLASS_RE = re.compile(
     r"(adbox|custom_content|newsflash|picset|sharebar|article__foot|article__head)",
     re.IGNORECASE,
 )
+
+
+# Yahoo 新聞 renders a "其他人也在看" rail that embeds WHOLE recommended
+# articles, not just links — so trafilatura happily swallows an unrelated
+# NBA transfer story and a buffet promo into a Claude Opus 5 tech piece
+# (reported 2026-07-25, right after this source replaced Engadget 中文).
+# Char count alone looked healthy precisely because the junk inflated it.
+# `div.atoms` is the real article body; everything outside it —
+# breadcrumb, duplicated headline, byline, publisher logo, that rail — is
+# chrome. Anchoring there is far more reliable than trying to blacklist
+# the rail.
+_YAHOO_BODY_SELECTOR = "section.module-article-body div.atoms"
+# Inline "廣告" spacers sit between real paragraphs inside div.atoms.
+_YAHOO_AD_MARKER_RE = re.compile(r"^\s*(廣告|advertisement)\s*$", re.IGNORECASE)
+
+
+def _build_yahoo_content(html: str) -> str | None:
+    soup = BeautifulSoup(html or "", "html.parser")
+    body = soup.select_one(_YAHOO_BODY_SELECTOR)
+    if not body:
+        return None
+    for tag in body.select("script, style, noscript, iframe"):
+        tag.decompose()
+
+    parts: list[str] = []
+    seen_src: set[str] = set()
+    # Walk in document order so images keep their position in the narrative.
+    for node in body.find_all(["p", "img", "h2", "h3", "figure"]):
+        if node.name == "img":
+            src = (node.get("src") or node.get("data-src") or "").strip()
+            if not src or src in seen_src:
+                continue
+            seen_src.add(src)
+            parts.append(f'<img src="{_html_escape(src, quote=True)}">')
+            continue
+        if node.find("img") and not node.get_text(strip=True):
+            continue
+        text = re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
+        if not text or _YAHOO_AD_MARKER_RE.match(text):
+            continue
+        tag = "h3" if node.name in ("h2", "h3") else "p"
+        parts.append(f"<{tag}>{_html_escape(text)}</{tag}>")
+
+    if not parts:
+        return None
+    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)))
+    if text_chars < 40:
+        return None
+    return "<html><body>" + "".join(parts) + "</body></html>"
 
 
 def _build_am730_content(html: str) -> str | None:
@@ -1330,12 +1288,12 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
         content = _build_tvb_content(html)
     elif _is_oncc_url(url):
         content = _build_oncc_content(html, url)
-    elif _is_skypost_url(url):
-        content = _build_skypost_content(html, url)
     elif _is_am730_url(url):
         content = _build_am730_content(html)
     elif _is_lookmedia_url(url):
         content = _build_lookmedia_content(html)
+    elif _is_yahoo_url(url):
+        content = _build_yahoo_content(html)
 
     if content is None:
         content = trafilatura.extract(

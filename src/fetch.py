@@ -249,99 +249,6 @@ def _parse_am730_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> li
     return articles[:max_items]
 
 
-_SKYPOST_SITEMAP_INDEX_URL = "http://skypost.hk/sitemap.xml"
-_SKYPOST_NEWS_SECTION = "港聞"
-
-
-def _skypost_article_id(url: str) -> str:
-    match = re.search(r"/article/(\d+)", url or "")
-    return match.group(1) if match else ""
-
-
-def _parse_sitemap_urls(xml: str) -> list[str]:
-    soup = BeautifulSoup(xml or "", "xml")
-    return [loc.get_text(strip=True) for loc in soup.find_all("loc") if loc.get_text(strip=True)]
-
-
-def _dedupe_skypost_urls(urls: list[str]) -> list[str]:
-    ordered_ids: list[str] = []
-    by_id: dict[str, str] = {}
-    for url in urls:
-        aid = _skypost_article_id(url)
-        if not aid:
-            continue
-        prev = by_id.get(aid)
-        # Prefer the slugged URL over the bare /article/{id}/ entry.
-        if not prev or len(url) > len(prev):
-            by_id[aid] = url
-        if aid not in ordered_ids:
-            ordered_ids.append(aid)
-    return [by_id[aid] for aid in ordered_ids if aid in by_id]
-
-
-def _skypost_hidden_text(soup: BeautifulSoup, field: str) -> str:
-    node = soup.select_one(f".hiddenOG .{field}")
-    return re.sub(r"\s+", " ", node.get_text(" ", strip=True) if node else "").strip()
-
-
-def _skypost_http(url: str) -> str:
-    return url.replace("https://", "http://", 1) if url.startswith("https://") else url
-
-
-def _skypost_parse_date(soup: BeautifulSoup) -> datetime | None:
-    raw = _skypost_hidden_text(soup, "ga4PublishDateHidden")
-    if not raw:
-        node = soup.select_one(".publish-time")
-        if node:
-            raw = re.sub(r"^\s*發佈時間:\s*", "", node.get_text(" ", strip=True))
-    if not raw:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-        try:
-            dt = datetime.strptime(raw[:10], fmt)
-            return dt.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
-        except Exception:
-            pass
-    return None
-
-
-def _skypost_parse_article(html: str, url: str, cutoff: datetime, feed_info: dict) -> dict | None:
-    # 之前呢個係唯一冇經 _clean_url() 就直接用嘅 url 賦值位——一個 caption/
-    # url 入面嘅 literal " 可以拆散下游 Telegram alert 嘅 <a href="..."> 屬性
-    # （2026-07-21 audit finding；escape 呢邊都補埋咗，但源頭清一清更保險）。
-    url = _clean_url(url)
-    soup = BeautifulSoup(html or "", "html.parser")
-    section = _skypost_hidden_text(soup, "sectionNameHidden") or _skypost_hidden_text(soup, "SectionNameCodeHidden")
-    if section != _SKYPOST_NEWS_SECTION:
-        return None
-    date = _skypost_parse_date(soup)
-    if not date or date < cutoff:
-        return None
-
-    title = _skypost_hidden_text(soup, "metaTitleHidden") or (
-        soup.select_one("h1").get_text(" ", strip=True) if soup.select_one("h1") else ""
-    ) or _skypost_hidden_text(soup, "urlHeadlineHidden")
-    if not title:
-        return None
-
-    thumbnail = _skypost_hidden_text(soup, "ogImageUrlHidden")
-    if not thumbnail:
-        hero = soup.select_one(".article-details-img-container img")
-        thumbnail = (hero.get("src") or hero.get("data-src") or "").strip() if hero else ""
-
-    return {
-        "id":          _make_id(url),
-        "title":       title,
-        "url":         url,
-        "date":        date.isoformat(),
-        "source":      feed_info["name"],
-        "category":    feed_info["category"],
-        "content":     None,
-        "thumbnail":   thumbnail or None,
-        "rss_content": None,
-    }
-
-
 _YAHOO_ARTICLE_RE = re.compile(r"-\d{6,}\.html(?:$|\?)")
 _YAHOO_BASE = "https://hk.news.yahoo.com"
 
@@ -460,88 +367,6 @@ async def _fetch_yahoo_tech(
             articles.append(article)
             if len(articles) >= max_items:
                 return articles, None, False
-    return articles, None, False
-
-
-async def _fetch_skypost(
-    session:   aiohttp.ClientSession,
-    feed_info: dict,
-    cutoff:    datetime,
-) -> tuple[list, str | None, bool]:
-    """SkyPost does not expose a stable RSS feed, so pull candidate article
-    URLs from the sitemap and filter by the page's hidden section markers.
-    """
-    articles: list = []
-    async def _fetch_text(url: str, *, accept: str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", referer: str | None = None) -> str | None:
-        try:
-            headers = {"Accept": accept}
-            if referer:
-                headers["Referer"] = referer
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=20),
-                headers=headers,
-            ) as resp:
-                if resp.status >= 400:
-                    return None
-                raw = await resp.read()
-                charset = resp.charset or "utf-8"
-                return raw.decode(charset, errors="replace")
-        except Exception:
-            return None
-
-    index_xml = await _fetch_text(_SKYPOST_SITEMAP_INDEX_URL, accept="application/xml,text/xml,*/*;q=0.8")
-    if not index_xml:
-        return articles, "sitemap index fetch failed", False
-
-    sitemap_urls = _parse_sitemap_urls(index_xml)
-    sitemap_url = sitemap_urls[-1] if sitemap_urls else ""
-    if not sitemap_url:
-        return articles, "empty sitemap index", False
-
-    candidate_urls: list[str] = []
-    for _ in range(4):
-        sitemap_xml = await _fetch_text(_skypost_http(sitemap_url), accept="application/xml,text/xml,*/*;q=0.8")
-        if not sitemap_xml:
-            return articles, "monthly sitemap fetch failed", False
-        parsed_urls = _parse_sitemap_urls(sitemap_xml)
-        if not parsed_urls:
-            return articles, "empty sitemap page", False
-        if any(u.lower().endswith(".xml") for u in parsed_urls):
-            sitemap_url = parsed_urls[-1]
-            continue
-        candidate_urls = _dedupe_skypost_urls(parsed_urls)
-        break
-    else:
-        return articles, "sitemap depth exceeded", False
-
-    # The sitemap is newest-first, so the first few dozen URLs are enough to
-    # pick up the current news articles without hammering the whole month's
-    # archive.
-    candidate_urls = candidate_urls[:120]
-    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
-
-    async def _fetch_and_parse(article_url: str) -> dict | None:
-        html = await _fetch_text(
-            _skypost_http(article_url),
-            referer="http://skypost.hk/news/%E8%A6%81%E8%81%9E/",
-        )
-        if not html:
-            return None
-        return _skypost_parse_article(html, article_url, cutoff, feed_info)
-
-    # Batch in small groups so we keep ordering while still overlapping the
-    # slow page fetches.
-    for i in range(0, len(candidate_urls), 10):
-        batch = candidate_urls[i:i + 10]
-        results = await asyncio.gather(*[_fetch_and_parse(url) for url in batch])
-        for article in results:
-            if not article:
-                continue
-            articles.append(article)
-            if len(articles) >= max_items:
-                return articles, None, False
-
     return articles, None, False
 
 
@@ -1053,8 +878,6 @@ async def _fetch_one(
         return await _fetch_oncc(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "oncc_daily":
         return await _fetch_oncc_daily(session, feed_info, cutoff)
-    if feed_info.get("fetcher") == "skypost":
-        return await _fetch_skypost(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "yahoo":
         return await _fetch_yahoo_tech(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "tvb":
@@ -1197,10 +1020,11 @@ async def retranslate_english_titles(articles: list) -> None:
         print(f"[fetch] retranslated {changed}/{len(pending)} stale English titles")
 
 
-# Per-feed budget. Most feeds finish in 1-5s; SkyPost (sitemap walk + up to
-# 120 page fetches) is the slowest legitimate path at ~30-50s. Without this
-# cap, one hung feed eats build.py's whole 150s fetch budget and EVERY source
-# falls back to stale articles — with it, only the slow feed degrades.
+# Per-feed budget. Most feeds finish in 1-5s; the slowest legitimate path is
+# now Yahoo 科技, which opens every listed article to read its date (~6s for
+# 16 articles, and it scales with max_items). Without this cap, one hung feed
+# eats build.py's whole 150s fetch budget and EVERY source falls back to
+# stale articles — with it, only the slow feed degrades.
 _PER_FEED_TIMEOUT = 75
 
 

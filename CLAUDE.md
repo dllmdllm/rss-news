@@ -55,7 +55,8 @@ rss-news/
 │       ├── daily_brief.json    # 今日早報（index 頁早報卡 + TTS）
 │       ├── feed_http_cache.json  # HTTP 304 cache
 │       └── content/            # 各文章完整 HTML（{id}.json）
-├── CLAUDE.md             # 本文件（同時作 AGENTS.md 使用）
+├── CLAUDE.md             # 本文件（source of truth）
+├── AGENTS.md             # ⚠️ CLAUDE.md 嘅鏡像，改完 CLAUDE.md 要 copy 過去
 ├── requirements.txt
 └── .github/
     └── workflows/
@@ -148,13 +149,15 @@ Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
   Yahoo 香港吸收咗佢嘅中文科技內容（Engadget 中文版本身就係 Yahoo 旗下），
   所以加咗 `Yahoo 科技` 頂上。⚠️ Yahoo 個 `/rss` 係空殼（767 bytes、0 個
   `<item>`，2026-07-25 實測），一定要行 HTML fetcher；listing 頁亦冇日期，
-  要逐篇開文攞 `<time datetime>`（同 SkyPost 一樣嘅 N+1 pattern）。
+  要逐篇開文攞 `<time datetime>`（listing→逐篇嘅 N+1 pattern）。
   全文交返 trafilatura 就得，唔使 custom parser（實測 2500-2900 字、9 張圖）
 - **SkyPost 要聞**：晴報轉型做「健康、娛樂、家庭生活資訊頻道」，唔再出港聞
-  ——`/news/` 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇係 `_fetch_skypost`
-  篩緊嘅 `港聞`。佢個 sitemap 亦凍結咗喺 2023 年（最大 article id 3614960，
-  實際站上已去到 4165870），所以連「修好 sitemap」都救唔返。`_fetch_skypost`
-  保留喺 `fetch.py`，萬一日後恢復港聞就 restore `feeds.py` 嗰一行
+  ——`/news/` 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇係 `港聞`。佢個
+  sitemap 亦凍結咗喺 2023 年（最大 article id 3614960，實際站上已去到
+  4165870），所以連「修好 sitemap」都救唔返——唔係 parser 壞，係個 source 冇咗
+  新聞。**相關 code 已全部刪走**（`fetch.py` 嘅 `_fetch_skypost` 同 `_skypost_*`
+  helper、`scrape.py` 嘅 `_build_skypost_content` / `_is_skypost_url` /
+  hket inline-image regex、2 個 test），要翻查就睇 git history
 
 ---
 
@@ -320,7 +323,7 @@ cancel 個 wait_for 淨係停止等待，唔會真正殺咗個 thread（Python �
 ### fetch per-feed 超時
 
 `fetch_all()` 每個 feed 包一層 `asyncio.wait_for(75s)`。冇呢層嘅話，
-單一 feed 卡死（SkyPost sitemap walk 最慢）會食晒 build.py 嘅 150s fetch
+單一 feed 卡死（而家最慢係 Yahoo 科技，要逐篇開文攞日期）會食晒 build.py 嘅 150s fetch
 budget，**全部來源**都 fallback 去舊文章；有咗就只係嗰個 feed 降級。
 
 ### HK01 全文抓取（`_build_hk01_content`）
@@ -347,6 +350,28 @@ TVB News 係 Next.js app，內容在 `__NEXT_DATA__`：
 - 圖片：`newsItems.media.image`（list，`default: true` 的為主圖，用 `big` URL）
 
 trafilatura 在 TVB 只能抽出「繁简 無相關新聞內容」，必須用自訂解析器。
+
+### Yahoo 科技全文抓取（`_build_yahoo_content`）
+
+Yahoo 新聞喺文章下面有個「其他人也在看」欄，**嵌住成篇完整推薦文章**（唔止
+連結）。所以 trafilatura 會一鑊過將完全無關嘅新聞掃埋入正文——實際見過一篇
+Claude Opus 5 嘅科技文夾住自助餐優惠同 LeBron James 轉會（2026-07-25 用戶
+報告，正正係加咗呢個 source 之後）。呢啲垃圾會餵落 `analyse.py`，摘要／標籤／
+topic 全部污染。
+
+解法係鎖死最窄嗰個純內文容器：
+
+```python
+_YAHOO_BODY_SELECTOR = "section.module-article-body div.atoms"
+```
+
+`div.atoms` 之外嘅嘢（麵包屑、重複標題、byline、出版商 logo、推薦欄）全部係
+chrome。另外 `div.atoms` 入面仲會夾住「廣告」字樣嘅 spacer 段落，要用
+`_YAHOO_AD_MARKER_RE` 濾走。
+
+⚠️ **教訓**：當初驗證只量咗字數（2,500-2,900 字）就當合格——但垃圾正正係
+**撐大**字數嗰樣嘢，所以個數字睇落好健康。驗 parser 一定要真係讀返抽到嘅
+文字，唔可以淨係睇長度。清乾淨之後每篇得 500-1,800 字（Yahoo 科技多數係短快訊）。
 
 ### NowsNews 瀏覽器兼容提示
 
@@ -568,7 +593,8 @@ test，都會意外撞中真實熱門字。兩個 test file 已加 autouse fixtu
 
 **呢個坑中過三次**：東網娛樂（2026-07-15）、SkyPost + Engadget（2026-07-25，
 兩個都死咗成個月先發現）。共同模式係 fetcher 攞到 0 篇但 `error=None`
-（例如 `_fetch_skypost` 最尾無條件 `return articles, None, False`），
+（當時 `_fetch_skypost` 最尾無條件 `return articles, None, False`——呢個
+fetcher 已隨 source 一齊刪走，但同一個形狀喺其他 fetcher 仍然存在），
 於是 build 全綠、每個 stage 都 ok、`articles.json` 淨係靜靜哋寫住
 `effective_count: 0`，冇任何嘢會嘈。
 

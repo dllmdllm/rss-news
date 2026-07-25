@@ -45,13 +45,12 @@ RSS_FEEDS = [
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},
     {"name": "GoTrip",            "url": "https://www.gotrip.hk/feed",                                            "category": "消閒"},
-    # ❌ SkyPost 要聞 — 2026-07-25 移除。晴報轉型做「健康、娛樂、家庭生活資訊
-    # 頻道」，唔再出港聞：/news/ 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇
-    # 係 fetcher 篩緊嘅 港聞，最新一篇仲要係兩星期前。佢個 sitemap 亦凍結咗喺
-    # 2023 年（最大 article id 3614960，實際站上已去到 4165870），所以連
-    # 「修好 sitemap」都救唔返。source 由 6 月起靜靜哋 0 篇（見下面
-    # _fetch_skypost 嘅 error=None 問題）。_fetch_skypost 保留喺 fetch.py，
-    # 萬一佢日後恢復港聞就 restore 呢一行。
+    # ❌ SkyPost 要聞 — 2026-07-25 移除，連 fetcher / scraper / test 一併刪走。
+    # 晴報轉型做「健康、娛樂、家庭生活資訊頻道」，唔再出港聞：/news/ 同首頁抽到
+    # 嘅文全部係 健康/副刊 section，冇一篇係 港聞。佢個 sitemap 亦凍結咗喺 2023
+    # 年（最大 article id 3614960，實際站上已去到 4165870），所以連「修好
+    # sitemap」都救唔返 —— 唔係 parser 壞，係個 source 冇咗新聞。
+    # 想翻查舊 code（_fetch_skypost / _build_skypost_content）就睇 git history。
     # 科技
     {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技"},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
