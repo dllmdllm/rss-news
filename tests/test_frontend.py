@@ -1114,3 +1114,104 @@ def test_sentiment_filter_is_wired_into_filtering_and_has_an_exit():
     # 篩咗之後一定要有退出方式，否則用戶困死喺 filter 狀態
     assert 'id="clearSentiment"' in source, "缺少清除輿情篩選嘅掣"
     assert 'closest("#clearSentiment")' in source, "清除掣冇 handler"
+
+
+def test_related_articles_prefers_semantic_similar_map():
+    # similar.json（embed.py 計嘅 cosine top-5）一直生成咗但全站冇讀
+    # （2026-07-25 review）。而家文章頁「相關新聞」優先用佢，heuristic 補位。
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'function titleKey(a){ return String((a && a.title) || "").replace(/\s+/g, "").slice(0, 18); }',
+        _extract_js_function(source, "relatedArticles"),
+        """
+        const current = { id: "cur", title: "颱風襲港", topic: "天氣", category: "新聞", source: "A", tags: [] };
+        const articles = [
+          current,
+          { id: "sem1", title: "教育局宣布停課", topic: "教育", category: "教育", source: "B", tags: [] },
+          { id: "sem2", title: "天文台改發三號", topic: "天氣", category: "新聞", source: "C", tags: [] },
+          { id: "heur", title: "同分類同來源但唔啱題", topic: "天氣", category: "新聞", source: "A", tags: [] },
+        ];
+        const similarMap = { cur: ["sem1", "sem2"] };
+        const out = relatedArticles(current, articles, new Set(), 3, similarMap);
+        const ids = out.map((a) => a.id);
+        if (ids[0] !== "sem1" || ids[1] !== "sem2") {
+          throw new Error("語義結果要行先: " + JSON.stringify(ids));
+        }
+        if (out.length !== 3 || ids[2] !== "heur") {
+          throw new Error("heuristic 要補返尾位: " + JSON.stringify(ids));
+        }
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_related_articles_falls_back_without_similar_map():
+    # similar.json fetch 失敗／新文仲未 embed 就要靜靜降級，唔可以變空白。
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'function titleKey(a){ return String((a && a.title) || "").replace(/\s+/g, "").slice(0, 18); }',
+        _extract_js_function(source, "relatedArticles"),
+        """
+        const current = { id: "cur", title: "A", topic: "天氣", category: "新聞", source: "A", tags: [] };
+        const articles = [current, { id: "x", title: "B", topic: "天氣", category: "新聞", source: "B", tags: [] }];
+        if (relatedArticles(current, articles, new Set(), 3, null).length !== 1) {
+          throw new Error("冇 similarMap 就要用返 heuristic");
+        }
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_related_articles_never_exceeds_limit():
+    node = _require_node()
+    source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'function titleKey(a){ return String((a && a.title) || "").replace(/\s+/g, "").slice(0, 18); }',
+        _extract_js_function(source, "relatedArticles"),
+        """
+        const current = { id: "cur", title: "A", topic: "T", category: "C", source: "S", tags: [] };
+        const articles = [current];
+        const sim = { cur: [] };
+        for (let i = 0; i < 20; i++) {
+          articles.push({ id: "s" + i, title: "sem" + i, topic: "T", category: "C", source: "S", tags: [] });
+          sim.cur.push("s" + i);
+        }
+        const out = relatedArticles(current, articles, new Set(), 6, sim);
+        if (out.length !== 6) throw new Error("limit 爆咗: " + out.length);
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_mobile_ai_tab_has_three_subtabs():
+    # 用戶要求（2026-07-25）：手機 AI tab 頂部俾三頁揀。之前得兩個
+    # （優先／分類重點），而分析欄係硬疊喺清單下面一路捲。
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    block = html[html.index('id="mobileSubAi"'):]
+    block = block[:block.index("</div>")]
+    for mode in ("priority", "category", "analysis"):
+        assert f'data-ai-mode="{mode}"' in block, f"缺少 {mode} 分頁"
+
+
+def test_mobile_analysis_tab_swaps_rail_for_list():
+    # 三個分頁要真係二選一顯示，唔係又疊返一齊。
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert "body.mobile-ai.ai-mode-analysis .main { display: none; }" in html
+    assert "body.mobile-ai:not(.ai-mode-analysis) .ai { display: none; }" in html
+    js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(js, "updateMobileSubUi")
+    assert "ai-mode-analysis" in fn, "updateMobileSubUi 要 toggle 個 body class"
+    assert 'state.mobile.aiMode === "analysis"' in fn
+
+
+def test_analysis_mode_does_not_leak_category_filter():
+    # analysis 同 priority 一樣係全量檢視——唔應該帶住 aiCat/aiSource 篩選。
+    js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(js, "syncStateFromMobile")
+    assert 'state.mobile.aiMode === "category" ? state.mobile.aiCat : "全部"' in fn
+    assert 'state.mobile.aiMode === "category" ? state.mobile.aiSource : ""' in fn

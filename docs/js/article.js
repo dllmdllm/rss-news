@@ -95,11 +95,31 @@
 
   // 排走已經喺「同來源新聞」出現嘅 id，同埋 cluster 近似標題只留一篇，
   // 避免 AI panel 同 side panel 重複顯示同一單新聞。
-  function relatedArticles(current, articles, excludeIds, limit = 6) {
+  function relatedArticles(current, articles, excludeIds, limit = 6, similarMap = null) {
     const seenTitles = new Set([titleKey(current)].filter(Boolean));
     const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
-    return articles
-      .filter((article) => article.id !== current.id && !skip.has(article.id))
+    const picked = [];
+
+    // 首選語義相似（similar.json，embed.py 用 sentence-transformers 計嘅
+    // cosine top-5）。呢個檔一直生成咗但全站冇人讀（2026-07-25 review），
+    // 而佢比下面嗰個 tag/topic heuristic 準——同一單新聞嘅唔同媒體版本、
+    // 同一脈絡但唔同事件嘅背景報道，heuristic 兩樣都捉唔到。
+    const byId = new Map(articles.map((row) => [row.id, row]));
+    for (const id of (similarMap && similarMap[current.id]) || []) {
+      if (picked.length >= limit) break;
+      const row = byId.get(id);
+      if (!row || row.id === current.id || skip.has(row.id)) continue;
+      const key = titleKey(row);
+      if (key && seenTitles.has(key)) continue;
+      if (key) seenTitles.add(key);
+      picked.push(row);
+    }
+    if (picked.length >= limit) return picked;
+
+    // 補位：similar.json 可能冇呢篇（新文仲未 embed／相似度都低過 0.45）。
+    const pickedIds = new Set(picked.map((row) => row.id));
+    return picked.concat(articles
+      .filter((article) => article.id !== current.id && !skip.has(article.id) && !pickedIds.has(article.id))
       .map((article) => {
         let score = 0;
         if (article.topic && article.topic === current.topic) score += 80;
@@ -112,13 +132,14 @@
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || String(b.article.date || "").localeCompare(String(a.article.date || "")))
       .reduce((acc, row) => {
-        if (acc.length >= limit) return acc;
+        // 個 cap 係 limit 減走語義嗰批已經佔咗嘅位。
+        if (picked.length + acc.length >= limit) return acc;
         const key = titleKey(row.article);
         if (key && seenTitles.has(key)) return acc;
         if (key) seenTitles.add(key);
         acc.push(row.article);
         return acc;
-      }, []);
+      }, []));
   }
 
   function renderMiniArticle(article) {
@@ -232,10 +253,13 @@
     // 會冧晒，連本身已經攞到嘅文章標題/meta 都跌落「載入失敗」畫面——
     // 本來應該可以優雅降級做「暫時未有全文內容」（2026-07-21 audit
     // finding）。
-    const [metaRes, contentRes, panelRes] = await Promise.all([
+    const [metaRes, contentRes, panelRes, similarRes] = await Promise.all([
       fetch("data/articles.json", { cache: "no-cache" }),
       fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }).catch(() => null),
       fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
+      // similar.json 同 panel_digests 一樣係 optional enrichment——fetch
+      // 失敗就淨用下面嗰個 tag/topic heuristic，唔可以拖冧成頁。
+      fetch("data/similar.json", { cache: "no-cache" }).catch(() => null),
     ]);
     if (!metaRes.ok) throw new Error("讀取文章列表失敗");
     const data = await metaRes.json();
@@ -249,6 +273,10 @@
     let panelMap = null;
     if (panelRes && panelRes.ok) {
       try { panelMap = await panelRes.json(); } catch (_) {}
+    }
+    let similarMap = null;
+    if (similarRes && similarRes.ok) {
+      try { similarMap = await similarRes.json(); } catch (_) {}
     }
 
     document.title = `${article.title || "新聞"} · 新聞控制台`;
@@ -315,7 +343,7 @@
       ? article.key_sentences
       : summaryPoints(article, 5);
     $("facts").innerHTML = facts.slice(0, 5).map((fact) => `<li>${esc(fact)}</li>`).join("");
-    $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
+    $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, similarMap).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
   }
 
   load().catch((err) => {

@@ -604,11 +604,25 @@ generate 咗但冇出街：
 
 ⚠️ `renderMood()` 要用**全量** `state.articles` 而唔係 filtered list——
 否則撳咗「負面」之後條分佈變 100% 負面，睇落好似壞咗。
-⚠️ `similar.json` 仍然係孤兒（計咗冇人用），要就喺文章頁做「相關報道」，
-唔要就停埋個計算——而家兩頭唔到岸。
+✅ `similar.json` 2026-07-25 起接返落文章頁「相關新聞」：`relatedArticles()`
+優先食 similar map（cosine top-5），揀唔夠先用返舊嘅 tag/topic heuristic 補位。
+實測同一單新聞嘅多媒體報道，語義版 4/4 全中，heuristic 有一條係靠「同 source
+同分類」撈返嚟嘅無關文。fetch 失敗就靜靜降級用 heuristic，唔可以變空白。
 
 **教訓**：加新 AI 功能之前先問「呢個喺 UI 邊度出現？」——呢個 project
-已經有 4 個欄位係 generate 咗、燒咗 token／CPU，但從來冇人見過。
+一度有 4 個欄位係 generate 咗、燒咗 token／CPU，但從來冇人見過。
+
+`entities.json` / `graph.json` **唔屬於呢類**：佢哋有專屬頁（`entities.html` /
+`graph.html`），只係入口收喺 AI 欄底部一行細連結，屬「入口太隱蔽」而唔係「冇人讀」。
+
+### 手機 AI tab 三個分頁
+
+`mobile-sub-ai` 有三個 mode：`priority` / `category` / `analysis`。
+之前得頭兩個，而分析欄（`.ai`）係硬疊喺清單下面一路捲落去，一頁好長又分唔清。
+而家 `analysis` 顯示 `.ai` 收起 `.main`，另外兩個相反——靠 `body.ai-mode-analysis`
+呢個 class 二選一（CSS 喺 `index.html` 嘅 `@media (max-width: 900px)` 入面，
+class 由 `updateMobileSubUi()` toggle）。
+`analysis` 同 `priority` 一樣唔帶 `aiCat`/`aiSource` 篩選（見 `syncStateFromMobile()`）。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 

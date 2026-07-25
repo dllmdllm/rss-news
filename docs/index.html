@@ -1246,6 +1246,11 @@
       body.mobile-search .main,
       body.mobile-ai .ai,
       body.mobile-ai .main { display: block; }
+      /* AI tab 三個分頁（2026-07-25 用戶要求）：之前「優先排行 + 分類重點 +
+         成條分析欄」全部疊埋一齊捲，一頁好長又分唔清。而家排行／分類係
+         .main，分析係 .ai，靠 body class 二選一。 */
+      body.mobile-ai.ai-mode-analysis .main { display: none; }
+      body.mobile-ai:not(.ai-mode-analysis) .ai { display: none; }
       body.mobile-settings .mobile-settings-panel { display: flex; }
       body.mobile-home .mobile-sub-home,
       body.mobile-ai .mobile-sub-ai { display: flex; }
@@ -1414,6 +1419,7 @@
     <div class="mobile-sub mobile-sub-ai" id="mobileSubAi">
       <button data-ai-mode="priority" class="active" type="button">🔥 優先</button>
       <button data-ai-mode="category" type="button">📂 分類重點</button>
+      <button data-ai-mode="analysis" type="button">🧭 分析</button>
     </div>
     <div class="mobile-cat-chips" id="mobileCatChips"></div>
     <div class="mobile-source-chips" id="mobileSourceChips"></div>

@@ -748,6 +748,12 @@
       (state.mobile.view === "home" && state.mobile.homeMode === "category") ||
       (state.mobile.view === "ai" && state.mobile.aiMode === "category");
     document.body.classList.toggle("cat-chips-on", showChips);
+    // 分析頁顯示 .ai 分析欄、收起 .main；另外兩個分頁反過嚟（見 index.html
+    // 嘅 body.mobile-ai.ai-mode-analysis 規則）。
+    document.body.classList.toggle(
+      "ai-mode-analysis",
+      state.mobile.view === "ai" && state.mobile.aiMode === "analysis",
+    );
     renderMobileCatChips();
     renderMobileSourceChips();
   }
