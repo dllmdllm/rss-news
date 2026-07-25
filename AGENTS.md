@@ -247,7 +247,7 @@ Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
 - **Hook：`hooks/pycompile-check.py`**（PostToolUse）— 改完 `.py` 即時跑 `python -m py_compile`，秒級 catch syntax / indent error，特別針對 `scrape.py` 嘅自訂 parser
 - **Hook：`hooks/bump-sw-cache.py`**（PostToolUse）— 改完 `docs/index.html` / `docs/article.html` / `docs/js/**` / `docs/css/**` / `docs/vendor/**` / `docs/manifest.json` 後自動 bump `docs/sw.js` 嘅 `CACHE` version，迫 iOS Safari / SW 重抓新 asset（避免黑屏 / stale UI bug）
 - **Hook：`hooks/run-related-test.py`**（PostToolUse）— 改完 source / frontend 即時跑對應 pytest（`src/<x>.py` → `tests/test_<x>.py`；`docs/js/*` / `docs/sw.js` / `docs/*.html` → `tests/test_frontend.py`；`build.py` → `tests/test_build.py`），90s timeout，失敗 surface 返畀 Claude 即時 fix
-- **Skill：`skills/project-conventions/SKILL.md`** — 抽出下方「設計決定」內容，當 Claude 改 `src/analyse.py`、`src/scrape.py`、`src/fetch.py`、`build.py`、`docs/article.html`、`.github/workflows/update.yml` 時會自動載入
+- **Skill：`skills/project-conventions/SKILL.md`** — 指返落面「設計決定」一節（唔再複製內容，見下面 ✅ 註）
 - **Skill：`skills/add-feed-source/SKILL.md`**（user-invocable `/add-feed-source`）— 加新 RSS / 新聞源嘅 workflow：分類、parser 選型、feeds.py entry、smoke test、CLAUDE.md 同步
 - **Skill：`skills/diagnose-feed/SKILL.md`**（user-invocable `/diagnose-feed`）— 單一 feed triage：跑 `diagnose.py <name-pattern>`，stage 化打印 fetch → scrape → preview（可選 `--analyse`），唔使等 15 min GH Actions cycle 就 pinpoint 邊個 stage 壞咗
 - **Skill：`skills/release-frontend/SKILL.md`**（user-invocable `/release-frontend`）— 前端 release checklist：verify SW cache bump → `pytest tests/test_frontend.py` → vendor `?v=` token → conventional commit → push（注意 `update.yml` push event path filter 唔包 `docs/**`，前端 push 唔會自動 trigger workflow，要等 20 min cron 或手動 dispatch）
@@ -258,7 +258,12 @@ Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
 - **MCP server：`github`** — GitHub repo / Actions / PR 操作（list workflow run、download log、re-dispatch、status check）
 - **`settings.local.json`** — 個人 permission allowlist + hook 設定（PreToolUse + PostToolUse）
 
-⚠️ Skill 內容係下方「設計決定」嘅 copy，**改其中一邊記得同步另一邊**（或之後重構成一邊 reference 另一邊）。
+✅ 2026-07-25：`project-conventions` skill 由「設計決定」嘅逐字副本（276 行、
+16 個章節全部重複）改成幾行指路。**本文件係唯一來源，冇同步負擔。**
+原因：CLAUDE.md 每個 session 都自動載入，個 skill 一觸發就會喺已經有嗰份之上
+再疊多一份，即係 Anthropic 講嘅 over-constraining（[context engineering
+rules](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)）。
+**加新設計決定寫喺下面就得，唔好再開副本。**
 
 ---
 
