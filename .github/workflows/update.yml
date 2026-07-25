@@ -139,6 +139,10 @@ jobs:
             # 寫（Google Trends 香港熱門字，每日一次），要 stage 先可以俾
             # fast-watch.yml 攞到。
             git add config/trending_keywords.txt 2>/dev/null || true
+            # source_health.json 同上——佢記住每個 source「連續幾耐 0 篇」，
+            # 唔 stage 就每次 checkout 清零，24 小時嘅斷更門檻永遠夠唔到，
+            # 等於成個偵測機制失效。
+            git add docs/data/source_health.json 2>/dev/null || true
           }
 
           stage_outputs

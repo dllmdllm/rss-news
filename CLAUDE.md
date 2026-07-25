@@ -135,10 +135,26 @@ RTHK 國際 / 大中華、明報 國際 / 中國、東網 國際、星島 即時
 明報 消閒、WeekendHK、GoTrip
 
 ### 科技
-cnBeta、HKEPC、Unwire、9to5Mac、New MobileLife、TVB News（新增）、Now News（新增）
+cnBeta、HKEPC、Unwire、9to5Mac、New MobileLife、TVB News、Now News、
+Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
 
 ### 網媒
-法庭線、The Collective HK、香港法庭新聞、SkyPost（自訂解析器）
+法庭線、The Collective HK、香港法庭新聞
+
+### 已移除來源（2026-07-25）
+兩個都靜靜哋 0 篇超過一個月先發現，成因見下面「靜默 0 篇」一節：
+
+- **Engadget 中文**：`chinese.engadget.com` 連 DNS 都解析唔到，網站已停運。
+  Yahoo 香港吸收咗佢嘅中文科技內容（Engadget 中文版本身就係 Yahoo 旗下），
+  所以加咗 `Yahoo 科技` 頂上。⚠️ Yahoo 個 `/rss` 係空殼（767 bytes、0 個
+  `<item>`，2026-07-25 實測），一定要行 HTML fetcher；listing 頁亦冇日期，
+  要逐篇開文攞 `<time datetime>`（同 SkyPost 一樣嘅 N+1 pattern）。
+  全文交返 trafilatura 就得，唔使 custom parser（實測 2500-2900 字、9 張圖）
+- **SkyPost 要聞**：晴報轉型做「健康、娛樂、家庭生活資訊頻道」，唔再出港聞
+  ——`/news/` 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇係 `_fetch_skypost`
+  篩緊嘅 `港聞`。佢個 sitemap 亦凍結咗喺 2023 年（最大 article id 3614960，
+  實際站上已去到 4165870），所以連「修好 sitemap」都救唔返。`_fetch_skypost`
+  保留喺 `fetch.py`，萬一日後恢復港聞就 restore `feeds.py` 嗰一行
 
 ---
 
@@ -547,6 +563,53 @@ monkeypatch `load_trending_keywords()`（`keyword_alert.py`）/
 `TRENDING_KEYWORDS`（`fast_watch.py`，module-level，喺 import 讀一次）嘅
 test，都會意外撞中真實熱門字。兩個 test file 已加 autouse fixture 預設清空，
 新 test 唔使再手動處理。
+
+### 靜默 0 篇：來源斷更偵測（`src/source_health.py`）
+
+**呢個坑中過三次**：東網娛樂（2026-07-15）、SkyPost + Engadget（2026-07-25，
+兩個都死咗成個月先發現）。共同模式係 fetcher 攞到 0 篇但 `error=None`
+（例如 `_fetch_skypost` 最尾無條件 `return articles, None, False`），
+於是 build 全綠、每個 stage 都 ok、`articles.json` 淨係靜靜哋寫住
+`effective_count: 0`，冇任何嘢會嘈。
+
+`check_source_health()` 喺 `build.py` 每次 build 尾段跑，將每個 source 嘅
+`effective_count` 摺入 `docs/data/source_health.json`：
+
+- 一次 0 篇唔算數（上游斷線／深夜冇新聞／HTTP 304 都會 0）——要**連續
+  `ZERO_ALERT_AFTER_HOURS`（24 小時）**都係 0 先當斷更
+- 告警形狀跟 `guardian.yml`：健康→死嗰下嗌一次 🟠，恢復發 🟢，
+  持續死就每 `REMIND_EVERY_HOURS`（24 小時）先提一次，唔會每 20 分鐘洗版
+- `evaluate_sources()` 係純函數（收 `now` / `state` 參數，冇 I/O），
+  所以 test 可以直接餵假時鐘行完成個生命週期
+
+⚠️ `docs/data/source_health.json` **一定要喺 `update.yml` 嘅 `stage_outputs()`
+入面 add**——唔 stage 嘅話下次 checkout 清走佢，「連續幾耐 0 篇」永遠由零開始，
+24 小時門檻夠唔到，成個偵測機制等於冇。（同 `daily_brief.json` /
+`translated_content.json` 中過嘅伏一模一樣。）
+Test 亦要 monkeypatch `STATE_PATH` 同 `TELEGRAM_BOT_TOKEN`，見「測試唔可以寫真
+docs/data/」一節。
+
+### GitHub cron 唔可靠：兩個 workflow 都要本機 dispatch 補位
+
+GitHub 原生 cron 對高頻排程 throttle 得好犀利。2026-07-25 實測
+`fast-watch.yml`（cron 寫住 `*/5`）**實際 run 之間相隔 80–480 分鐘**，
+即係「5 分鐘 tripwire」真身係 1.5–8 小時一次。慢速通道 2026-07-22 停用之後
+佢係唯一嘅 keyword 通道，所以等於 keyword alert 靜靜哋失效。
+
+兩個 workflow 而家都由本機 Task Scheduler 推：
+
+| Task | 頻率 | Script | 推邊個 workflow |
+|---|---|---|---|
+| `rss-news-dispatch` | 20 分鐘 | `C:\actions-runner\dispatch-update.ps1` | `update.yml` |
+| `rss-news-fast-dispatch` | 5 分鐘 | `C:\actions-runner\dispatch-fast-watch.ps1` | `fast-watch.yml` |
+
+兩個 script 都有同一個 race guard：見到有 run `queued`/`in_progress` 就唔再
+dispatch（2026-06-09 撞過——第二個 dispatch 會 cancel 緊行緊嗰個）。
+
+⚠️ `fast_watch.py` **本身冇 quiet-hours 檢查**，00:00-07:00 HKT 唔嘈全靠
+cron 個 `23,0-15 UTC` 時段擋住。所以 `dispatch-fast-watch.ps1` 自己重複咗
+一次呢個時段判斷——手動 dispatch 或者改個 script 嘅時候記住呢層，
+唔係會半夜彈 Telegram。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 

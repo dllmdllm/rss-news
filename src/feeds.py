@@ -45,12 +45,22 @@ RSS_FEEDS = [
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
     {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},
     {"name": "GoTrip",            "url": "https://www.gotrip.hk/feed",                                            "category": "消閒"},
-    {"name": "SkyPost 要聞",      "url": "https://skypost.hk/news/%E8%A6%81%E8%81%9E/",                              "category": "新聞", "fetcher": "skypost"},
+    # ❌ SkyPost 要聞 — 2026-07-25 移除。晴報轉型做「健康、娛樂、家庭生活資訊
+    # 頻道」，唔再出港聞：/news/ 同首頁抽到嘅文全部係 健康/副刊 section，冇一篇
+    # 係 fetcher 篩緊嘅 港聞，最新一篇仲要係兩星期前。佢個 sitemap 亦凍結咗喺
+    # 2023 年（最大 article id 3614960，實際站上已去到 4165870），所以連
+    # 「修好 sitemap」都救唔返。source 由 6 月起靜靜哋 0 篇（見下面
+    # _fetch_skypost 嘅 error=None 問題）。_fetch_skypost 保留喺 fetch.py，
+    # 萬一佢日後恢復港聞就 restore 呢一行。
     # 科技
     {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技"},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
     {"name": "Unwire",            "url": "https://unwire.hk/feed/",                                               "category": "科技"},
-    {"name": "Engadget 中文",      "url": "https://chinese.engadget.com/rss.xml",                                  "category": "科技"},
+    # Engadget 中文（chinese.engadget.com）2026-07-25 移除：個 domain 連 DNS
+    # 都解析唔到，網站已停運。Yahoo 香港吸收咗佢嘅中文科技內容（Engadget 中文版
+    # 本身就係 Yahoo 旗下），所以用 Yahoo 科技頂上——但注意佢個 /rss 係空殼
+    # （767 bytes、0 個 item），要行 HTML fetcher。
+    {"name": "Yahoo 科技",         "url": "https://hk.news.yahoo.com/tech/",                                       "category": "科技", "fetcher": "yahoo"},
     {"name": "9to5Mac",           "url": "https://9to5mac.com/feed/",                                             "category": "科技"},
     {"name": "New MobileLife",    "url": "https://www.newmobilelife.com/feed/",                                   "category": "科技"},
     # 網媒

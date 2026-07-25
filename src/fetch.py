@@ -342,6 +342,127 @@ def _skypost_parse_article(html: str, url: str, cutoff: datetime, feed_info: dic
     }
 
 
+_YAHOO_ARTICLE_RE = re.compile(r"-\d{6,}\.html(?:$|\?)")
+_YAHOO_BASE = "https://hk.news.yahoo.com"
+
+
+def _yahoo_listing_urls(html: str, limit: int) -> list[str]:
+    """Article links off a Yahoo HK section page, de-duplicated, page order
+    preserved (newest first). The listing markup carries no dates, so the
+    caller has to open each page to find out how fresh it is."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    urls: list[str] = []
+    seen: set[str] = set()
+    for a in soup.find_all("a", href=True):
+        href = a["href"].split("#", 1)[0]
+        if not _YAHOO_ARTICLE_RE.search(href):
+            continue
+        full = href if href.startswith("http") else _YAHOO_BASE + href
+        if full in seen:
+            continue
+        seen.add(full)
+        urls.append(full)
+        if len(urls) >= limit:
+            break
+    return urls
+
+
+def _parse_yahoo_article(html: str, url: str, cutoff: datetime, feed_info: dict) -> dict | None:
+    soup = BeautifulSoup(html or "", "html.parser")
+
+    node = soup.select_one("time[datetime]")
+    raw = (node.get("datetime") or "").strip() if node else ""
+    if not raw:
+        return None
+    try:
+        date = _as_utc(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    except Exception:
+        return None
+    if date < cutoff:
+        return None
+
+    h1 = soup.select_one("h1")
+    title = h1.get_text(" ", strip=True) if h1 else ""
+    if not title:
+        og = soup.select_one('meta[property="og:title"]')
+        title = (og.get("content") or "").strip() if og else ""
+    if not title:
+        return None
+
+    og_img = soup.select_one('meta[property="og:image"]')
+    thumbnail = (og_img.get("content") or "").strip() if og_img else ""
+
+    return {
+        "id":          _make_id(url),
+        "title":       title,
+        "url":         url,
+        "date":        date.isoformat(),
+        "source":      feed_info["name"],
+        "category":    feed_info["category"],
+        "content":     None,
+        "thumbnail":   thumbnail or None,
+        "rss_content": None,
+    }
+
+
+async def _fetch_yahoo_tech(
+    session:   aiohttp.ClientSession,
+    feed_info: dict,
+    cutoff:    datetime,
+) -> tuple[list, str | None, bool]:
+    """Yahoo HK section pages are server-rendered but their advertised RSS
+    (/rss) ships an empty channel — 767 bytes, zero <item> (probed
+    2026-07-25) — so scrape the listing and open each article for its
+    <time datetime>. Replaces Engadget 中文, whose domain stopped
+    resolving entirely; Yahoo HK absorbed that publisher's Chinese tech
+    coverage.
+    """
+    async def _get(url: str, *, referer: str | None = None) -> str | None:
+        try:
+            headers = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+            if referer:
+                headers["Referer"] = referer
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=20),
+                headers=headers,
+            ) as resp:
+                if resp.status >= 400:
+                    return None
+                raw = await resp.read()
+                return raw.decode(resp.charset or "utf-8", errors="replace")
+        except Exception:
+            return None
+
+    listing = await _get(feed_info["url"])
+    if not listing:
+        return [], "listing fetch failed", False
+
+    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    # Fetch a bit more than max_items so stale entries near the bottom of the
+    # section page don't starve the result set.
+    candidates = _yahoo_listing_urls(listing, max_items * 2)
+    if not candidates:
+        return [], "no article links on listing page", False
+
+    articles: list = []
+    for i in range(0, len(candidates), 10):
+        batch = candidates[i:i + 10]
+        pages = await asyncio.gather(*[
+            _get(u, referer=feed_info["url"]) for u in batch
+        ])
+        for url, html in zip(batch, pages):
+            if not html:
+                continue
+            article = _parse_yahoo_article(html, _clean_url(url), cutoff, feed_info)
+            if not article:
+                continue
+            articles.append(article)
+            if len(articles) >= max_items:
+                return articles, None, False
+    return articles, None, False
+
+
 async def _fetch_skypost(
     session:   aiohttp.ClientSession,
     feed_info: dict,
@@ -934,6 +1055,8 @@ async def _fetch_one(
         return await _fetch_oncc_daily(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "skypost":
         return await _fetch_skypost(session, feed_info, cutoff)
+    if feed_info.get("fetcher") == "yahoo":
+        return await _fetch_yahoo_tech(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "tvb":
         return await _fetch_tvb(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "nowtv":

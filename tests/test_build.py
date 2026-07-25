@@ -537,6 +537,13 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
     # (2026-07-21 audit finding).
     monkeypatch.setattr(breaking_alert, "TELEGRAM_BOT_TOKEN", "")
     monkeypatch.setattr(keyword_alert, "TELEGRAM_BOT_TOKEN", "")
+    # source_health has the same module-level absolute STATE_PATH + its own
+    # TELEGRAM_BOT_TOKEN binding as the modules above — sandbox both or a dry
+    # run rewrites the real docs/data/source_health.json and can POST a
+    # "來源斷更" alert to the production channel.
+    import src.source_health as source_health
+    monkeypatch.setattr(source_health, "STATE_PATH", data_dir / "source_health.json")
+    monkeypatch.setattr(source_health, "TELEGRAM_BOT_TOKEN", "")
 
     # daily_brief 會 call MiniMax + 推 Telegram（本機 .env 有齊 key）——dry run
     # 一定要 stub 走，唔係測試會嘥錢兼真係出 message。

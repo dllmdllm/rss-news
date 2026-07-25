@@ -7,6 +7,8 @@ from src.fetch import (
     _parse_date,
     _parse_oncc_index,
     _parse_title_translations,
+    _parse_yahoo_article,
+    _yahoo_listing_urls,
 )
 
 
@@ -311,3 +313,75 @@ def test_nowtv_category_slug_matches_real_site_paths():
     assert _NOWTV_CATEGORY_SLUG["119"] == "local"
     assert _NOWTV_CATEGORY_SLUG["120"] == "international"
     assert _NOWTV_CATEGORY_SLUG["122"] == "china"
+
+
+# ── Yahoo 科技 (replaced Engadget 中文, whose domain stopped resolving) ──
+
+_YAHOO_FEED = {"name": "Yahoo 科技", "category": "科技"}
+
+
+def test_yahoo_listing_extracts_and_dedupes_article_links():
+    html = """
+    <ul>
+      <li><a href="/anthropic-claude-173112376.html">A</a></li>
+      <li><a href="/anthropic-claude-173112376.html">A dup</a></li>
+      <li><a href="https://hk.news.yahoo.com/meta-seller-134005511.html">B</a></li>
+      <li><a href="/tech/">section link, not an article</a></li>
+      <li><a href="/about/privacy.html">no numeric id</a></li>
+    </ul>
+    """
+    urls = _yahoo_listing_urls(html, limit=10)
+
+    assert urls == [
+        "https://hk.news.yahoo.com/anthropic-claude-173112376.html",
+        "https://hk.news.yahoo.com/meta-seller-134005511.html",
+    ]
+
+
+def test_yahoo_listing_respects_limit():
+    html = "".join(f'<a href="/x-{i}00000.html">{i}</a>' for i in range(10))
+    assert len(_yahoo_listing_urls(html, limit=3)) == 3
+
+
+def test_parse_yahoo_article_reads_time_title_and_image():
+    html = """
+    <html><head><meta property="og:image" content="https://s.yimg.com/a.jpg"></head>
+    <body><time datetime="2026-07-24T17:31:12.000Z"></time>
+    <h1>Anthropic 推出 Claude Opus 5</h1></body></html>
+    """
+    cutoff = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+
+    article = _parse_yahoo_article(html, "https://hk.news.yahoo.com/a-1.html", cutoff, _YAHOO_FEED)
+
+    assert article["title"] == "Anthropic 推出 Claude Opus 5"
+    assert article["category"] == "科技"
+    assert article["thumbnail"] == "https://s.yimg.com/a.jpg"
+    assert article["date"].startswith("2026-07-24T17:31:12")
+
+
+def test_parse_yahoo_article_drops_entries_older_than_cutoff():
+    html = '<time datetime="2026-07-20T10:00:00.000Z"></time><h1>舊聞</h1>'
+    cutoff = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+
+    assert _parse_yahoo_article(html, "https://hk.news.yahoo.com/a-1.html", cutoff, _YAHOO_FEED) is None
+
+
+def test_parse_yahoo_article_falls_back_to_og_title():
+    html = """
+    <meta property="og:title" content="備用標題">
+    <time datetime="2026-07-24T17:31:12.000Z"></time>
+    """
+    cutoff = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+
+    article = _parse_yahoo_article(html, "https://hk.news.yahoo.com/a-1.html", cutoff, _YAHOO_FEED)
+
+    assert article["title"] == "備用標題"
+
+
+def test_parse_yahoo_article_requires_a_date():
+    # No <time datetime> at all — better to skip than to guess "now" and let a
+    # months-old article masquerade as breaking news.
+    html = "<h1>冇日期</h1>"
+    cutoff = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
+
+    assert _parse_yahoo_article(html, "https://hk.news.yahoo.com/a-1.html", cutoff, _YAHOO_FEED) is None

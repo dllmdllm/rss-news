@@ -42,6 +42,7 @@ from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
 from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vault
+from src.source_health import check_source_health
 from src.trends_watch import sync_trending_keywords
 from src.daily_brief import generate_daily_brief
 from src.entity_digest import generate_entity_digests
@@ -1186,6 +1187,15 @@ async def main():
             _tlog(f"keyword_alert: {exc!r}")
             mark_step("keyword_alert", ok=False, error=repr(exc), seconds=time.monotonic() - t)
         _tlog(f"keyword done {time.monotonic()-t:.1f}s")
+
+    t = time.monotonic()
+    try:
+        await asyncio.wait_for(check_source_health(source_stats), timeout=30)
+        mark_step("source_health", seconds=time.monotonic() - t)
+    except Exception as exc:
+        _tlog(f"source_health: {exc!r}")
+        mark_step("source_health", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+    _tlog(f"source_health done {time.monotonic()-t:.1f}s")
 
     t = time.monotonic()
     _tlog("daily_brief start")
