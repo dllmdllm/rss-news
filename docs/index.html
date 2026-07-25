@@ -177,6 +177,12 @@
       color: var(--muted);
       font-size: .82rem;
     }
+    /* 「N 個版面」——提示呢行係合併咗幾個 feed（明報／HK01／東網 等）。 */
+    .side-health-sub {
+      color: var(--subtle);
+      font-size: .74rem;
+      margin-left: 6px;
+    }
 
     .main {
       min-width: 0;
@@ -1174,6 +1180,13 @@
     .mobile-settings-head span {
       color: var(--muted);
       font-size: .78rem;
+    }
+    /* Desktop sidebar 嘅 .side-health 有 max-height: 26vh + overflow
+       （sidebar 空間有限），但手機設定面板係一版過捲落去，冚住 19 行媒體
+       就會變咗一個細細嘅內捲區。解除限制。 */
+    .mobile-settings-panel .side-health {
+      max-height: none;
+      overflow: visible;
     }
     .mobile-settings-panel .ai-block {
       margin-bottom: 0;

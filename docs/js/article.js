@@ -288,7 +288,7 @@
       <span class="chip">${esc(article.category || "未分類")}</span>
       <span>${esc(article.source || "")}</span>
       <span>${esc(timeLabel(article))}</span>
-      <span class="priority">${esc(priorityLabel(article))}</span>${clickbait}`;
+      <span class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${Number(article.score || 0)}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</span>${clickbait}`;
     $("title").textContent = article.title || "";
     // AI 摘要全部入 summaryBox，唔再揀一點上 dek 做副題，避免「dek 一行像
     // article lead，summaryBox 又有同一句」嘅 user confusion。Dek slot 收起。
@@ -331,10 +331,6 @@
     const sourceLabel = article.source || "";
     $("sourceListTitle").textContent = sourceLabel ? `${sourceLabel} 其他新聞` : "同來源新聞";
     $("sourceList").innerHTML = sameSource.map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有同來源新聞</span>`;
-
-    const baseScore = Number(article.score || 0);
-    $("priorityNote").innerHTML = `
-      <div class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${baseScore}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</div>`;
 
     renderPanelDigest(panelMap, article);
     renderNextArticle(article, data.articles || []);

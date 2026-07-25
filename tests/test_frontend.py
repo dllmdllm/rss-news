@@ -1300,3 +1300,69 @@ def test_ai_priority_and_category_tabs_show_different_things():
     assert "brief-priority" in html and "brief-category" in html, "兩截要分開包住"
     assert "body.mobile-ai.ai-mode-priority .brief-category { display: none; }" in html
     assert "body.mobile-ai.ai-mode-category .brief-priority { display: none; }" in html
+
+
+def test_source_health_groups_sections_into_outlets():
+    # 用戶反映（2026-07-25）：「星島係包晒分類，明報、東網又分本地/娛樂」——
+    # 粒度唔一致。同一間媒體嘅版面 feed 要合併返做一行。
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        'const OUTLET_PREFIXES = ["RTHK", "明報", "東網", "HK01", "Now"];',
+        _extract_js_function(source, "outletOf"),
+        _extract_js_function(source, "groupSourcesByOutlet"),
+        """
+        const rows = groupSourcesByOutlet({
+          "明報 本地": { effective_count: 30 },
+          "明報 娛樂": { effective_count: 13 },
+          "東網 本地": { effective_count: 30 },
+          "星島頭條":   { effective_count: 100 },
+          "New MobileLife":    { effective_count: 15 },
+          "The Collective HK": { effective_count: 3 },
+        });
+        const by = Object.fromEntries(rows.map((r) => [r.outlet, r]));
+        if (by["明報"].count !== 43 || by["明報"].feeds !== 2) {
+          throw new Error("明報 冇合併: " + JSON.stringify(by["明報"]));
+        }
+        if (!by["星島頭條"] || by["星島頭條"].feeds !== 1) throw new Error("星島 唔應該被拆");
+        // 名入面有空格但唔係版面 feed 嘅，唔可以照空格斬
+        if (!by["New MobileLife"]) throw new Error("New MobileLife 俾人斬咗");
+        if (!by["The Collective HK"]) throw new Error("The Collective HK 俾人斬咗");
+        if (rows[0].outlet !== "星島頭條") throw new Error("要按篇數排序");
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_source_health_shows_every_outlet():
+    # 之前 slice(0, 8)，34 個 feed 得 8 個見到——明報 5 個版面合共 85 篇
+    # 但每個 ≤30，喺榜上完全消失。
+    js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(js, "renderAiPanel")
+    # 只睇 sources 嗰一句——同一個 function 入面 critical/topicGrid 都有
+    # slice，嗰啲係故意嘅（優先排行 top 8、話題 6 個）。
+    line = next(l for l in fn.splitlines() if "groupSourcesByOutlet" in l)
+    assert "slice" not in line, f"來源健康唔應該再 cap: {line.strip()}"
+
+
+def test_article_rail_has_no_empty_ai_workbench_block():
+    # 關鍵句搬咗去主欄之後，「AI 工作台」block 淨返一個 priority badge，
+    # 而嗰個 badge 喺文章頂部 eyebrow 已經有一模一樣嘅（同一個
+    # priorityLabel()）——用戶影相問「仲有乜用」。已剷。
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    aside = html[html.index('<aside class="ai">'):]
+    # 剝走 HTML 註釋先——解釋點解剷咗嗰段本身就提到「AI 工作台」。
+    aside = re.sub(r"<!--.*?-->", "", aside, flags=re.S)
+    assert "AI 工作台" not in aside, "空殼 block 應該剷走"
+    assert 'id="priorityNote"' not in html
+    js = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    assert "priorityNote" not in js, "render 都要一齊剷"
+
+
+def test_priority_badge_keeps_its_score_tooltip():
+    # 剷 block 唔可以蝕咗嗰個計分解釋——移咗去 eyebrow 個 badge。
+    js = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    idx = js.index('<span class="priority"')
+    span = js[idx:idx + 200]
+    assert "title=" in span and "優先度" in span, "eyebrow badge 要有解釋 tooltip"

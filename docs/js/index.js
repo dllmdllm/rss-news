@@ -497,6 +497,36 @@
         : (state.category === "全部" ? (mobileFlat ? "最新新聞流" : "分類重點") : `${state.category}新聞流`));
   }
 
+  // 同一間媒體嘅唔同版面各有各嘅 feed（明報有 5 個、HK01 有 7 個），但
+  // 星島／am730 就係一個 feed 靠 url_category 拆去多個分類。所以「來源健康」
+  // 一直將「明報 本地」（一個版面）同「星島頭條」（成間媒體）並排列，粒度
+  // 唔一致，仲要 slice 頭 8 個——明報 5 個版面合共 85 篇，拆開之後每個都
+  // ≤30，喺榜上完全睇唔到（2026-07-25 用戶反映）。
+  const OUTLET_PREFIXES = ["RTHK", "明報", "東網", "HK01", "Now"];
+
+  function outletOf(sourceName) {
+    const name = String(sourceName || "");
+    for (const prefix of OUTLET_PREFIXES) {
+      if (name.startsWith(prefix + " ")) return prefix;
+    }
+    // 淨低嗰啲本身就係「成間媒體」（星島頭條／am730／cnBeta／The Witness…），
+    // 唔好照空格斬——「New MobileLife」「The Collective HK」會斬到面目全非。
+    return name;
+  }
+
+  function groupSourcesByOutlet(sources) {
+    const rows = new Map();
+    for (const [name, info] of Object.entries(sources || {})) {
+      const outlet = outletOf(name);
+      const count = Number(info?.effective_count ?? info?.count ?? 0);
+      const row = rows.get(outlet) || { outlet, count: 0, feeds: 0 };
+      row.count += count;
+      row.feeds += 1;
+      rows.set(outlet, row);
+    }
+    return [...rows.values()].sort((a, b) => b.count - a.count);
+  }
+
   function renderAiPanel(filteredList) {
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
@@ -534,17 +564,15 @@
         <span>${Number(topic.count || 0)} 篇 · 熱度 ${Math.round(Number(topic.heat || 0))}</span>
       </button>`).join("");
 
-    const sources = Object.entries(state.sources || {})
-      .sort((a, b) => Number(b[1].effective_count ?? b[1].count ?? 0) - Number(a[1].effective_count ?? a[1].count ?? 0))
-      .slice(0, 8);
+    const sources = groupSourcesByOutlet(state.sources);
     // 冇 <strong>來源健康</strong> 標題：desktop 個 <summary> 同手機設定面板
     // 個 <h2> 都已經係 label，加返就變咗重複兩次（2026-07-25 用戶影相報告
     // 手機設定頁見到兩個「來源健康」——renderMobileSideHealth() 係直接
     // copy 呢段 innerHTML 落已經有 <h2> 嘅 section 度）。
-    $("sideSourceHealth").innerHTML = sources.map(([name, source]) => `
+    $("sideSourceHealth").innerHTML = sources.map((row) => `
       <div class="side-health-row">
-        <span>${esc(name)}</span>
-        <span>${Number(source.effective_count ?? source.count ?? 0)} 篇</span>
+        <span>${esc(row.outlet)}${row.feeds > 1 ? `<span class="side-health-sub">${row.feeds} 個版面</span>` : ""}</span>
+        <span>${row.count} 篇</span>
       </div>`).join("");
     const zero = Object.values(state.sources || {}).filter((s) => Number(s.effective_count ?? s.count ?? 0) === 0).length;
     $("sourceHealth").textContent = zero ? `${zero} 個來源暫時空` : "來源正常";
