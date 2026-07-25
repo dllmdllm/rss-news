@@ -828,6 +828,68 @@
     #ptrIndicator.ready { color: var(--accent); border-color: var(--accent); }
 
     /* AI 工作台分析元素（方案 C rail） */
+    /* 今日輿情：一條可撳嘅情緒分佈條。呢個係少數「一眼睇到 AI 幫你讀完晒
+       全部文」嘅呈現方式——排行榜同摘要睇落都只係另一個次序嘅新聞清單。 */
+    .mood-bar {
+      display: flex;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 9px;
+      background: var(--line);
+    }
+    .mood-bar > span { display: block; }
+    .mood-seg-negative { background: #e87c7c; }
+    .mood-seg-neutral  { background: #8a97a6; }
+    .mood-seg-positive { background: #46c2a6; }
+    .mood-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .mood-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: .8rem;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .mood-chip.active {
+      color: var(--text);
+      border-color: rgba(70, 194, 166, .5);
+      background: rgba(70, 194, 166, .12);
+    }
+    .mood-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .timeline-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      padding: 7px 0;
+      border-top: 1px solid var(--line);
+      font-size: .84rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .timeline-item:first-child { border-top: 0; padding-top: 0; }
+    .timeline-item .date { color: var(--accent); font-weight: 700; white-space: nowrap; }
+    .timeline-topic {
+      display: block;
+      color: var(--accent-2);
+      font-size: .78rem;
+      margin: 8px 0 2px;
+    }
+    .contra-tension {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-style: italic;
+    }
     .contra-item {
       padding: 9px 0;
       border-top: 1px solid var(--line);
@@ -1361,13 +1423,21 @@
         <strong>AI 工作台</strong>
         <span id="aiUpdated">同步中</span>
       </div>
+      <section class="ai-block" id="moodBlock" hidden>
+        <h2>🧭 今日輿情 <span id="moodCount"></span></h2>
+        <div id="moodBar"></div>
+      </section>
       <section class="ai-block">
         <h2>話題聚焦</h2>
         <div class="topic-grid" id="topicGrid"></div>
       </section>
       <section class="ai-block" id="contraBlock" hidden>
-        <h2>⚡ 各報矛盾位</h2>
+        <h2>⚡ 各報講法有出入</h2>
         <div id="contraList"></div>
+      </section>
+      <section class="ai-block" id="timelineBlock" hidden>
+        <h2>📈 事件時間軸</h2>
+        <div id="timelineList"></div>
       </section>
       <section class="ai-block" id="upcomingBlock" hidden>
         <h2>📅 未來事件</h2>

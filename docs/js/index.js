@@ -38,6 +38,7 @@
     category: "全部",
     source: "",
     topic: "",
+    sentiment: "",   // 今日輿情格撳落去篩（negative / neutral / positive）
     // 撳 topic chip 之前嘅 category/source snapshot，等「✕ 清除話題」
     // 可以還原返（唔係一律跌落「全部」），見 clearTopic handler。
     preTopicFilter: null,
@@ -204,6 +205,7 @@
       }
       if (state.category !== "全部" && article.category !== state.category) return false;
       if (state.source && article.source !== state.source) return false;
+      if (state.sentiment && article.sentiment !== state.sentiment) return false;
       if (!query) return true;
       const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
       return haystack.includes(query);
@@ -454,7 +456,7 @@
     // 加 isMobile() gate，唔係 desktop layout 會被殘留嘅 mobile.view 影響
     // （mobile.view 預設 "home"，冇 gate 嘅話 desktop 永遠行平鋪）。
     const mobileFlat = isMobile() && state.mobile.view === "home";
-    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source) {
+    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment) {
       feed.classList.remove("feed-grid");
       disconnectFeedObserver();
       renderCategorySections();
@@ -466,12 +468,16 @@
     // 冇呢個掣就唔知自己身處 filter 狀態、更加唔知點返出去。
     $("resultCount").innerHTML = state.topic
       ? `${list.length} 篇 <button class="clear-filter" id="clearTopic" type="button">✕ 清除話題</button>`
-      : `${list.length} 篇`;
+      : (state.sentiment
+        ? `${list.length} 篇 <button class="clear-filter" id="clearSentiment" type="button">✕ 清除輿情</button>`
+        : `${list.length} 篇`);
     // 「分類重點」只喺真係 render sections 嗰陣先啱；手機時間線係平鋪，
     // 叫返「最新新聞流」。
     $("feedTitle").textContent = state.source
       ? `${state.source}新聞流`
-      : (state.topic
+      : (state.sentiment
+        ? `${MOOD_META[state.sentiment]?.label || ""}新聞流`
+        : state.topic
         ? `${state.topic} · 話題`
         : (state.category === "全部" ? (mobileFlat ? "最新新聞流" : "分類重點") : `${state.category}新聞流`));
   }
@@ -480,7 +486,7 @@
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
     // keeps showing global picks the user has filtered away.
-    const filterActive = state.category !== "全部" || state.source || state.topic;
+    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment;
     const pool = filterActive ? (filteredList || filteredArticles()) : state.articles;
     // Score each article once; reuse for sorting, min/max, and badge rendering.
     const scored = pool.map((article) => ({ article, score: criticalScore(article) }));
@@ -680,6 +686,9 @@
     // renderAiPanel 要行先：佢會set criticalShownIds，renderDailyBrief
     // 靠佢去重（排行＋摘要而家同住 .brief 一欄）。
     renderAiPanel(list);
+    // 輿情用全量文章，唔用 filtered list——否則撳咗「負面」之後個條就變
+    // 100% 負面，睇落好似壞咗。個 chip 嘅 active 狀態先反映當前篩選。
+    renderMood(state.articles);
     renderDailyBrief();
     renderFeed(list);
     renderMobileSideHealth();
@@ -980,6 +989,17 @@
       $("search").value = "";
       renderAll();
     });
+    $("moodBar")?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-sentiment]");
+      if (!button) return;
+      const picked = button.dataset.sentiment;
+      // 撳返同一個 = 取消篩選（同 topic chip 一樣嘅 toggle 手感）。
+      state.sentiment = state.sentiment === picked ? "" : picked;
+      // 同 topic 一樣：手機要先切返 home view，唔係會篩咗但停留喺 AI tab
+      // 望住舊內容，用戶唔知發生咩事。
+      showHomeOnMobile();
+      renderAll();
+    });
     $("modeNav").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-mode]");
       if (!button) return;
@@ -1044,6 +1064,10 @@
           state.source = state.preTopicFilter.source;
           state.preTopicFilter = null;
         }
+        renderAll();
+      }
+      if (event.target.closest("#clearSentiment")) {
+        state.sentiment = "";
         renderAll();
       }
     });
@@ -1230,24 +1254,97 @@
     const host = $("contraList");
     const block = $("contraBlock");
     if (!host || !block || !panelMap) return;
+    // `contradictions` 只有大約 3/7 個 topic 有（要有可核實嘅事實矛盾先出），
+    // 但 `tension`（分歧／缺口）7/7 都有，而且一直生成咗就掉咗（2026-07-25
+    // review 發現）。兩樣一齊出，呢格就由「成日空白」變成長期有嘢睇。
     const rows = [];
     for (const entry of Object.values(panelMap)) {
       const digest = entry && entry.digest;
       if (!digest) continue;
+      const topic = digest.headline || "";
       for (const c of (digest.contradictions || [])) {
-        if (c && c.claim_a && c.claim_b) rows.push({ topic: digest.headline || "", ...c });
-        if (rows.length >= 4) break;
+        if (c && c.claim_a && c.claim_b) rows.push({ kind: "contra", topic, ...c });
+        if (rows.length >= 5) break;
       }
-      if (rows.length >= 4) break;
+      if (rows.length < 5 && digest.tension) {
+        rows.push({ kind: "tension", topic, tension: digest.tension });
+      }
+      if (rows.length >= 5) break;
     }
     if (!rows.length) return;
     block.hidden = false;
-    host.innerHTML = rows.map((r) => `
-      <div class="contra-item">
-        <span class="contra-topic">${esc(r.topic)}</span>
-        <span class="src">${esc(r.source_a || "")}</span>：${esc(r.claim_a)}<br>
-        <span class="src">${esc(r.source_b || "")}</span>：${esc(r.claim_b)}
-      </div>`).join("");
+    host.innerHTML = rows.map((r) => r.kind === "tension"
+      ? `<div class="contra-item">
+           <span class="contra-topic">${esc(r.topic)}</span>
+           <span class="contra-tension">${esc(r.tension)}</span>
+         </div>`
+      : `<div class="contra-item">
+           <span class="contra-topic">${esc(r.topic)}</span>
+           <span class="src">${esc(r.source_a || "")}</span>：${esc(r.claim_a)}<br>
+           <span class="src">${esc(r.source_b || "")}</span>：${esc(r.claim_b)}
+         </div>`).join("");
+  }
+
+  function renderTimeline(panelMap) {
+    const host = $("timelineList");
+    const block = $("timelineBlock");
+    if (!host || !block || !panelMap) return;
+    // `timeline` 同 tension 一樣：5/7 個 topic 有數據，但前端一直冇讀。
+    const groups = [];
+    for (const entry of Object.values(panelMap)) {
+      const digest = entry && entry.digest;
+      const events = (digest && digest.timeline) || [];
+      const clean = events.filter((e) => e && e.date && e.event).slice(0, 4);
+      if (clean.length >= 2) groups.push({ topic: digest.headline || "", events: clean });
+      if (groups.length >= 2) break;
+    }
+    if (!groups.length) return;
+    block.hidden = false;
+    host.innerHTML = groups.map((g) => `
+      <span class="timeline-topic">${esc(g.topic)}</span>
+      ${g.events.map((e) => {
+        const d = String(e.date).split("-");
+        const label = d.length >= 3 ? `${Number(d[1])}/${Number(d[2])}` : esc(e.date);
+        return `<div class="timeline-item"><span class="date">${label}</span><span>${esc(e.event)}</span></div>`;
+      }).join("")}`).join("");
+  }
+
+  const MOOD_META = {
+    negative: { label: "負面", cls: "negative" },
+    neutral:  { label: "中性", cls: "neutral" },
+    positive: { label: "正面", cls: "positive" },
+  };
+
+  function renderMood(list) {
+    const block = $("moodBlock");
+    const host = $("moodBar");
+    if (!block || !host) return;
+    // 每篇文都有 sentiment，但 2026-07-25 review 前全站淨係喺文章頁打一行
+    // 「情緒: negative」——首頁完全冇用（CLAUDE.md Phase 4 聲稱有「情緒概覽」，
+    // 其實從來冇做）。呢格係少數一眼睇得出「AI 幫我讀完晒全部文」嘅呈現。
+    const pool = list && list.length ? list : state.articles;
+    const counts = { negative: 0, neutral: 0, positive: 0 };
+    for (const a of pool) {
+      const s = a && a.sentiment;
+      if (s in counts) counts[s] += 1;
+    }
+    const total = counts.negative + counts.neutral + counts.positive;
+    if (!total) return;
+    block.hidden = false;
+    $("moodCount").textContent = `${total} 篇`;
+    const order = ["negative", "neutral", "positive"];
+    const bar = order.map((k) => {
+      const pct = (counts[k] / total) * 100;
+      return pct > 0 ? `<span class="mood-seg-${k}" style="width:${pct.toFixed(1)}%"></span>` : "";
+    }).join("");
+    const legend = order.map((k) => {
+      const pct = Math.round((counts[k] / total) * 100);
+      const active = state.sentiment === k ? " active" : "";
+      return `<button class="mood-chip${active}" data-sentiment="${k}" type="button">
+        <span class="mood-dot mood-seg-${k}"></span>${MOOD_META[k].label} ${pct}%
+      </button>`;
+    }).join("");
+    host.innerHTML = `<div class="mood-bar">${bar}</div><div class="mood-legend">${legend}</div>`;
   }
 
   function renderUpcoming(data) {
@@ -1276,7 +1373,11 @@
         fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
         fetch("data/upcoming.json", { cache: "no-cache" }).catch(() => null),
       ]);
-      if (panelRes && panelRes.ok) renderContradictions(await panelRes.json());
+      if (panelRes && panelRes.ok) {
+        const panelMap = await panelRes.json();
+        renderContradictions(panelMap);
+        renderTimeline(panelMap);
+      }
       if (upRes && upRes.ok) renderUpcoming(await upRes.json());
     } catch (_) {}
   }

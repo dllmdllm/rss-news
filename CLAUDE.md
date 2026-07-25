@@ -161,7 +161,7 @@ Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
 - **Phase 1（完成）** — 全文抓取 + 靜態頁面（列表頁 + 文章閱讀頁）
 - **Phase 2（完成）** — AI 分析：摘要、重要性評分、標籤、情緒、話題 clustering
 - **Phase 3（完成）** — Client-side 搜尋（Fuse.js，模糊匹配）
-- **Phase 4（完成）** — AI tab：情緒概覽、話題聚焦、事件篩選、熱門標籤、今日重點
+- **Phase 4（完成）** — AI tab：今日輿情（情緒分佈，2026-07-25 先真正做咗）、話題聚焦、各報講法有出入、事件時間軸、未來事件、熱門標籤、今日重點
 - **Phase 5（完成）** — 知識圖譜、實體摘要、語義向量、突發通知
 
 ---
@@ -583,6 +583,32 @@ GitHub 對高頻 cron throttle 得好犀利——`fast-watch.yml` 寫住 `*/5`�
 手動 dispatch 或者改 script 前記住呢層，唔係會半夜彈 Telegram。
 
 → 實測數字：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#github-cron)
+
+### AI tab：唔好淨係堆「排序過嘅新聞清單」
+
+2026-07-25 用戶反映 AI tab「好似唔係太 AI」。review 揾到根因：佔最大面積嘅
+兩格（🔥 優先排行、今日 AI 摘要）本質上係**同一批文章換個次序再列一次**，
+無論背後個 score 幾聰明，睇落都係普通新聞清單。真正 AI-native 嘅輸出當時
+generate 咗但冇出街：
+
+| 欄位 | 當時狀況 |
+|---|---|
+| `tension`（分歧／缺口） | 7/7 topic 都有，前端 **0 次讀** |
+| `timeline`（事件時間軸） | 5/7 topic 都有，前端 **0 次讀** |
+| `sentiment` | 每篇都有，首頁 **0 次讀**（只喺文章頁打一行純文字） |
+| `similar.json` | 每 build 燒 13.7s 計，**全站冇人讀** |
+
+已加返 🧭 今日輿情（情緒分佈條，可撳落去篩）、📈 事件時間軸，並將
+`tension` 併入「⚡ 各報講法有出入」——原本嗰格淨靠 `contradictions`
+（得 3/7 topic 有）成日空白，加咗 tension 之後長期有嘢睇。
+
+⚠️ `renderMood()` 要用**全量** `state.articles` 而唔係 filtered list——
+否則撳咗「負面」之後條分佈變 100% 負面，睇落好似壞咗。
+⚠️ `similar.json` 仍然係孤兒（計咗冇人用），要就喺文章頁做「相關報道」，
+唔要就停埋個計算——而家兩頭唔到岸。
+
+**教訓**：加新 AI 功能之前先問「呢個喺 UI 邊度出現？」——呢個 project
+已經有 4 個欄位係 generate 咗、燒咗 token／CPU，但從來冇人見過。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 

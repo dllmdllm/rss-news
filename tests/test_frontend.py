@@ -1029,3 +1029,88 @@ def test_source_health_heading_not_duplicated():
     idx = source.index('$("sideSourceHealth").innerHTML =')
     assign = source[idx:idx + 160]
     assert "來源健康" not in assign, "sideSourceHealth 唔應該自帶標題（手機會重複）"
+
+
+# ── AI tab：2026-07-25 review 發現生成咗但冇出街嘅 AI 數據 ──
+
+def test_ai_rail_surfaces_tension_not_only_contradictions():
+    # `contradictions` 只有約 3/7 個 topic 有，`tension` 7/7 都有但一直冇讀，
+    # 所以嗰格成日空白，令成個 AI tab 睇落淨係得「排序過嘅新聞清單」。
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "renderContradictions")
+    assert "digest.tension" in fn or "digest.contradictions" in fn
+    assert "tension" in fn, "renderContradictions 要一齊出 tension"
+
+
+def test_ai_rail_renders_timeline():
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    assert "function renderTimeline" in source, "缺少事件時間軸 render"
+    fn = _extract_js_function(source, "renderTimeline")
+    assert "digest.timeline" in fn or "d.timeline" in fn or "digest && digest.timeline" in fn
+    html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    assert 'id="timelineBlock"' in html and 'id="timelineList"' in html
+
+
+def test_mood_block_counts_all_three_sentiments():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        """
+        const state = { articles: [], sentiment: "" };
+        const MOOD_META = { negative:{label:"負面"}, neutral:{label:"中性"}, positive:{label:"正面"} };
+        const nodes = {};
+        function $(id){ return nodes[id] || (nodes[id] = { hidden: true, textContent: "", innerHTML: "" }); }
+        function esc(s){ return String(s); }
+        """,
+        _extract_js_function(source, "renderMood"),
+        """
+        const list = [
+          {sentiment:"negative"},{sentiment:"negative"},{sentiment:"negative"},
+          {sentiment:"neutral"},
+          {sentiment:"positive"},
+          {sentiment:undefined},
+        ];
+        renderMood(list);
+        if ($("moodBlock").hidden) throw new Error("block stayed hidden");
+        if ($("moodCount").textContent !== "5 篇") {
+          throw new Error("bad total: " + $("moodCount").textContent);
+        }
+        const html = $("moodBar").innerHTML;
+        for (const k of ["negative","neutral","positive"]) {
+          if (!html.includes('data-sentiment="' + k + '"')) throw new Error("missing chip " + k);
+        }
+        if (!html.includes("60%")) throw new Error("negative should be 60%: " + html);
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_mood_block_hides_when_no_sentiment_data():
+    node = _require_node()
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    js = "\n".join([
+        """
+        const state = { articles: [], sentiment: "" };
+        const MOOD_META = { negative:{label:"負面"}, neutral:{label:"中性"}, positive:{label:"正面"} };
+        const nodes = {};
+        function $(id){ return nodes[id] || (nodes[id] = { hidden: true, textContent: "", innerHTML: "" }); }
+        function esc(s){ return String(s); }
+        """,
+        _extract_js_function(source, "renderMood"),
+        """
+        renderMood([{title:"冇 sentiment"}]);
+        if (!$("moodBlock").hidden) throw new Error("should stay hidden with no data");
+        """,
+    ])
+    result = subprocess.run([node, "-e", js], cwd=ROOT, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_sentiment_filter_is_wired_into_filtering_and_has_an_exit():
+    source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    fn = _extract_js_function(source, "filteredArticles")
+    assert "state.sentiment" in fn, "sentiment 要真係參與篩選"
+    # 篩咗之後一定要有退出方式，否則用戶困死喺 filter 狀態
+    assert 'id="clearSentiment"' in source, "缺少清除輿情篩選嘅掣"
+    assert 'closest("#clearSentiment")' in source, "清除掣冇 handler"
