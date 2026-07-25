@@ -56,7 +56,8 @@ rss-news/
 │       ├── feed_http_cache.json  # HTTP 304 cache
 │       └── content/            # 各文章完整 HTML（{id}.json）
 ├── CLAUDE.md             # 本文件（source of truth）
-├── AGENTS.md             # ⚠️ CLAUDE.md 嘅鏡像，改完 CLAUDE.md 要 copy 過去
+├── AGENTS.md             # CLAUDE.md 嘅鏡像，由 tools/sync_agents_md.py 生成
+├── DESIGN-HISTORY.md     # 各條規則嘅案發經過（唔自動載入，要時先讀）
 ├── requirements.txt
 └── .github/
     └── workflows/
@@ -253,6 +254,21 @@ Workflow 跑喺 `windows-home` self-hosted runner（`C:\actions-runner`）。
 再疊多一份，即係 Anthropic 講嘅 over-constraining（[context engineering
 rules](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)）。
 **加新設計決定寫喺下面就得，唔好再開副本。**
+
+📄 **文檔分工**（同上面同一個道理——只放每次都要嘅嘢喺自動載入嗰份）：
+
+| 檔案 | 幾時入 context | 放乜 |
+|---|---|---|
+| `CLAUDE.md` | **每個 session** | 規則、invariant、⚠️ 陷阱 |
+| `DESIGN-HISTORY.md` | 手動 Read | 案發經過、實測數字、試過唔得嘅方向 |
+| `AGENTS.md` | Codex 等讀 | CLAUDE.md 嘅完整鏡像 |
+
+- 寫新嘢之前問一句：**「下次改 code 嗰陣要唔要知？」**要 → CLAUDE.md；
+  「係咪真係要咁做」先要 → `DESIGN-HISTORY.md`，喺 CLAUDE.md 留條連結
+- **AGENTS.md 唔好手改**：`python tools/sync_agents_md.py` 生成
+  （`--check` 淨係驗唔寫）。`tests/test_docs_sync.py` 會 catch 兩邊唔一致、
+  同 CLAUDE.md 指去 `DESIGN-HISTORY.md` 但 anchor 唔存在。
+  之前人手同步，靜靜哋分岔咗六個星期先發現
 
 ---
 
