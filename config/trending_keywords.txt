@@ -1,4 +1,4 @@
-# synced 2026-07-25T21:16:55.696301+08:00
+# synced 2026-07-25T21:36:57.239939+08:00
 筲箕灣
 cuaca besok
 weather tomorrow
@@ -6,5 +6,5 @@ weather tomorrow
 tvb
 星兒發展中心
 flight cancellation and delay
-風暴
+8號風球巴士
 熱帶氣旋
