@@ -1,4 +1,6 @@
-# synced 2026-07-28T07:16:58.395056+08:00
+# synced 2026-07-28T07:36:57.500574+08:00
+hk observatory
+hk weather
 胡志偉
 颱風
 iphone 18
@@ -7,5 +9,3 @@ iphone 18
 愛回家之開心速遞
 麵包
 巴士
-林映暉
-sndk
