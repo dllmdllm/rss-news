@@ -1,10 +1,10 @@
-# synced 2026-07-28T10:36:15.386622+08:00
+# synced 2026-07-28T10:56:58.531123+08:00
 港元
 海力士
 688825
-7709
 王 凱
 sk hynix stock
+7709
 kospi
 hk observatory
 hk weather
