@@ -1,4 +1,5 @@
-# synced 2026-07-28T12:56:58.462262+08:00
+# synced 2026-07-28T13:17:07.419230+08:00
+聰明鎮
 港元
 海力士
 688825
@@ -8,4 +9,3 @@ sk hynix stock
 kospi
 何沛珈
 hk observatory
-hk weather
