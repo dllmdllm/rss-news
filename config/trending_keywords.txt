@@ -1,4 +1,5 @@
-# synced 2026-07-28T08:37:35.731747+08:00
+# synced 2026-07-28T08:56:57.974147+08:00
+cxmt
 hk observatory
 hk weather
 胡志偉
@@ -8,4 +9,3 @@ hk weather
 颱風
 nvda
 iphone 18
-北角
