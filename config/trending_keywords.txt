@@ -1,4 +1,5 @@
-# synced 2026-07-29T10:43:33.171563+08:00
+# synced 2026-07-29T10:56:58.038026+08:00
+吳嘉儀
 海力士
 kospi
 7709
@@ -8,4 +9,3 @@ sk hynix
 alexandra eala
 hong kong observatory
 hk weather
-定期存款
