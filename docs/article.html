@@ -193,8 +193,16 @@
     }
     h1 {
       margin: 0 0 12px;
-      font-size: clamp(calc(1.7rem * var(--ui-scale)), 3vw, calc(3rem * var(--ui-scale)));
-      line-height: 1.14;
+      /* 2026-07-30: was clamp(1.7rem, 3vw, 3rem) — 3vw lands at 2.7rem on a
+         1440px screen, and a two-line CJK headline at that size ate most of
+         the space above the fold. The middle term also skipped --ui-scale,
+         so 細/中/大 barely moved the title on desktop; it scales now too. */
+      font-size: clamp(
+        calc(1.35rem * var(--ui-scale)),
+        calc(2.1vw * var(--ui-scale)),
+        calc(2rem * var(--ui-scale))
+      );
+      line-height: 1.2;
       letter-spacing: 0;
     }
     .dek {

@@ -471,8 +471,11 @@
     .cat-media { --cat-color: #fb923c; }
     .lead h1 {
       margin: 0 0 10px;
-      font-size: clamp(1.5rem, 2.1vw, 2.25rem);
-      line-height: 1.15;
+      /* 2026-07-30: was clamp(1.5rem, 2.1vw, 2.25rem). Kept a step below
+         article.html's h1 so the headline doesn't shrink when you open a
+         story from the lead card. */
+      font-size: clamp(1.35rem, 1.7vw, 1.75rem);
+      line-height: 1.2;
       letter-spacing: 0;
     }
     .summary {
