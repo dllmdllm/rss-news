@@ -143,8 +143,13 @@
       padding: 20px 36px 44px;
       width: 100%;
     }
+    /* Every block in the main column shares this cap so their left and right
+       edges line up. The key-sentence box was missing from the list when it
+       moved out of the right aside (2026-07-25) and stretched to the full
+       column — visibly wider than the AI 摘要 above it and the body below. */
     .article-head,
     .summary-box,
+    .key-facts,
     .content,
     .source-link {
       max-width: 920px;
@@ -518,6 +523,7 @@
       }
       .article-head,
       .summary-box,
+      .key-facts,
       .content,
       .source-link,
       .hero {

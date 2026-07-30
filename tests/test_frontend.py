@@ -1293,6 +1293,19 @@ def test_key_facts_block_hides_when_empty():
     assert '$("keyFacts").hidden' in js, "冇關鍵句就要收起成個框"
 
 
+def test_main_column_blocks_share_one_width_cap():
+    # 關鍵句 2026-07-25 由右欄搬入主欄，但冇加入 max-width 嗰條 selector list，
+    # 所以撐到成欄咁闊，同上面嘅 AI 摘要、下面嘅正文對唔齊（用戶影相報告）。
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    # 一定要先剝走 CSS comment：解釋果條 bug 嘅註釋本身就提住 .key-facts，
+    # 唔剝嘅話 selector 刪走咗個 assert 一樣過（實測過，呢個 test 一開始就係咁）。
+    css = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
+    at = css.index("max-width: 920px")
+    selectors = css[:at].rsplit("}", 1)[-1]
+    for sel in (".summary-box", ".key-facts", ".content", ".article-head"):
+        assert sel in selectors, f"{sel} 要同其他主欄 block 共用 920px 上限"
+
+
 def test_ai_priority_and_category_tabs_show_different_things():
     # 用戶反映「一 click 入去優先 tab、同分類重點 tab 都係 show 優先排行，
     # 好混亂」——.brief 一次過 render 兩樣嘢，兩個 tab 分唔開。
