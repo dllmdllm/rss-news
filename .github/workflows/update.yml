@@ -87,7 +87,29 @@ jobs:
           Write-Host 'pre-flight OK'
 
       - name: Fetch RSS, scrape & analyse
-        run: python build.py
+        # Retry once on a *fast* failure. lxml's C extension segfaults the
+        # interpreter mid-scrape at a low but steady rate (0xC0000005 in
+        # etree.pyd, 11 times 2026-07-20→30, ~1.5% of builds); it dies ~12s in
+        # and costs a whole 20-min cycle for what a re-run almost always
+        # clears. Gate on elapsed time, not exit code: build.py also exits 1
+        # when its own 850s cap fires before the core save, and retrying
+        # *that* would push the job past `timeout-minutes: 25`. 420s leaves
+        # room for a full second attempt inside the cap.
+        run: |
+          $t0 = Get-Date
+          python build.py
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $elapsed = [int]((Get-Date) - $t0).TotalSeconds
+            if ($elapsed -lt 420) {
+              Write-Host "::warning::build.py exited $code after ${elapsed}s — retrying once"
+              python build.py
+              $code = $LASTEXITCODE
+            } else {
+              Write-Host "::warning::build.py exited $code after ${elapsed}s — too late to retry"
+            }
+          }
+          exit $code
         env:
           MINIMAX_API_KEY:      ${{ secrets.MINIMAX_API_KEY }}
           MINIMAX_MODEL:        ${{ secrets.MINIMAX_MODEL }}

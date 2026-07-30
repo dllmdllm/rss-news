@@ -140,3 +140,53 @@ Engadget，係內容血緣上嘅接班，唔係技術上嘅。
 `4165870`），所以**連「修好 sitemap」都救唔返**——唔係 parser 壞，係個 source
 冇咗新聞。相關 code（`_fetch_skypost`、`_build_skypost_content` 等約 370 行）
 2026-07-25 全部刪走，翻查睇 git history。
+
+---
+
+## <a id="lxml-crash"></a>lxml segfault：點解 Actions log 咩都冇
+
+2026-07-30 用戶問「點解會出 error」（run #6888）。個 log 詭異到得三行：
+
+```
+04:37:02  zhconv UserWarning（import 階段，stderr）
+04:37:13  ##[error]Process completed with exit code 1
+```
+
+11.7 秒、**零 stdout**——連 `build.py` 第一句 `=== build start ===` 都冇。
+Python 就算 raise 都會 print traceback 兼 flush buffer，所以呢個唯一解釋係
+process 被硬殺。真相喺本機 Windows Application event log：
+
+```
+Faulting application name: python.exe
+Faulting module name:      etree.cp313-win_amd64.pyd    ← lxml C extension
+Exception code:            0xc0000005                   ← access violation
+Fault offset:              0x1fa5e7
+```
+
+由 2026-07-20 到 07-30 中咗 **11 次**（offset 十次係 `1fa5e7`、兩次 `1f9f48`、
+一次落喺 `python313.dll`），全部發生喺 `:17 / :37 / :57`，即 20 分鐘 cron 嘅
+build step 窗口，約 1.5% build。次次死喺開波後 11-13 秒——對返成功 run 嘅
+timeline 就係 **scrape 階段**。
+
+**冇 log 嘅機制**：native crash 唔會 unwind 返上 Python，所以冇 traceback；
+而 `python` 個 stdout 喺 pipe 底下係 block-buffered（實測成功 run 都係儲夠
+先一次過吐），process 被 OS 殺嗰下成個 buffer 直接冇咗。stderr 係 line-buffered
+所以先至見到 zhconv 嗰句 warning——呢個對比正正證明咗「唔係冇 output，係 flush
+唔到」。
+
+**未證實嘅部分**：`trafilatura 2.0.0` 有個 module-level 全域 parser
+（`utils.py:70` `HTML_PARSER = HTMLParser(...)`），而 `_process_html_sync`
+（連同入面兩個 `trafilatura.extract` / `extract_metadata`）行喺 executor，
+`SCRAPE_CONCURRENCY = 15` → 15 條 thread 撞同一個 parser。合理懷疑，但
+**未證到**：寫過 stress test 用 15 條 thread 跑 2,000 次 parse，一次都冧唔到。
+生產每個 build parse ~700 篇、~1.5% 中招，即大約 20,000 次先一次——2,000 次
+根本未夠量，跑唔冧證明唔到任何嘢。
+
+所以 2026-07-30 **冇改 scrape 個 parsing 路徑**——嗰條係全站內容嘅命脈，
+盲改風險唔值。改咗兩樣：`faulthandler.enable()`（下次 crash 會 dump 晒每條
+thread 嘅 Python stack 落 stderr，直接指到 call site）＋ workflow 快失敗
+retry 一次。等有咗 stack 先決定使唔使加鎖／per-thread parser。
+
+⚠️ lxml **唔喺 `requirements.txt`**（由 trafilatura 拉落嚟，冇 pin），所以
+runner 上面個版本會自己飄。查嘅時候記住實際係 `lxml 6.0.2 / libxml2 2.11.9`，
+唔係 requirements 講嘅嘢。

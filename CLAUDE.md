@@ -335,6 +335,25 @@ cancel 個 wait_for 淨係停止等待，唔會真正殺咗個 thread（Python �
 成個 `python build.py` process 卡住。Subprocess 可以真.SIGKILL，冇呢個
 問題。
 
+### lxml 會 segfault 成個 process（`faulthandler` + 快失敗 retry）
+
+`build.py` 開頭一定要保留 `faulthandler.enable()`。lxml 個 C extension
+（`etree.cp313-win_amd64.pyd`）會喺 scrape 中途 access violation
+（`0xC0000005`）殺死成個 interpreter——2026-07-20→30 中咗 11 次，約 1.5% build。
+
+⚠️ **呢種死法喺 Actions log 係完全隱形**：native crash 唔會 unwind 上 Python
+（冇 traceback），而 stdout 喺 pipe 底下 block-buffered，process 被 OS 殺嗰下
+buffer 一齊冇——log 得返一句 `exit code 1`，零 output。見到呢個 pattern
+（~12 秒、冇 output、exit 1）**唔好去 debug build.py 邏輯**，去查本機
+Windows Application event log（`Get-WinEvent -ProviderName 'Application Error'`）。
+`faulthandler` 就係為咗令下次唔使再咁查。
+
+`update.yml` 個 build step 快失敗 retry 一次。⚠️ **判斷條件係 elapsed time
+（<420s）而唔係 exit code**——build.py 自己 850s 逾時嗰陣一樣係 exit 1，
+retry 嗰個會爆 `timeout-minutes: 25`。
+
+→ 案發經過、點解未改 scrape parsing 路徑：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#lxml-crash)
+
 ### fetch per-feed 超時
 
 `fetch_all()` 每個 feed 包一層 `asyncio.wait_for(75s)`。冇呢層嘅話，

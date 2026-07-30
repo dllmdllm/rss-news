@@ -1,4 +1,5 @@
 import asyncio
+import faulthandler
 import hashlib
 import json
 import os
@@ -18,6 +19,17 @@ if (sys.stdout.encoding or "").lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if (sys.stderr.encoding or "").lower() != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# lxml's C extension has been segfaulting the whole interpreter mid-scrape
+# (0xC0000005 in etree.cp313-win_amd64.pyd, 11 times between 2026-07-20 and
+# 2026-07-30, ~1.5% of builds). A native crash never unwinds through Python,
+# so there is no traceback and the block-buffered stdout is lost with the
+# process — the Actions log showed a bare "exit code 1" with zero output and
+# the only evidence was the Windows Application event log. faulthandler
+# installs an OS-level handler that dumps every thread's Python stack to
+# stderr before the process dies, which is what pins the crash to a call
+# site. stderr is line-buffered so the dump survives the hard kill.
+faulthandler.enable()
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
