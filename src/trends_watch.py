@@ -25,7 +25,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import aiohttp
-import zhconv
+from src.hk_text import to_hk
 
 from src.feeds import HTTP_HEADERS
 
@@ -63,7 +63,7 @@ def _clean_keywords(raw_titles: list[str]) -> list[str]:
     # （例如「沃伦·巴伦」），唔轉嘅話成隻詞永遠 match 唔中任何文章。
     out: dict[str, None] = {}
     for t in raw_titles:
-        t = zhconv.convert(t, "zh-hk").strip()
+        t = to_hk(t).strip()
         if len(t) < MIN_KEYWORD_LEN:
             continue
         out.setdefault(t, None)

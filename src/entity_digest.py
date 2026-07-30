@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiohttp
-import zhconv
+from src.hk_text import to_hk
 
 from src.analyse import _strip_fences
 from src.minimax_client import (
@@ -72,7 +72,7 @@ def canonical_entity(etype: str, name: str) -> str:
     """簡繁 normalize + 別名合併。`build.py` 個 graph builder 都要 call 呢個
     ——之前佢淨係用 raw name（連 zhconv 都冇），所以「李慧琼」同「李慧瓊」
     喺 graph.json 係兩個節點，同 entities.json 對唔上（2026-07-25 發現）。"""
-    name = zhconv.convert(str(name or "").strip(), "zh-hk")
+    name = to_hk(str(name or "").strip())
     return ENTITY_ALIASES.get((etype, name), name)
 
 ENTITY_SUMMARY_PROMPT = (

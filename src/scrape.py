@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 import trafilatura
-import zhconv
+from src.hk_text import from_simplified
 from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
@@ -1116,8 +1116,11 @@ def _add_featured_image(content: str, thumbnail: str) -> str:
     return content
 
 
+# 只喺 SIMPLIFIED_SOURCES（cnBeta）用，所以要全套轉換——「咸魚」呢類真．簡體
+# 內文照樣要變「鹹魚」。已經係繁體嘅文字（MiniMax 譯文、AI 實體名）行
+# hk_text.to_hk()，見嗰邊個 docstring。
 def _to_hk_traditional(content: str) -> str:
-    return zhconv.convert(content, "zh-hk")
+    return from_simplified(content)
 
 
 def content_quality(content: str, *, source: str, fallback: str) -> dict:

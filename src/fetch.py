@@ -12,7 +12,7 @@ from urllib.parse import unquote, urljoin
 
 import aiohttp
 import feedparser
-import zhconv
+from src.hk_text import from_simplified, to_hk
 from bs4 import BeautifulSoup
 
 from src.feeds import (
@@ -45,7 +45,7 @@ def _parse_title_translations(raw: str, expected: int) -> list[str] | None:
         return None
     if not isinstance(data, list) or len(data) != expected:
         return None
-    return [zhconv.convert(str(item).strip(), "zh-hk") for item in data]
+    return [to_hk(str(item).strip()) for item in data]
 
 
 async def _translate_titles_minimax(
@@ -59,7 +59,10 @@ async def _translate_titles_minimax(
     # 人名規則（2026-07-30，加 HuffPost 娛樂之後）：M3 譯西方藝人名大概 7/8
     # 啱香港譯法，但會飄去台灣譯法（Scorsese → 史柯西斯，香港係史高西斯）。
     # 亂譯一個冇人用嘅名比保留英文差——香港娛樂版本身好多時就係直接寫英文。
-    # 順帶擋埋 zhconv 個「咸 → 鹹」問題（碧咸 → 碧鹹），保留英文就冇得爛。
+    # ⚠️ 實測加咗呢兩句之後 M3 **冇**因此保留英文（佢對啲名太有信心，
+    # 「唔肯定」條分支根本冇觸發）：同一次測試 Scorsese 好咗、DiCaprio 差咗，
+    # 係 noise 唔係 fix。留住係因為「用香港唔用台灣／大陸」本身資訊量多咗，
+    # 但唔好當個問題解決咗。「咸 → 鹹」嗰個係另一件事，由 hk_text.to_hk() 修。
     user_text = (
         "Translate the following news titles into Hong Kong Traditional Chinese.\n"
         "Use Hong Kong conventions, not Taiwan or mainland ones. For a person, "
@@ -948,7 +951,7 @@ async def _fetch_one(
 
             title = entry.get("title", "(no title)")
             if feed_info["name"] in SIMPLIFIED_SOURCES:
-                title = zhconv.convert(title, "zh-hk")
+                title = from_simplified(title)
 
             article = {
                 "id":          _make_id(article_url),
