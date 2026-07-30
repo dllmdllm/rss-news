@@ -170,7 +170,7 @@
       font-size: calc(.9rem * var(--ui-scale));
       margin-bottom: 10px;
     }
-    .chip, .priority, .clickbait {
+    .chip, .priority, .clickbait, .sentiment {
       display: inline-flex;
       align-items: center;
       min-height: 22px;
@@ -195,6 +195,14 @@
       border: 1px solid rgba(240, 106, 106, .5);
       background: rgba(240, 106, 106, .14);
       color: #ff9a9a;
+    }
+    /* Deliberately neutral-coloured: the emoji already carries the tone, and
+       a second tinted chip next to the red .priority reads as a warning. */
+    .sentiment {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      gap: 4px;
     }
     h1 {
       margin: 0 0 12px;
@@ -529,11 +537,12 @@
       .hero {
         max-width: none;
       }
+      /* Keeps the accent stripe on the left, same as .key-facts right below
+         it. The old override moved it to the top on narrow screens, so the
+         two stacked boxes had their accents on different edges. */
       .summary-box {
         padding: 14px;
         margin-bottom: 14px;
-        border-left-width: 0;
-        border-top: 3px solid var(--accent);
       }
       .summary-box ul,
       .fact-list {

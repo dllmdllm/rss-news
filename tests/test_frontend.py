@@ -1293,6 +1293,30 @@ def test_key_facts_block_hides_when_empty():
     assert '$("keyFacts").hidden' in js, "冇關鍵句就要收起成個框"
 
 
+def test_article_eyebrow_shows_sentiment():
+    # 每篇文都有 sentiment，但之前淨係喺右欄 metaList 打一行英文「negative」。
+    # 手機冇右欄，即係等於冇——用戶要求擺埋落優先度 tag 後面。
+    js = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
+    at = js.index('$("eyebrow").innerHTML')
+    block = js[at:js.index("`;", at)]
+    assert "sentimentChip(article)" in block, "eyebrow 要出情緒 chip"
+    assert block.index("sentimentChip(") > block.index('class="priority"'), \
+        "情緒 chip 要喺優先度 tag 後面"
+    for key, emoji in (("positive", "🙂"), ("neutral", "😐"), ("negative", "😟")):
+        assert re.search(rf'{key}:\s*{{\s*emoji: "{emoji}"', js), f"{key} 要有 emoji"
+
+
+def test_mobile_summary_box_keeps_left_accent():
+    # 用戶報告：手機 AI 摘要條綠邊走咗去頂，同緊貼住佢下面嘅關鍵句（左邊
+    # 黃色 accent）唔一致。剝走 CSS comment 先——註釋本身提住 border-top。
+    html = (ROOT / "docs/article.html").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
+    at = css.index(".summary-box {", css.index("@media (max-width: 900px)"))
+    rule = css[at:css.index("}", at)]
+    assert "border-top" not in rule, "手機唔可以將 accent 搬去頂邊"
+    assert "border-left-width: 0" not in rule, "手機要保留左邊 accent"
+
+
 def test_main_column_blocks_share_one_width_cap():
     # 關鍵句 2026-07-25 由右欄搬入主欄，但冇加入 max-width 嗰條 selector list，
     # 所以撐到成欄咁闊，同上面嘅 AI 摘要、下面嘅正文對唔齊（用戶影相報告）。

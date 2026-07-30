@@ -32,6 +32,22 @@
     return `一般`;
   }
 
+  // 每篇文都有 sentiment，但之前淨係喺右欄 metaList 打一行英文「negative」。
+  // 手機睇唔到右欄，即係等於冇——放埋落 eyebrow（一般／推薦／必讀 tag 後面）
+  // 兩邊都見到。
+  const SENTIMENT_META = {
+    positive: { emoji: "🙂", label: "正面" },
+    neutral:  { emoji: "😐", label: "中性" },
+    negative: { emoji: "😟", label: "負面" },
+  };
+
+  function sentimentChip(article) {
+    const key = article && article.sentiment;
+    const meta = SENTIMENT_META[key];
+    if (!meta) return "";
+    return `<span class="sentiment sent-${key}" title="AI 判斷嘅報道情緒">${meta.emoji} ${meta.label}</span>`;
+  }
+
   function canonicalImageUrl(url) {
     try {
       const parsed = new URL(String(url || ""), location.href);
@@ -288,7 +304,7 @@
       <span class="chip">${esc(article.category || "未分類")}</span>
       <span>${esc(article.source || "")}</span>
       <span>${esc(timeLabel(article))}</span>
-      <span class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${Number(article.score || 0)}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</span>${clickbait}`;
+      <span class="priority" title="優先度 ${criticalScore(article)}（AI 重要性 ${Number(article.score || 0)}/10 + 新鮮度 + 重複度）">${esc(priorityLabel(article))}</span>${sentimentChip(article)}${clickbait}`;
     $("title").textContent = article.title || "";
     // AI 摘要全部入 summaryBox，唔再揀一點上 dek 做副題，避免「dek 一行像
     // article lead，summaryBox 又有同一句」嘅 user confusion。Dek slot 收起。
@@ -312,7 +328,8 @@
       ["來源", article.source || "-"],
       ["分類", article.category || "-"],
       ["話題", article.topic || "-"],
-      ["情緒", article.sentiment || "-"],
+      // 同 eyebrow 嗰粒 chip 用同一組字，唔好一邊「負面」一邊 raw「negative」
+      ["情緒", (SENTIMENT_META[article.sentiment] || {}).label || article.sentiment || "-"],
     ].map(([key, value]) => `<li><span>${esc(key)}</span><strong>${esc(value)}</strong></li>`).join("");
 
     const sameSourceSeenTitles = new Set([titleKey(article)].filter(Boolean));
