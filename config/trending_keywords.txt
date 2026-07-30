@@ -1,5 +1,7 @@
-# synced 2026-07-30T09:36:57.738839+08:00
-kospi index
+# synced 2026-07-30T09:57:33.488263+08:00
+沈嘉偉
+meta stock
+liverpool
 msft
 liverpool vs wrexham
 美股
@@ -7,5 +9,3 @@ liverpool vs wrexham
 alexandra eala
 fomc
 方紹聰
-李永達
-glen hansard
