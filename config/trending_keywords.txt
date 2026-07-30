@@ -1,5 +1,5 @@
-# synced 2026-07-30T08:57:10.372831+08:00
-海力士股價
+# synced 2026-07-30T09:16:56.870906+08:00
+kospi index
 msft
 liverpool vs wrexham
 美股
