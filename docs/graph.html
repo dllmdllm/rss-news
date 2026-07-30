@@ -277,7 +277,7 @@
       return "";  // 超過一個月就唔顯示相對時間，只顯示絕對日期
     }
 
-    const CAT_WL = new Set(["新聞","國際","娛樂","消閒","科技","網媒"]);
+    const CAT_WL = new Set(["新聞","國際","外媒","娛樂","消閒","科技","網媒"]);
     function renderArticleLinks(ids) {
       const items = ids.map(lookupArticle).filter(Boolean);
       if (!items.length) return '<div class="sidebar-stat">無相關文章</div>';

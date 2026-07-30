@@ -135,19 +135,31 @@ def test_index_and_categories_css_use_matching_category_colors():
     # 之後單改一邊而唔記得改另一邊、悄悄地又拆返兩套。
     index_html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
     categories_css = (ROOT / "docs/css/categories.css").read_text(encoding="utf-8")
+    index_js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
 
+    # slug → 中文分類名唔再喺 test 度寫死：直接讀 index.js 個 categoryClass
+    # map（唯一來源）。2026-07-30 加「外媒」嗰陣呢個 test 因為寫死咗 6 個而
+    # 爆——一個純粹係 test 自己過時嘅 failure，冇任何 production 問題。
+    at = index_js.index("function categoryClass")
     slug_to_zh = {
-        "cat-news": "新聞", "cat-world": "國際", "cat-ent": "娛樂",
-        "cat-tech": "科技", "cat-life": "消閒", "cat-media": "網媒",
+        slug: zh for zh, slug in
+        re.findall(r'"([^"]+)"\s*:\s*"(cat-[a-z]+)"', index_js[at:index_js.index("}", at)])
     }
+    assert len(slug_to_zh) >= 6, f"categoryClass map 睇落唔對路：{slug_to_zh}"
+
     hex_by_slug = dict(re.findall(r'\.(cat-\w+)\s*\{\s*--cat-color:\s*#([0-9a-fA-F]{6});', index_html))
-    assert len(hex_by_slug) == 6, f"expected 6 index.html category colours, found {hex_by_slug}"
+    assert set(hex_by_slug) == set(slug_to_zh), (
+        f"index.html 嘅 .cat-* 同 categoryClass 對唔上："
+        f"{set(hex_by_slug) ^ set(slug_to_zh)}"
+    )
 
     rgb_by_zh = dict(re.findall(
         r'body\.cat-([^\s,]+),\s*\[data-cat="[^"]+"\]\s*\{\s*--cat-rgb:\s*([\d\s]+);',
         categories_css,
     ))
-    assert len(rgb_by_zh) == 6, f"expected 6 categories.css dark-theme colours, found {rgb_by_zh}"
+    assert set(slug_to_zh.values()) <= set(rgb_by_zh), (
+        f"categories.css dark theme 漏咗：{set(slug_to_zh.values()) - set(rgb_by_zh)}"
+    )
 
     for slug, hex_val in hex_by_slug.items():
         zh = slug_to_zh[slug]
@@ -1403,3 +1415,58 @@ def test_priority_badge_keeps_its_score_tooltip():
     idx = js.index('<span class="priority"')
     span = js[idx:idx + 200]
     assert "title=" in span and "優先度" in span, "eyebrow badge 要有解釋 tooltip"
+
+
+# ---------------------------------------------------------------- categories
+
+def _quoted(blob):
+    return set(re.findall(r'"([^"]+)"', blob))
+
+
+def _js_list(text, anchor):
+    """Pull the quoted strings out of the array literal that follows `anchor`."""
+    at = text.index(anchor)
+    start = text.index("[", at)
+    return _quoted(text[start:text.index("]", start)])
+
+
+def _js_object_keys(text, anchor):
+    at = text.index(anchor)
+    start = text.index("{", at)
+    return set(re.findall(r'"([^"]+)"\s*:', text[start:text.index("}", start)]))
+
+
+def test_every_feed_category_is_wired_into_the_whole_frontend():
+    """加一個新分類要改九個唔同位（feeds.py 之外仲有 8 個前端 list／map／CSS）。
+    2026-07-30 加「外媒」嗰陣逐個揾出嚟——漏咗任何一個都唔會報錯，只會靜靜哋
+    冇咗個掣、冇咗顏色、或者喺 graph 度俾 whitelist 濾走。"""
+    import importlib
+    feeds = importlib.import_module("src.feeds")
+    cats = {f["category"] for f in feeds.RSS_FEEDS}
+
+    index_js = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
+    common_js = (ROOT / "docs/js/common.js").read_text(encoding="utf-8")
+    graph = (ROOT / "docs/graph.html").read_text(encoding="utf-8")
+    index_html = (ROOT / "docs/index.html").read_text(encoding="utf-8")
+    css = (ROOT / "docs/css/categories.css").read_text(encoding="utf-8")
+
+    checks = {
+        "index.js categories":         _js_list(index_js, "const categories ="),
+        "index.js SORT_CATEGORY_ORDER": _js_list(index_js, "const SORT_CATEGORY_ORDER ="),
+        "index.js CATEGORY_GROUPS":    _js_list(index_js, "const CATEGORY_GROUPS ="),
+        "index.js categoryEmoji":      _js_object_keys(index_js, "const categoryEmoji ="),
+        "index.js categoryClass":      _js_object_keys(index_js, "function categoryClass"),
+        "common.js CATEGORIES":        _js_list(common_js, "const CATEGORIES ="),
+        "graph.html CAT_WL":           _js_list(graph, "const CAT_WL ="),
+    }
+    for where, got in checks.items():
+        missing = cats - got
+        assert not missing, f"{where} 漏咗分類：{sorted(missing)}"
+
+    # 每個分類喺兩個 theme 都要有色，同埋 index.html 要有對應嘅 .cat-* class
+    for cat in cats:
+        assert f'[data-cat="{cat}"]' in css, f"categories.css dark 冇 {cat}"
+        assert f'body.theme-light [data-cat="{cat}"]' in css, f"categories.css light 冇 {cat}"
+    at = index_js.index("function categoryClass")
+    for cls in re.findall(r'"[^"]+"\s*:\s*"(cat-[a-z]+)"', index_js[at:index_js.index("}", at)]):
+        assert f".{cls} {{" in index_html, f"index.html 冇 .{cls} 嘅 --cat-color"

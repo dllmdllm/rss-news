@@ -76,6 +76,16 @@ RSS_FEEDS = [
     {"name": "HK01 娛樂",          "url": "https://web-data.api.hk01.com/v2/feed/zone/2",                          "category": "娛樂", "fetcher": "hk01"},
     {"name": "HK01 熱話",          "url": "https://web-data.api.hk01.com/v2/feed/zone/7",                          "category": "消閒", "fetcher": "hk01"},
     {"name": "HK01 深圳",          "url": "https://web-data.api.hk01.com/v2/feed/zone/25",                         "category": "消閒", "fetcher": "hk01"},
+    # 外媒 — 外國媒體原文（英文，標題同全文都會經 MiniMax 譯做香港繁體）。
+    # 同「國際」分開：國際係港媒寫嘅國際新聞，外媒係外國媒體自己嘅報道。
+    # ⚠️ HuffPost 個 /section/front-page/feed 同 /section/style/feed 都係
+    # HTTP 200 但 0 個 <item>（2026-07-30 實測）——揀 section 一定要真係數
+    # entries，唔可以見到 200 就當得。呢種空殼正正係「靜默 0 篇」嘅來源。
+    # max_items 收細：us-news 一個 feed 就 50 條，多數係美國內政，冇 cap
+    # 會浸過本地新聞。
+    {"name": "HuffPost 新聞",      "url": "https://www.huffpost.com/section/us-news/feed",                        "category": "外媒", "max_items": 15},
+    {"name": "HuffPost 娛樂",      "url": "https://www.huffpost.com/section/entertainment/feed",                  "category": "外媒", "max_items": 15},
+    {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8},
     # 電視台新聞
     # ⚠️ TVB 個 sitemap 30 小時窗口內有 245 篇（2026-07-25 實測）——冇呢個
     # override 就會浸曬新聞版。刻意寫死，唔好跟 MAX_ITEMS_PER_FEED 走。
@@ -100,4 +110,10 @@ SIMPLIFIED_SOURCES = {"cnBeta"}
 
 # Sources that publish English titles/content. Titles are translated with MiniMax;
 # article bodies remain in the original language for speed and reliability.
-ENGLISH_SOURCES = {"9to5Mac", "The Collective HK"}
+ENGLISH_SOURCES = {
+    "9to5Mac",
+    "The Collective HK",
+    "HuffPost 新聞",
+    "HuffPost 娛樂",
+    "HuffPost 生活",
+}

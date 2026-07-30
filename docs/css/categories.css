@@ -29,6 +29,7 @@ body.cat-娛樂, [data-cat="娛樂"] { --cat-rgb: 244 114 182; --cat-active-bg: 
 body.cat-消閒, [data-cat="消閒"] { --cat-rgb: 101 216 137; --cat-active-bg: #1a3322; }
 body.cat-科技, [data-cat="科技"] { --cat-rgb: 34 211 238;  --cat-active-bg: #123338; }
 body.cat-網媒, [data-cat="網媒"] { --cat-rgb: 251 146 60;  --cat-active-bg: #3d2712; }
+body.cat-外媒, [data-cat="外媒"] { --cat-rgb: 250 204 21;  --cat-active-bg: #3a3312; }
 
 body.theme-light.cat-新聞, body.theme-light [data-cat="新聞"] { --cat-rgb: 77 163 255;  --cat-active-bg: #eaf3ff; }
 body.theme-light.cat-國際, body.theme-light [data-cat="國際"] { --cat-rgb: 167 139 250; --cat-active-bg: #f3f0ff; }
@@ -36,3 +37,4 @@ body.theme-light.cat-娛樂, body.theme-light [data-cat="娛樂"] { --cat-rgb: 2
 body.theme-light.cat-消閒, body.theme-light [data-cat="消閒"] { --cat-rgb: 101 216 137; --cat-active-bg: #eafbf0; }
 body.theme-light.cat-科技, body.theme-light [data-cat="科技"] { --cat-rgb: 34 211 238;  --cat-active-bg: #e7fbfd; }
 body.theme-light.cat-網媒, body.theme-light [data-cat="網媒"] { --cat-rgb: 251 146 60;  --cat-active-bg: #fff3e6; }
+body.theme-light.cat-外媒, body.theme-light [data-cat="外媒"] { --cat-rgb: 250 204 21;  --cat-active-bg: #fdf6e0; }

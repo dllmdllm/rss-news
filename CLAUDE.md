@@ -143,6 +143,17 @@ Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
 ### 網媒
 法庭線、The Collective HK、香港法庭新聞
 
+### 外媒（2026-07-30 新增）
+HuffPost 新聞 / 娛樂 / 生活（`us-news` / `entertainment` / `life` section feed）。
+
+同「國際」**特登分開**：國際係港媒寫嘅國際新聞，外媒係外國媒體自己嘅報道。
+三個都喺 `ENGLISH_SOURCES`，標題同全文都會譯做香港繁體。純 trafilatura
+抽到全文，唔使 custom parser。
+
+⚠️ HuffPost 有啲 section feed 係 **HTTP 200 但 0 個 `<item>`**
+（`front-page`、`style`，2026-07-30 實測）——揀 section 一定要真係數
+`len(feedparser.parse(body).entries)`，見到 200 就當得就會種一個「靜默 0 篇」。
+
 ### 已移除來源（2026-07-25）
 兩個都靜靜哋 0 篇超過一個月先發現（成因見「靜默 0 篇」一節）：
 
@@ -701,6 +712,45 @@ class 由 `updateMobileSubUi()` toggle）。
 `.brief`，所以「優先」同「分類重點」頂部都係優先排行，用戶反映「好混亂」。
 而家靠 `body.ai-mode-priority` / `body.ai-mode-category` 二選一。
 Desktop 唔受影響（兩截照樣一齊出）。
+
+### 加一個新分類要改九個位
+
+分類名散落喺九個地方，**漏咗任何一個都唔會報錯**，只會靜靜哋冇咗個掣／冇咗
+顏色／喺 graph 度俾 whitelist 濾走：
+
+| 檔案 | 位置 |
+|---|---|
+| `src/feeds.py` | feed entry 個 `category` |
+| `docs/js/index.js` | `categories`、`categoryEmoji`、`categoryClass`、`SORT_CATEGORY_ORDER`、`CATEGORY_GROUPS`（**五個**） |
+| `docs/js/common.js` | `CATEGORIES` |
+| `docs/graph.html` | `CAT_WL` |
+| `docs/css/categories.css` | dark **同** light 兩套 |
+| `docs/index.html` | `.cat-<slug> { --cat-color }` |
+
+`tests/test_frontend.py::test_every_feed_category_is_wired_into_the_whole_frontend`
+由 `RSS_FEEDS` 反查全部九個位，漏一個就紅。
+
+⚠️ `docs/js/index.js` 個 `renderDailyBrief()` 入面仲有一條
+`groups = ["新聞", "國際", "娛樂"]`——**嗰個係特登揀嘅三大類，唔係漏咗**，
+所以個 test 冇檢查佢。
+
+### 翻譯：zhconv 會整爛用「咸」嘅香港譯名
+
+`zhconv.convert(text, "zh-hk")`（同 `zh-hant`）一律將 **咸 → 鹹**：
+
+```
+碧咸（Beckham）  → 碧鹹     ❌
+英格咸（Ingraham）→ 英格鹹   ❌
+咸豐            → 鹹豐     ❌
+```
+
+因為簡體 `咸` 一個字兼任「全部」同「鹹」兩個意思，反向轉換冇上下文就一律當
+「鹹」。呢層轉換係**必要**嘅（MiniMax 會漏簡體字出嚟，實測「湯告鲁斯」），
+所以唔可以拆走，只可以避——譯 prompt 叫佢**唔肯定就保留英文原名**係最有效
+嘅緩解，香港娛樂版本身好多時就係直接寫英文名。
+
+現時實際影響細（真數據入面 4 個「鹹」全部係「鹹碟」「鹹水管」，冇一個係名），
+但加咗 HuffPost 娛樂之後西方藝人名會多，要留意。
 
 ### 分類色彩系統（`docs/css/categories.css`）
 

@@ -56,8 +56,15 @@ async def _translate_titles_minimax(
         return titles
 
     numbered = "\n".join(f"{i + 1}. {title}" for i, title in enumerate(titles))
+    # 人名規則（2026-07-30，加 HuffPost 娛樂之後）：M3 譯西方藝人名大概 7/8
+    # 啱香港譯法，但會飄去台灣譯法（Scorsese → 史柯西斯，香港係史高西斯）。
+    # 亂譯一個冇人用嘅名比保留英文差——香港娛樂版本身好多時就係直接寫英文。
+    # 順帶擋埋 zhconv 個「咸 → 鹹」問題（碧咸 → 碧鹹），保留英文就冇得爛。
     user_text = (
         "Translate the following news titles into Hong Kong Traditional Chinese.\n"
+        "Use Hong Kong conventions, not Taiwan or mainland ones. For a person, "
+        "place or work whose Hong Kong Chinese name you are not confident about, "
+        "keep the original English name rather than inventing a transliteration.\n"
         "Return only a JSON array of strings, same order and same length. "
         "Do not add explanations.\n\n"
         f"{numbered}"

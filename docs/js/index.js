@@ -1,9 +1,10 @@
 (function () {
-  const categories = ["全部", "新聞", "國際", "娛樂", "科技", "網媒", "消閒"];
+  const categories = ["全部", "新聞", "國際", "外媒", "娛樂", "科技", "網媒", "消閒"];
   const categoryEmoji = {
     "全部": "🗂️",
     "新聞": "🏙️",
     "國際": "🌍",
+    "外媒": "🗞️",
     "娛樂": "🎬",
     "科技": "💻",
     "網媒": "📡",
@@ -142,6 +143,7 @@
     const map = {
       "新聞": "cat-news",
       "國際": "cat-world",
+      "外媒": "cat-foreign",
       "娛樂": "cat-ent",
       "科技": "cat-tech",
       "消閒": "cat-life",
@@ -168,7 +170,7 @@
     return `<span class="priority-badge clickbait" title="AI 評估標題同內文相符度 ${article.headline_fit}/10">⚠️ 標題誇大</span>`;
   }
 
-  const SORT_CATEGORY_ORDER = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
+  const SORT_CATEGORY_ORDER = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
   function categoryRank(cat) {
     const idx = SORT_CATEGORY_ORDER.indexOf(cat);
     return idx === -1 ? 99 : idx;
@@ -342,7 +344,7 @@
     </a>`;
   }
 
-  const CATEGORY_GROUPS = ["新聞", "國際", "娛樂", "科技", "消閒", "網媒"];
+  const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
   const CATEGORY_BASE_PER_GROUP = 4;
   const CATEGORY_MAX_PER_GROUP = 12;
 
@@ -502,7 +504,7 @@
   // 一直將「明報 本地」（一個版面）同「星島頭條」（成間媒體）並排列，粒度
   // 唔一致，仲要 slice 頭 8 個——明報 5 個版面合共 85 篇，拆開之後每個都
   // ≤30，喺榜上完全睇唔到（2026-07-25 用戶反映）。
-  const OUTLET_PREFIXES = ["RTHK", "明報", "東網", "HK01", "Now"];
+  const OUTLET_PREFIXES = ["RTHK", "明報", "東網", "HK01", "Now", "HuffPost"];
 
   function outletOf(sourceName) {
     const name = String(sourceName || "");

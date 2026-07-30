@@ -1,4 +1,4 @@
-const CATEGORIES = ["新聞", "國際", "娛樂", "消閒", "科技", "網媒"];
+const CATEGORIES = ["新聞", "國際", "外媒", "娛樂", "消閒", "科技", "網媒"];
 const CAT_WL = new Set(CATEGORIES);
 
 const _ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
