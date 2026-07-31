@@ -1,6 +1,7 @@
-# synced 2026-07-31T11:37:09.172057+08:00
+# synced 2026-07-31T11:55:21.352205+08:00
+hko
+黑雨
 observatory
-天文台
 胡錦濤
 7709
 yen
@@ -8,4 +9,3 @@ ceuta
 sk海力士
 uefa
 kospi
-sk hynix stock
