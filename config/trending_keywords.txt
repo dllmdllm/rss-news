@@ -1,4 +1,6 @@
-# synced 2026-07-31T11:17:39.862526+08:00
+# synced 2026-07-31T11:37:09.172057+08:00
+observatory
+天文台
 胡錦濤
 7709
 yen
@@ -7,4 +9,3 @@ sk海力士
 uefa
 kospi
 sk hynix stock
-超級市場
