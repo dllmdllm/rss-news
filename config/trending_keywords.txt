@@ -1,4 +1,4 @@
-# synced 2026-08-03T12:16:56.345613+08:00
+# synced 2026-08-03T12:36:55.873434+08:00
 馬德龍病
 yen
 河背水塘
@@ -6,6 +6,6 @@ yen
 黃文標
 日元兑港元
 王敏慈
+日元
 alex eala
 philippines
-hk observatory
