@@ -1,5 +1,6 @@
-# synced 2026-08-05T05:17:03.612214+08:00
+# synced 2026-08-05T05:36:57.968500+08:00
 google
+amd
 spcx stock
 netflix
 李嫣
@@ -7,5 +8,4 @@ netflix
 中國氣象局
 上訴
 aston villa
-日落下的彩虹
 三星galaxy系列
