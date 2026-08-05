@@ -1,6 +1,7 @@
-# synced 2026-08-05T08:56:57.958546+08:00
-低 氣壓
+# synced 2026-08-05T09:16:58.161911+08:00
+mu
 熱帶氣旋
+低 氣壓
 曼徹斯特聯足球俱樂部
 google
 amd stock
@@ -8,4 +9,3 @@ netflix
 jupas
 spacex stock
 李嫣
-voo
