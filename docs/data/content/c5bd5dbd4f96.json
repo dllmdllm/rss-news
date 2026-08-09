@@ -1,1 +1,0 @@
-{"version":1,"content":"<p>【虛擬 VRAM 🤪】NVIDIA 近日在 Black 大會上宣佈，正式開放 GPU 儲存直通技術（Storage Direct-through）的 cuFile API 原始碼及其底層儲存軟體堆疊（Storage Software Stack），允許 NVMe SSD 固態硬碟直接充當擴充顯示記憶體，以緩解硬體顯存容量不足所產生的效能瓶頸，進一步提升整體運算執行表現。</p>","scraped_at":"2026-08-08T01:29:24.404999+00:00","quality":{"score":1,"chars":186,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
