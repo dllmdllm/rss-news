@@ -1,0 +1,1 @@
+{"version":1,"content":"<p>【痴線 🤪】外媒報導，Dell Latitude 7320 2-in-1 筆電推出接近 5 年，但一直無法成功啟動該機型的前置 500 萬像素 Webcam。</p><p>近日有開發者發現，廠方雖然一直在 ACPI 韌體中將該前置鏡頭標示為「OVTI5678」，但真實晶片 ID 實際上為 0x005675，就這樣令這台筆電在 Linux 平台下「盲」了 5 年。</p>","scraped_at":"2026-08-11T12:19:50.724169+00:00","quality":{"score":1,"chars":176,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
