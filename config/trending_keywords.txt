@@ -1,4 +1,4 @@
-# synced 2026-08-17T05:53:11.595311+08:00
+# synced 2026-08-17T05:56:58.100676+08:00
 rodri
 利物浦
 liverpool
@@ -7,5 +7,5 @@ liverpool vs como
 schalke vs real madrid
 joeman
 農曆七月
+manchester city
 real madrid
-西甲
