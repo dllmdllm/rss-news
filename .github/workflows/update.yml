@@ -20,11 +20,6 @@ concurrency:
 
 permissions:
   contents: write
-  # actions: read is required by the "Daily heartbeat" and "Notify Telegram
-  # on failure" steps' `gh run list` calls — without it those calls 403,
-  # get swallowed by `2>$null`, and both dedup checks silently fall back to
-  # "no prior run found" on every single run (audit finding, 2026-07-21).
-  actions: read
 
 jobs:
   build:
@@ -229,39 +224,31 @@ jobs:
         # per UTC day on the first successful run so absence of a heartbeat
         # is a positive signal that something's broken upstream of the
         # workflow (runner offline, GitHub Actions down, repo deleted).
+        #
+        # Dedup state lives in a plain local file on the runner box
+        # (C:\actions-runner\rss_news_*_state.txt), NOT via `gh run list`.
+        # This is a persistent self-hosted Windows runner — same machine
+        # every run — so a local file is simpler and has no external
+        # dependency. The prior `gh run list ... 2>$null` approach silently
+        # fell back to "0 prior runs found" whenever that API call failed
+        # for any reason (missing `actions: read` was one instance, fixed
+        # 2026-07-21 — but the exact same symptom reappeared 2026-08-18 with
+        # the permission already in place, meaning `gh run list` itself is
+        # just not reliable enough for a check this load-bearing). Also
+        # resets the build-status file to "ok" so a later failure alerts
+        # fresh instead of stringing along a stale leftover "failure" state.
         if: success()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: "1122095129"
         run: |
+          $heartbeatFile = "C:\actions-runner\rss_news_heartbeat_state.txt"
+          $statusFile    = "C:\actions-runner\rss_news_build_status.txt"
+          Set-Content -Path $statusFile -Value "ok"
           $today = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
-          # Count prior successes by COMPLETION time (updatedAt), not created
-          # date: a run created 23:5x that finishes 00:04 sent a heartbeat for
-          # the new day, then the true first run of the day saw zero successes
-          # *created* today and sent a second one (user got doubles at
-          # 08:04+08:10 HKT, 2026-07-15). At heartbeat time the current run is
-          # still in_progress, so it never counts itself.
-          # --repo is required: without it gh shells out to git to infer the
-          # repo, and git running as the LocalSystem service rejects the
-          # Nary-owned _work checkout ("dubious ownership", 2026-06-12).
-          $todayStart = "${today}T00:00:00Z"
-          # NB: count in PowerShell, not via --jq. A jq string literal needs
-          # embedded double quotes, and PS 5.1's native-arg passing mangles
-          # them no matter how they're escaped (inline \" split the pipe into
-          # a bare arg → gh: unknown command "|", run #5664; variable-passed
-          # quotes get stripped by the C runtime parser). ISO-8601 Zulu
-          # strings compare correctly with -ge.
-          $runsJson = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status=success --limit 30 --json updatedAt 2>$null
-          $prior = "0"
-          if ($runsJson) {
-            try {
-              $runs = $runsJson | ConvertFrom-Json
-              $prior = [string]@($runs | Where-Object { $_.updatedAt -ge $todayStart }).Count
-            } catch {}
-          }
-          if ($prior -ne "0") {
-            Write-Host "heartbeat skipped: $prior prior success(es) today"
+          $lastSent = if (Test-Path $heartbeatFile) { (Get-Content $heartbeatFile -Raw).Trim() } else { "" }
+          if ($lastSent -eq $today) {
+            Write-Host "heartbeat skipped: already sent today ($today)"
             exit 0
           }
           $ts = (Get-Date).ToUniversalTime().ToString("HH:mm")
@@ -274,6 +261,7 @@ jobs:
               -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
               -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
               -ContentType 'application/json; charset=utf-8' | Out-Null
+            Set-Content -Path $heartbeatFile -Value $today
             Write-Host "heartbeat sent"
           } catch {
             Write-Host "heartbeat failed: $_"
@@ -282,19 +270,23 @@ jobs:
       - name: Notify Telegram on failure
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: "1122095129"
         run: |
           # Only alert on the green->red transition. An 80-message failure
           # storm (observed 2026-06-11) is noise that gets muted; the guardian
-          # workflow owns ongoing-outage reminders. --repo avoids gh shelling
-          # out to git (dubious ownership under the LocalSystem service).
-          $prev = gh run list --repo $env:GITHUB_REPOSITORY --workflow=update.yml --status completed --limit 1 --json conclusion --jq '.[0].conclusion' 2>$null
-          if ($prev -eq "failure") {
-            Write-Host "notify skipped: previous run already failed ($prev)"
+          # workflow owns ongoing-outage reminders. Dedup state is a local
+          # file on the runner box, not `gh run list` (see "Daily heartbeat"
+          # step's comment — that API call proved unreliable enough to cause
+          # the exact opposite failure mode: spamming every run instead of
+          # just the first).
+          $statusFile = "C:\actions-runner\rss_news_build_status.txt"
+          $prevStatus = if (Test-Path $statusFile) { (Get-Content $statusFile -Raw).Trim() } else { "" }
+          if ($prevStatus -eq "failure") {
+            Write-Host "notify skipped: previous run already failed"
             exit 0
           }
+          Set-Content -Path $statusFile -Value "failure"
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           # Emoji via code point, not a literal: the runner materialises step
           # scripts as BOM-less UTF-8, which PowerShell 5.1 reads as ANSI —
