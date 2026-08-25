@@ -1,4 +1,5 @@
-# synced 2026-08-26T07:17:01.179568+08:00
+# synced 2026-08-26T07:32:45.143657+08:00
+天文台
 hk observatory
 weather
 債券
@@ -8,4 +9,3 @@ binance
 dolly parton
 王菲
 binance exchange
-binance trading
