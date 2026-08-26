@@ -1,4 +1,5 @@
-# synced 2026-08-26T08:37:00.954228+08:00
+# synced 2026-08-26T08:57:01.774263+08:00
+王楚欽
 天文台
 hk observatory
 weather
@@ -7,5 +8,3 @@ weather
 英聯盃
 iphone
 尖沙咀
-dolly parton
-王菲
