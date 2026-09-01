@@ -1,1 +1,0 @@
-{"version":1,"content":"<p>【死心吧 😂】繼日前有高手成功將外洩的 DLSS 5 移植至 GeForce RTX 40 系列顯示卡後，這次進一步嘗試將該技術推向世代更久遠的 RTX 30 系列（Ampere 架構）顯示卡。</p><p>儘管 RTX 30 顯示卡能成功執行 DLSS 5 技術，但由於 GPU 缺乏原生 FP8（8 位元浮點數）硬體運算支援，導致效能出現斷崖式下跌，就算是 RTX 3080 效能亦會降至個位數幀率（FPS），實用價值極低。</p>","scraped_at":"2026-08-31T16:20:19.033393+00:00","quality":{"score":1,"chars":208,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
