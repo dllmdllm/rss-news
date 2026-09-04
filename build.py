@@ -1009,6 +1009,9 @@ def _tlog(msg: str) -> None:
         pass
 
 
+CORE_BUDGET_SECONDS = 740  # Reserve 110s inside the global 850s cap for core save.
+
+
 async def main():
     global _core_saved, _build_status
     _tlog("=== build start ===")
@@ -1032,123 +1035,127 @@ async def main():
         build_status[name] = row
 
     old_articles = _load_old_articles()
+    articles = None
+    source_stats = {}
 
-    try:
-        sync_watch_keywords_from_vault()
-    except Exception as exc:
-        _tlog(f"watch_keywords vault sync: {exc!r}")
+    async def core_step(factory, limit):
+        remaining = CORE_BUDGET_SECONDS - (time.monotonic() - t0)
+        if remaining <= 0:
+            raise TimeoutError("core enrichment budget exhausted")
+        return await asyncio.wait_for(factory(), timeout=min(limit, remaining))
 
-    # Google Trends（香港）熱門字，跟呢個 build 一齊 sync（~20 分鐘一次，
-    # 2026-07-21，用戶要求自動加入 keyword 監控；實測 Google 個 feed 本身
-    # 10-30 分鐘就轉一次，所以跟主 pipeline 頻率、冇再淨係每日一次）。
-    # 20s cap——fetch 失敗/逾時就用返舊 config，唔會阻住之後嘅 fetch/scrape
-    # 步驟。
-    try:
-        await asyncio.wait_for(sync_trending_keywords(), timeout=20)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("trends sync timed out — keeping existing config")
-    except Exception as exc:
-        _tlog(f"trends sync: {exc!r}")
-
-    # --- fetch (hard cap 150s) ---
-    t = time.monotonic()
-    _tlog("fetch start")
-    try:
-        articles, source_stats = await asyncio.wait_for(fetch_all(), timeout=150)
-        mark_step("fetch", seconds=time.monotonic() - t)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("fetch timed out — falling back to old articles")
-        articles, source_stats = [], {}
-        mark_step("fetch", ok=False, error="timeout", seconds=time.monotonic() - t)
-    _tlog(f"fetch done {time.monotonic()-t:.1f}s ({len(articles)} articles)")
-
-    articles = _merge_missing_sources(articles, old_articles, source_stats)
-
-    # --- retranslate (hard cap 45s) ---
-    t = time.monotonic()
-    _tlog(f"retranslate start ({len(articles)} articles after merge)")
-    try:
-        await asyncio.wait_for(retranslate_english_titles(articles), timeout=45)
-        mark_step("retranslate", seconds=time.monotonic() - t)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("retranslate timed out — skipping")
-        mark_step("retranslate", ok=False, error="timeout", seconds=time.monotonic() - t)
-    except Exception as exc:
-        _tlog(f"retranslate error: {exc!r}")
-        mark_step("retranslate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
-    _tlog("retranslate done")
-
-    # --- scrape (internal 240s cap; outer cap 255s) ---
-    t = time.monotonic()
-    _tlog("scrape start")
-    try:
-        articles = await asyncio.wait_for(scrape_all(articles), timeout=255)
-        mark_step("scrape", seconds=time.monotonic() - t)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("scrape outer timeout — using partial")
-        mark_step("scrape", ok=False, error="timeout", seconds=time.monotonic() - t)
-    _tlog(f"scrape done {time.monotonic()-t:.1f}s")
-
-    # --- translate English source bodies (hard cap 90s) ---
-    # Must run before analyse: analyse's key_sentences are quoted verbatim
-    # from article["content"], and the frontend highlights those quotes by
-    # substring match against the displayed body — translating content after
-    # analyse would leave English key_sentences that can never match a
-    # now-Chinese body. Only ~7-14 articles/build come from ENGLISH_SOURCES,
-    # cached by article id so an article scraped many builds in a row (its
-    # 30h RSS window) is translated once, not re-billed every 20 minutes.
-    t = time.monotonic()
-    _tlog("translate start")
-    try:
-        await asyncio.wait_for(translate_english_content(articles), timeout=90)
-        mark_step("translate", seconds=time.monotonic() - t)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("translate timed out — using partial (untranslated) content")
-        mark_step("translate", ok=False, error="timeout 90s", seconds=time.monotonic() - t)
-    except Exception as exc:
-        _tlog(f"translate: {exc!r}")
-        mark_step("translate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
-    _tlog(f"translate done {time.monotonic()-t:.1f}s")
-
-    # --- analyse (hard cap 280s) ---
-    # 540+ articles ÷ batch=5 ÷ concurrency=5 ≈ 22 batch-rounds. At 6-10s per
-    # round (incl. occasional retry backoff) the floor is ~130s and the ceiling
-    # ~220s, so 180s was clipping the tail and dropping summaries. 280s leaves
-    # headroom for slow MiniMax days without endangering the 780s outer cap
-    # (post-analyse stages total ~250s, so 280+250 = 530s + scrape/fetch slack
-    # stays well inside 780s).
-    t = time.monotonic()
-    _tlog("analyse start")
-    try:
-        articles = await asyncio.wait_for(analyse_all(articles), timeout=280)
-        mark_step("analyse", seconds=time.monotonic() - t)
-    except (asyncio.TimeoutError, TimeoutError):
-        _tlog("analyse timed out — using partial")
+    def save_core():
+        global _core_saved
+        nonlocal articles
+        articles = _apply_fallback_summaries(articles, old_articles)
         _ensure_analysis_defaults(articles)
-        mark_step("analyse", ok=False, error="timeout", seconds=time.monotonic() - t)
-    _tlog(f"analyse done {time.monotonic()-t:.1f}s")
+        articles = annotate_ai_features(cluster_articles(detect_duplicates(articles)))
+        articles.sort(key=lambda x: x.get("date", ""), reverse=True)
+        save_json(articles, source_stats)
+        _core_saved = True
 
-    articles = _apply_fallback_summaries(articles, old_articles)
-    _ensure_analysis_defaults(articles)
-    articles = detect_duplicates(articles)
-    articles = cluster_articles(articles)
-    articles = annotate_ai_features(articles)
 
-    # Save core data *before* optional heavy steps so a timeout still commits.
-    # Total budget for steps above: fetch 150 + retranslate 45 + scrape 255 +
-    # translate 90 + analyse 280 = 820s max → against the 850s global cap
-    # (asyncio.wait_for(main(), timeout=850) at the bottom of this file),
-    # that leaves ~30s for detect_duplicates/cluster_articles/
-    # annotate_ai_features/save_json below — not the 120s a stale version of
-    # this comment used to claim (it omitted the translate stage entirely;
-    # 2026-07-21 audit finding). On a day where fetch/scrape/translate/
-    # analyse all trend toward their ceilings, save_json may not finish
-    # before the hard kill.
-    articles.sort(key=lambda x: x.get("date", ""), reverse=True)
-    _tlog("save_json start")
-    save_json(articles, source_stats)
-    _core_saved = True
-    _tlog(f"save_json done — total-core {time.monotonic()-t0:.1f}s")
+    try:
+        try:
+            sync_watch_keywords_from_vault()
+        except Exception as exc:
+            _tlog(f"watch_keywords vault sync: {exc!r}")
+
+        # Google Trends（香港）熱門字，跟呢個 build 一齊 sync（~20 分鐘一次，
+        # 2026-07-21，用戶要求自動加入 keyword 監控；實測 Google 個 feed 本身
+        # 10-30 分鐘就轉一次，所以跟主 pipeline 頻率、冇再淨係每日一次）。
+        # 20s cap——fetch 失敗/逾時就用返舊 config，唔會阻住之後嘅 fetch/scrape
+        # 步驟。
+        try:
+            await core_step(sync_trending_keywords, 20)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("trends sync timed out — keeping existing config")
+        except Exception as exc:
+            _tlog(f"trends sync: {exc!r}")
+
+        # --- fetch (hard cap 150s) ---
+        t = time.monotonic()
+        _tlog("fetch start")
+        try:
+            articles, source_stats = await core_step(fetch_all, 150)
+            mark_step("fetch", seconds=time.monotonic() - t)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("fetch timed out — falling back to old articles")
+            articles, source_stats = [], {}
+            mark_step("fetch", ok=False, error="timeout", seconds=time.monotonic() - t)
+        _tlog(f"fetch done {time.monotonic()-t:.1f}s ({len(articles)} articles)")
+
+        articles = _merge_missing_sources(articles, old_articles, source_stats)
+
+        # --- retranslate (hard cap 45s) ---
+        t = time.monotonic()
+        _tlog(f"retranslate start ({len(articles)} articles after merge)")
+        try:
+            await core_step(lambda: retranslate_english_titles(articles), 45)
+            mark_step("retranslate", seconds=time.monotonic() - t)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("retranslate timed out — skipping")
+            mark_step("retranslate", ok=False, error="timeout", seconds=time.monotonic() - t)
+        except Exception as exc:
+            _tlog(f"retranslate error: {exc!r}")
+            mark_step("retranslate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+        _tlog("retranslate done")
+
+        # --- scrape (internal 240s cap; outer cap 255s) ---
+        t = time.monotonic()
+        _tlog("scrape start")
+        try:
+            articles = await core_step(lambda: scrape_all(articles), 255)
+            mark_step("scrape", seconds=time.monotonic() - t)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("scrape outer timeout — using partial")
+            mark_step("scrape", ok=False, error="timeout", seconds=time.monotonic() - t)
+        _tlog(f"scrape done {time.monotonic()-t:.1f}s")
+
+        # --- translate English source bodies (hard cap 90s) ---
+        # Must run before analyse: analyse's key_sentences are quoted verbatim
+        # from article["content"], and the frontend highlights those quotes by
+        # substring match against the displayed body — translating content after
+        # analyse would leave English key_sentences that can never match a
+        # now-Chinese body. Only ~7-14 articles/build come from ENGLISH_SOURCES,
+        # cached by article id so an article scraped many builds in a row (its
+        # 30h RSS window) is translated once, not re-billed every 20 minutes.
+        t = time.monotonic()
+        _tlog("translate start")
+        try:
+            await core_step(lambda: translate_english_content(articles), 90)
+            mark_step("translate", seconds=time.monotonic() - t)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("translate timed out — using partial (untranslated) content")
+            mark_step("translate", ok=False, error="timeout 90s", seconds=time.monotonic() - t)
+        except Exception as exc:
+            _tlog(f"translate: {exc!r}")
+            mark_step("translate", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+        _tlog(f"translate done {time.monotonic()-t:.1f}s")
+
+        # --- analyse (up to 280s, bounded by the shared 740s core budget) ---
+        # Preserve completed analyses and save before optional enrichments.
+        t = time.monotonic()
+        _tlog("analyse start")
+        try:
+            articles = await core_step(lambda: analyse_all(articles), 280)
+            mark_step("analyse", seconds=time.monotonic() - t)
+        except (asyncio.TimeoutError, TimeoutError):
+            _tlog("analyse timed out — using partial")
+            _ensure_analysis_defaults(articles)
+            mark_step("analyse", ok=False, error="timeout", seconds=time.monotonic() - t)
+        _tlog(f"analyse done {time.monotonic()-t:.1f}s")
+
+        _tlog("save_json start")
+        save_core()
+        _tlog(f"save_json done — total-core {time.monotonic()-t0:.1f}s")
+
+    except asyncio.CancelledError:
+        # wait_for cancels main before raising TimeoutError. Persist only a
+        # fetched/merged batch; if fetch never completed, keep existing files.
+        if articles is not None and not _core_saved:
+            save_core()
+        raise
 
     t = time.monotonic()
     _tlog("panel_digest start")

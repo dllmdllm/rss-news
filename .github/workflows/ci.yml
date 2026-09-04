@@ -1,0 +1,54 @@
+name: Code checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'docs/js/**'
+      - 'docs/css/**'
+      - 'docs/*.html'
+      - 'docs/sw.js'
+      - 'build.py'
+      - 'requirements.txt'
+      - 'pytest.ini'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - '.github/workflows/**'
+permissions:
+  contents: read
+concurrency:
+  group: code-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RSS_REQUIRE_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        # Embedding unit tests mock inference; do not download models or torch.
+        run: |
+          sed '/^sentence-transformers==/d' requirements.txt > /tmp/rss-test-requirements.txt
+          python -m pip install -r /tmp/rss-test-requirements.txt playwright
+          python -m playwright install --with-deps chromium
+      - name: Check frontend cache version
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          python tools/check_sw_cache.py "$BASE_SHA"
+      - name: Run regression and browser tests
+        run: python -m pytest tests -q -rs

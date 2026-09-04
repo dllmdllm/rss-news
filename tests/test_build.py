@@ -595,3 +595,65 @@ def test_timeout_status_records_build_failure(tmp_path, monkeypatch):
     assert payload["steps"]["panel_digest"]["ok"] is True
     assert payload["steps"]["build"]["ok"] is False
     assert "after core save" in payload["steps"]["build"]["error"]
+
+
+def _isolate_core(monkeypatch, tmp_path):
+    monkeypatch.setattr(build, 'DATA_DIR', tmp_path / 'data')
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'data' / 'content')
+    monkeypatch.setattr(build, '_load_old_articles', lambda: [])
+    monkeypatch.setattr(build, '_tlog', lambda *a: None)
+    monkeypatch.setattr(build, 'sync_watch_keywords_from_vault', lambda: None)
+    async def noop(*a, **k):
+        pass
+    for name in ['sync_trending_keywords', 'retranslate_english_titles', 'translate_english_content',
+                 'generate_panel_digests', 'compute_embeddings', 'send_breaking_alerts',
+                 'send_keyword_alerts', 'check_source_health', 'generate_daily_brief', 'generate_entity_digests']:
+        monkeypatch.setattr(build, name, noop)
+    async def fetch():
+        return [_article('partial', '<p>完整內文</p>')], {'Test source': {'category':'Test', 'count':1}}
+    async def identity(articles):
+        return articles
+    monkeypatch.setattr(build, 'fetch_all', fetch)
+    monkeypatch.setattr(build, 'scrape_all', identity)
+    monkeypatch.setattr(build, 'analyse_all', identity)
+
+
+def test_global_cancellation_saves_partial_core(monkeypatch, tmp_path):
+    _isolate_core(monkeypatch, tmp_path)
+    async def scenario():
+        entered = asyncio.Event()
+        async def analyse(articles):
+            articles[0]['summary'] = '已完成摘要'
+            entered.set()
+            await asyncio.Future()
+        monkeypatch.setattr(build, 'analyse_all', analyse)
+        task = asyncio.create_task(build.main())
+        await entered.wait()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError('Cancellation must propagate')
+    asyncio.run(scenario())
+    data = json.loads((build.DATA_DIR / 'articles.json').read_text())
+    assert data['articles'][0]['summary'] == '已完成摘要'
+    assert '完整內文' in (build.CONTENT_DIR / 'partial.json').read_text()
+    assert build._core_saved
+
+
+def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
+    _isolate_core(monkeypatch, tmp_path)
+    async def scrape(articles):
+        monkeypatch.setattr(build, 'CORE_BUDGET_SECONDS', 0)
+        return articles
+    async def no_analysis(*a):
+        raise AssertionError('Analysis must not start after core budget expires')
+    monkeypatch.setattr(build, 'scrape_all', scrape)
+    monkeypatch.setattr(build, 'analyse_all', no_analysis)
+    asyncio.run(build.main())
+    assert build._core_saved
+    assert (build.CONTENT_DIR / 'partial.json').exists()
+    status = json.loads((build.DATA_DIR / 'build_status.json').read_text())
+    assert status['steps']['analyse']['ok'] is False

@@ -204,7 +204,18 @@ async def _fetch_watched(session: aiohttp.ClientSession, cutoff: datetime) -> li
     return articles
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def is_quiet_hours(now: datetime) -> bool:
+    return now.astimezone(HKT).hour < 7
+
+
 async def main() -> None:
+    if is_quiet_hours(_utc_now()):
+        print("[fast-watch] skipped — quiet hours 00:00–07:00 HKT")
+        return
     if not TELEGRAM_BOT_TOKEN:
         print("[fast-watch] skipped — no TELEGRAM_BOT_TOKEN")
         return
@@ -215,7 +226,7 @@ async def main() -> None:
     state = _load_state()
     seen = state["seen"]
     cooldown = state["cooldown"]
-    now = datetime.now(timezone.utc)
+    now = _utc_now()
     cutoff = now - timedelta(hours=FRESHNESS_HOURS)
 
     # Mutated by _run() as it progresses, so a timeout mid-way still leaves
@@ -246,6 +257,9 @@ async def main() -> None:
             sent_this_run = 0
             trending_sent_this_run = 0
             for article, keyword in matched:
+                # A run started before midnight may finish fetching after it.
+                if is_quiet_hours(_utc_now()):
+                    break
                 if sent_this_run >= MAX_ALERTS_PER_RUN:
                     break
                 is_trending = _is_trending_keyword(keyword)

@@ -600,6 +600,13 @@
         -webkit-line-clamp: 5;
       }
     }
+    .reading-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+    .reading-controls label { font-size: 1rem; }
+    .reading-controls select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .reading-controls .tool { min-height: 44px; font-size: 1rem; }
+    #articleTtsStatus { flex-basis: 100%; font-size: .95rem; }
+    .key-sentence { color: inherit; background: rgba(255, 205, 75, .28); border-radius: 2px; }
+    .hide-key-sentences .key-sentence { background: transparent; }
   </style>
 </head>
 <body class="fs-large">
@@ -660,6 +667,14 @@
           <h2>關鍵句</h2>
           <ul class="fact-list" id="facts"></ul>
         </section>
+        <section class="reading-controls" aria-label="朗讀及重點標示">
+          <label>朗讀範圍 <select id="articleTtsMode"><option value="full">全文</option><option value="summary">摘要</option></select></label>
+          <label>速度 <select id="articleTtsRate"><option value="0.85">0.85×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></label>
+          <button class="tool" id="articleTts" type="button" aria-pressed="false">🔊 朗讀</button>
+          <button class="tool" id="articleTtsPause" type="button" disabled>暫停</button>
+          <button class="tool" id="highlightToggle" type="button" aria-pressed="true" hidden>標示重點</button>
+          <span id="articleTtsStatus" role="status" aria-live="polite"></span>
+        </section>
         <section class="content" id="content"></section>
         <a class="source-link" id="sourceLink" target="_blank" rel="noopener noreferrer">查看原文</a>
         <a class="next-article" id="nextArticle" hidden>
@@ -684,6 +699,7 @@
     </aside>
   </div>
   <script src="js/common.js?v=20260714-polish"></script>
-  <script src="js/article.js?v=20260714-polish"></script>
+  <script src="js/article-reading.js?v=20260905-reading"></script>
+  <script src="js/article.js?v=20260905-reading"></script>
 </body>
 </html>
