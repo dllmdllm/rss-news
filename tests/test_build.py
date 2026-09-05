@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import build
+import pytest
 
 
 def _article(article_id: str, content=None):
@@ -659,10 +660,14 @@ def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
     assert status['steps']['analyse']['ok'] is False
 
 
-def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch):
+@pytest.mark.parametrize('body', [
+    '<img src="https://example.com/cover.jpg">',
+    '<html><body><figure><img src="https://example.com/cover.jpg"></figure></body></html>',
+])
+def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch, body):
     monkeypatch.setattr(build, 'DATA_DIR', tmp_path / 'data')
     monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'data' / 'content')
-    article = _article('image-only', '<img src="https://example.com/cover.jpg">')
+    article = _article('image-only', body)
     article['thumbnail'] = 'https://example.com/cover.jpg'
     article['summary'] = '摘要內容'
     build.save_json([article], {})

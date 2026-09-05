@@ -770,7 +770,8 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
             deduped += 1
             # An RSS fallback can contain only the hero image. Removing that
             # duplicate must not publish an empty sidecar.
-            if not content.strip():
+            remainder = BeautifulSoup(content, "html.parser")
+            if not remainder.get_text(strip=True) and not remainder.find(["img", "video", "audio"]):
                 content = _minimal_content(a)
                 minimal += 1
                 fallback = "minimal"
