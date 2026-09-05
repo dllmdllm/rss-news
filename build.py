@@ -768,6 +768,12 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
         content, was_deduped = remove_duplicate_leading_thumbnail(content, a.get("thumbnail"))
         if was_deduped:
             deduped += 1
+            # An RSS fallback can contain only the hero image. Removing that
+            # duplicate must not publish an empty sidecar.
+            if not content.strip():
+                content = _minimal_content(a)
+                minimal += 1
+                fallback = "minimal"
             a["content"] = content
             a["content_quality"] = content_quality(
                 content,

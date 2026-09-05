@@ -505,11 +505,9 @@ img.referrerPolicy = "no-referrer";
   `_needs_full_analysis()` 令已 cache 嘅散文 entry 下次 build 重新分析。
   40 字長度 gate 防止誤殺短 placeholder（測試用嘅 "x" 呢類）
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
-  highlight，而家淨係喺 article.js 打做「關鍵句」plain list（`docs/js/index.js`
-  嘅摘要拼接都有用到）。translate_content.py 一定要行喺 analyse.py 之前嘅
-  ordering guarantee（保持 key_sentences 同 content 用字一致）依然有效、
-  依然值得保留——即使宜家個 highlight consumer 唔存在，呢個 invariant
-  本身零成本，之後想重做 highlight 都唔使再理呢層
+  highlight；而家已喺 article-reading.js 恢復，關鍵句清單亦保留。
+  translate_content.py 一定要行喺 analyse.py 之前，保持 key_sentences
+  同顯示正文用字一致，否則逐字標示會配對唔中。
 
 ### Mobile view class 命名（`docs/index.html`）
 
@@ -792,3 +790,8 @@ noise）。留住係因為「用香港唔用台灣／大陸」本身有資訊量
 - 正文 key_sentences 逐字配對，支援跨 inline markup，用 DOM text nodes 包 mark，
   唔改原有字句／HTML 結構；無匹配就唔顯示重點開關。
 - Failure Telegram 只喺 API `ok` 後寫 failure state；發送失敗保留原狀，下次再試。
+
+- PR code gate 用固定 fixture；現有 `docs/data` 另跑 advisory 檢查，失敗會 warning
+  同寫 job summary。正式 `update.yml` 仍然完整跑所有測試，資料問題照樣報紅。
+- 去重刪走唯一封面圖後，`_write_content_sidecars` 必須補 minimal 摘要／原文連結，
+  唔可以寫空白正文。已發布嘅舊空白檔由下一輪正常 build 重新生成。

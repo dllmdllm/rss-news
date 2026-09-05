@@ -657,3 +657,17 @@ def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
     assert (build.CONTENT_DIR / 'partial.json').exists()
     status = json.loads((build.DATA_DIR / 'build_status.json').read_text())
     assert status['steps']['analyse']['ok'] is False
+
+
+def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, 'DATA_DIR', tmp_path / 'data')
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'data' / 'content')
+    article = _article('image-only', '<img src="https://example.com/cover.jpg">')
+    article['thumbnail'] = 'https://example.com/cover.jpg'
+    article['summary'] = '摘要內容'
+    build.save_json([article], {})
+    record = json.loads((build.CONTENT_DIR / 'image-only.json').read_text())
+    assert '摘要內容' in record['content']
+    assert '閱讀原文' in record['content']
+    assert '<img' not in record['content']
+    assert record['quality']['fallback'] == 'minimal'
