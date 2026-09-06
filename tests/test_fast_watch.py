@@ -16,6 +16,7 @@ def _no_trending_keywords(monkeypatch):
     curated 小 WATCH_KEYWORDS fixture 嘅 test 意外撞中唔相關嘅熱門字。
     想測試 trending 合併行為嘅 test 自己再 override 呢個 patch。"""
     monkeypatch.setattr(FW, "TRENDING_KEYWORDS", [])
+    monkeypatch.setattr(FW, "_utc_now", lambda: datetime(2026, 9, 4, 4, tzinfo=timezone.utc))
 
 
 def _article(**overrides):
@@ -198,7 +199,7 @@ def test_save_state_caps_seen_size_by_recency_not_alphabetical(tmp_path, monkeyp
 
 
 def test_keyword_in_cooldown():
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     cooldown = {"交通意外": (now - timedelta(minutes=10)).isoformat()}
     assert FW._keyword_in_cooldown("交通意外", cooldown, now)          # 10 分鐘前，30 分鐘冷卻仲未過
     assert not FW._keyword_in_cooldown("OpenAI", cooldown, now)         # 冇記錄過，唔喺冷卻
@@ -207,12 +208,12 @@ def test_keyword_in_cooldown():
 
 
 def test_keyword_in_cooldown_survives_bad_timestamp():
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     assert not FW._keyword_in_cooldown("x", {"x": "not-a-date"}, now)
 
 
 def test_keyword_in_cooldown_respects_custom_minutes():
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     cooldown = {"六合彩": (now - timedelta(minutes=40)).isoformat()}
     assert not FW._keyword_in_cooldown("六合彩", cooldown, now, 30)  # 過咗 30 分鐘冷卻
     assert FW._keyword_in_cooldown("六合彩", cooldown, now, 90)      # 未過 90 分鐘冷卻
@@ -235,7 +236,7 @@ def test_main_applies_longer_cooldown_to_trending_keywords(monkeypatch, tmp_path
     monkeypatch.setattr(FW, "WATCH_KEYWORDS", [])
     monkeypatch.setattr(FW, "TRENDING_KEYWORDS", ["六合彩"])
     state_path = tmp_path / "state.json"
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     # 40 分鐘前送過——過咗 curated 嘅 30 分鐘，但未過 trending 嘅 90 分鐘。
     state_path.write_text(
         json.dumps({"seen": {}, "cooldown": {"六合彩": (now - timedelta(minutes=40)).isoformat()}}),
@@ -263,7 +264,7 @@ def test_main_caps_trending_alerts_separately_from_curated(monkeypatch, tmp_path
     monkeypatch.setattr(FW, "MAX_ALERTS_PER_RUN", 5)
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
 
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     articles = [
         _article(id="t1", title="六合彩攪珠結果", date=(now - timedelta(minutes=2)).isoformat()),
         _article(id="t2", title="陳嘉信案上訴得直", date=(now - timedelta(minutes=1)).isoformat()),
@@ -358,7 +359,7 @@ def test_main_collapses_same_keyword_matches_within_cooldown(monkeypatch, tmp_pa
     monkeypatch.setattr(FW, "KEYWORD_CONTEXT", {})
     monkeypatch.setattr(FW, "STATE_PATH", tmp_path / "state.json")
 
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     articles = [
         _article(id="a1", title="交通意外 A報道", source="am730", date=(now - timedelta(minutes=2)).isoformat()),
         _article(id="a2", title="交通意外 B報道", source="TVB 新聞", date=(now - timedelta(minutes=1)).isoformat()),
@@ -389,7 +390,7 @@ def test_main_resumes_alerting_after_cooldown_expires(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
 
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     stale_cooldown = (now - timedelta(minutes=31)).isoformat()  # 冷卻 30 分鐘已過
     state_path.write_text(json.dumps({"seen": {}, "cooldown": {"交通意外": stale_cooldown}}), encoding="utf-8")
 
@@ -490,7 +491,7 @@ def test_main_cooldown_does_not_starve_other_keywords(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(FW, "STATE_PATH", state_path)
 
-    now = datetime.now(timezone.utc)
+    now = FW._utc_now()
     state_path.write_text(
         json.dumps({"seen": {}, "cooldown": {"交通意外": now.isoformat()}}),
         encoding="utf-8",
@@ -631,3 +632,36 @@ def test_main_does_not_realert_after_url_change(monkeypatch, tmp_path):
     monkeypatch.setattr(FW, "TRENDING_COOLDOWN_MINUTES", 0)
     run_with("id-v2")   # 同一篇文，但 url 變咗所以 md5 id 變咗
     assert len(sent) == 1, f"換咗 url 唔應該再送一次，實際送咗 {len(sent)} 次"
+
+
+@pytest.mark.parametrize('hour,minute,quiet', [(15,59,False),(16,0,True),(22,59,True),(23,0,False)])
+def test_quiet_hours_hkt_boundaries(hour, minute, quiet):
+    assert FW.is_quiet_hours(datetime(2026,9,4,hour,minute,tzinfo=timezone.utc)) is quiet
+
+
+def test_manual_dispatch_during_quiet_hours_does_not_fetch(monkeypatch, tmp_path):
+    monkeypatch.setattr(FW, '_utc_now', lambda: datetime(2026,9,4,16,tzinfo=timezone.utc))
+    monkeypatch.setattr(FW, 'TELEGRAM_BOT_TOKEN', 'test-token')
+    monkeypatch.setattr(FW, 'WATCH_KEYWORDS', ['OpenAI'])
+    monkeypatch.setattr(FW, 'STATE_PATH', tmp_path / 'state.json')
+    async def fail_fetch(*a):
+        pytest.fail('Quiet hours must not fetch')
+    monkeypatch.setattr(FW, '_fetch_watched', fail_fetch)
+    asyncio.run(FW.main())
+    assert not FW.STATE_PATH.exists()
+
+
+def test_fetch_crossing_midnight_does_not_send(monkeypatch, tmp_path):
+    monkeypatch.setattr(FW, 'TELEGRAM_BOT_TOKEN', 'test-token')
+    monkeypatch.setattr(FW, 'WATCH_KEYWORDS', ['OpenAI'])
+    monkeypatch.setattr(FW, 'STATE_PATH', tmp_path / 'state.json')
+    monkeypatch.setattr(FW, '_utc_now', lambda: datetime(2026,9,4,15,59,tzinfo=timezone.utc))
+    async def fetch(*a):
+        monkeypatch.setattr(FW, '_utc_now', lambda: datetime(2026,9,4,16,tzinfo=timezone.utc))
+        return [_article(title='OpenAI news')]
+    async def fail_send(*a, **k):
+        pytest.fail('Must not send after midnight')
+    monkeypatch.setattr(FW, '_fetch_watched', fetch)
+    monkeypatch.setattr(FW, '_send_telegram', fail_send)
+    asyncio.run(FW.main())
+    assert 'a1' not in json.loads(FW.STATE_PATH.read_text())['seen']

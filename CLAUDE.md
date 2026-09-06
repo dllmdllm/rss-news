@@ -34,7 +34,7 @@ rss-news/
 │   ├── article.html      # 文章閱讀頁
 │   ├── js/
 │   │   ├── index.js      # 列表頁邏輯（搜尋 / tab / AI 功能）
-│   │   ├── article.js    # 文章閱讀邏輯（進度/swipe nav/next article）——TTS 同 key_sentences highlight 呢兩個之前有嘅功能喺 2026-05-23 redesign（`44fd85db47`）被移除咗，未重做
+│   │   ├── article.js    # 文章閱讀邏輯（進度/swipe nav/next article）——TTS 同正文關鍵句 highlight 已恢復（article-reading.js）
 │   │   └── common.js     # 共用工具
 │   ├── css/
 │   │   └── categories.css  # 分類色彩（--cat-rgb / --cat-active-bg）
@@ -330,6 +330,12 @@ build 卡死。超時後用舊有 content 繼續後續步驟。
 
 ### build.py 全局超時
 
+核心 enrichment 共用 `CORE_BUDGET_SECONDS = 740`，每步取自身上限與剩餘 budget
+較細者；保留 110 秒俾 fallback、聚類及同步保存。外層取消 main 時，如果已取得
+文章批次，會保存部分成果再拋出 CancelledError；fetch 未完成就保持原檔。
+⚠️ 850 秒係 cooperative timeout，唔會中斷同步 code 或殺死 executor thread；
+workflow timeout／guardian 仍然需要保留。
+
 ```python
 asyncio.run(asyncio.wait_for(main(), timeout=850))  # ~14 分鐘
 ```
@@ -494,11 +500,9 @@ img.referrerPolicy = "no-referrer";
   `_needs_full_analysis()` 令已 cache 嘅散文 entry 下次 build 重新分析。
   40 字長度 gate 防止誤殺短 placeholder（測試用嘅 "x" 呢類）
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
-  highlight，而家淨係喺 article.js 打做「關鍵句」plain list（`docs/js/index.js`
-  嘅摘要拼接都有用到）。translate_content.py 一定要行喺 analyse.py 之前嘅
-  ordering guarantee（保持 key_sentences 同 content 用字一致）依然有效、
-  依然值得保留——即使宜家個 highlight consumer 唔存在，呢個 invariant
-  本身零成本，之後想重做 highlight 都唔使再理呢層
+  highlight；而家已喺 article-reading.js 恢復，關鍵句清單亦保留。
+  translate_content.py 一定要行喺 analyse.py 之前，保持 key_sentences
+  同顯示正文用字一致，否則逐字標示會配對唔中。
 
 ### Mobile view class 命名（`docs/index.html`）
 
@@ -622,9 +626,8 @@ GitHub 對高頻 cron throttle 得好犀利——`fast-watch.yml` 寫住 `*/5`�
 兩個 script 都有 race guard：見到有 run `queued`/`in_progress` 就唔 dispatch
 （第二個 dispatch 會 cancel 緊行緊嗰個）。
 
-⚠️ `fast_watch.py` **本身冇 quiet-hours 檢查**，00:00-07:00 HKT 唔嘈全靠 cron 個
-`23,0-15 UTC` 時段擋住——所以 `dispatch-fast-watch.ps1` 自己重複咗一次呢個判斷。
-手動 dispatch 或者改 script 前記住呢層，唔係會半夜彈 Telegram。
+`fast_watch.py` 本身會檢查 00:00–07:00 HKT 靜音時段，啟動同每次發送前都檢查，
+覆蓋手動 dispatch、排隊延遲同抓取期間跨午夜。被擋住嘅命中文章唔會標記已送。
 
 → 實測數字：[DESIGN-HISTORY.md](DESIGN-HISTORY.md#github-cron)
 
@@ -769,3 +772,21 @@ noise）。留住係因為「用香港唔用台灣／大陸」本身有資訊量
 - `--cat-active-bg`：filter button active 背景 / ai-pick card 背景
 - 兩套：dark theme（`body` 預設）+ light theme（`body.theme-light`）
 - 消費方式：CSS variable，不要 hardcode 顏色值
+
+### Code CI 與文章閱讀（2026-09 review fix）
+
+- `ci.yml` 喺 GitHub-hosted Ubuntu 跑 PR regression + desktop/mobile Chromium smoke；
+  唔用 self-hosted runner、唔讀 secrets、唔跑真 build 或真 AI。
+- `RSS_REQUIRE_BROWSER=1` 令 CI 冇 Playwright／Chromium 時 fail；頁面 assertion
+  永遠唔可以轉成 skip。Browser fixture 用固定資料、封鎖 Service Worker。
+- `tools/check_sw_cache.py` 對 PR base 檢查 frontend asset 改動必須 bump SW CACHE。
+- `article-reading.js` 提供全文／摘要、速度、暫停／停止、離頁停止；瀏覽器朗讀
+  優先揀粵語 voice。MiniMax TTS 尚未接通，前端唔放 API key。
+- 正文 key_sentences 逐字配對，支援跨 inline markup，用 DOM text nodes 包 mark，
+  唔改原有字句／HTML 結構；無匹配就唔顯示重點開關。
+- Failure Telegram 只喺 API `ok` 後寫 failure state；發送失敗保留原狀，下次再試。
+
+- PR code gate 用固定 fixture；現有 `docs/data` 另跑 advisory 檢查，失敗會 warning
+  同寫 job summary。正式 `update.yml` 仍然完整跑所有測試，資料問題照樣報紅。
+- 去重刪走唯一封面圖後，`_write_content_sidecars` 必須補 minimal 摘要／原文連結，
+  唔可以寫空白正文。已發布嘅舊空白檔由下一輪正常 build 重新生成。
