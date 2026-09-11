@@ -1,0 +1,1 @@
+{"version":1,"content":"<p>自 NVIDIA 採用 12VHPWR / 12V-2x6 供電接口以來，引發的熔毀災情屢見不鮮，成為高階玩家與硬體愛好者長期關注的安全隱憂。</p><p>有高手近日展開大膽實驗，直接移除 GeForce RTX 5090 上的 16-pin 接頭，改成 3 個傳統 PCIe 8-pin 接頭供電。</p><p>測試結果顯示，即使在高負載與大幅超頻狀態下，PCIe 8-pin 的運作溫度依然更低、更可靠。</p>","scraped_at":"2026-09-11T01:04:51.122969+00:00","quality":{"score":1,"chars":192,"images":0,"source":"HKEPC","fallback":"rss-empty"}}
