@@ -318,6 +318,7 @@
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
+    window.RssArticleReading.init(article);
     $("sourceLink").href = article.url || "#";
 
     const plain = stripHtml(article.content || "");

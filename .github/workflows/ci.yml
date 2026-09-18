@@ -1,0 +1,66 @@
+name: Code checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'docs/js/**'
+      - 'docs/css/**'
+      - 'docs/*.html'
+      - 'docs/sw.js'
+      - 'build.py'
+      - 'requirements.txt'
+      - 'pytest.ini'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - '.github/workflows/**'
+permissions:
+  contents: read
+concurrency:
+  group: code-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RSS_REQUIRE_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        # Embedding unit tests mock inference; do not download models or torch.
+        run: |
+          sed '/^sentence-transformers==/d' requirements.txt > /tmp/rss-test-requirements.txt
+          python -m pip install -r /tmp/rss-test-requirements.txt playwright
+          python -m playwright install --with-deps chromium
+      - name: Check frontend cache version
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          python tools/check_sw_cache.py "$BASE_SHA"
+      - name: Run regression and browser tests
+        # Code gates use controlled fixtures. The independently generated news
+        # snapshot is checked below and in the production update workflow.
+        run: python -m pytest tests --ignore=tests/test_data_quality.py -q -rs
+      - name: Check published data snapshot (advisory)
+        id: published_data
+        continue-on-error: true
+        run: python -m pytest tests/test_data_quality.py -q
+      - name: Report published data problems
+        if: always() && steps.published_data.outcome == 'failure'
+        run: |
+          echo "::warning::Published data validation failed. See the advisory step; code checks do not repair or overwrite generated news."
+          echo "### Published data needs attention" >> "$GITHUB_STEP_SUMMARY"
+          echo "Existing generated news failed validation. See the published-data step. Production update.yml still runs these tests as a failing gate after publication." >> "$GITHUB_STEP_SUMMARY"

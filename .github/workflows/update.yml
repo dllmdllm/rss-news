@@ -286,7 +286,6 @@ jobs:
             Write-Host "notify skipped: previous run already failed"
             exit 0
           }
-          Set-Content -Path $statusFile -Value "failure"
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           # Emoji via code point, not a literal: the runner materialises step
           # scripts as BOM-less UTF-8, which PowerShell 5.1 reads as ANSI —
@@ -298,12 +297,15 @@ jobs:
             text    = $text
           } | ConvertTo-Json -Compress
           try {
-            Invoke-RestMethod `
+            $response = Invoke-RestMethod `
               -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
               -Method Post `
               -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
-              -ContentType 'application/json; charset=utf-8' | Out-Null
+              -ContentType 'application/json; charset=utf-8'
+            if (-not $response.ok) { throw 'Telegram rejected delivery' }
+            # Persist only accepted delivery; transient send failures retry next run.
+            Set-Content -Path $statusFile -Value "failure"
             Write-Host "telegram notify sent"
           } catch {
-            Write-Host "telegram notify failed: $_"
+            Write-Host "telegram notify failed; will retry next failure"
           }
