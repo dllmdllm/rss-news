@@ -1,5 +1,5 @@
-# synced 2026-09-21T14:30:04.715380+08:00
-google gemini
+# synced 2026-09-21T14:36:57.958627+08:00
+gemini
 map
 facebook
 ig
