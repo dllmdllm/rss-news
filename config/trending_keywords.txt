@@ -1,4 +1,5 @@
-# synced 2026-09-21T14:16:58.892510+08:00
+# synced 2026-09-21T14:30:04.715380+08:00
+google gemini
 map
 facebook
 ig
@@ -8,4 +9,3 @@ real madrid
 man city
 曼城
 classroom
-阮嘉敏
