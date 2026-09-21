@@ -1,5 +1,7 @@
-# synced 2026-09-21T15:37:00.440621+08:00
+# synced 2026-09-21T15:56:58.765573+08:00
 teams
+蔡天鳳
+presley gerber
 gemini
 map
 facebook
@@ -7,5 +9,3 @@ ig
 曼聯
 西甲
 real madrid
-man city
-曼城
