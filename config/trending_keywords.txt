@@ -1,4 +1,4 @@
-# synced 2026-09-25T10:57:05.575082+08:00
+# synced 2026-09-25T11:16:59.059680+08:00
 中秋
 徐榮
 中秋節 2026
@@ -7,5 +7,5 @@ nations league
 失業
 norway vs denmark
 portugal vs wales
+歐國聯
 荷蘭對德國
-葡萄牙對威爾斯
