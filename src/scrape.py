@@ -1244,10 +1244,16 @@ async def _cloudscraper_fetch(url: str, extra_headers: dict | None = None) -> st
         return None
 
 
+class SourceAccessDenied(Exception):
+    """An explicit upstream access restriction; do not try another client."""
+
+
 async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
     async def _read(resp):
         # Bail on 4xx/5xx so trafilatura does not treat the error body as
         # article content — seen a 404 page leak into a card before.
+        if resp.status in {401, 403, 406, 429, 451}:
+            raise SourceAccessDenied(f"HTTP {resp.status}")
         if resp.status >= 400:
             print(f"[WARN] scrape HTTP {resp.status} for {url[:60]}")
             return ""
@@ -1347,35 +1353,10 @@ async def _scrape_one(
                 html = await _fetch_html(session, article["url"])
                 extra_headers = _extra_headers_for_url(article["url"])
 
-                if not html and _is_mingpao_article(article):
-                    print(f"[MINGPAO] empty/blocked response — trying urllib fallback")
-                    html = await _urllib_fetch(article["url"], extra_headers)
-                    if html and not _is_blocked(html):
-                        print(f"[MINGPAO] urllib succeeded")
-                    else:
-                        print(f"[MINGPAO] trying cloudscraper fallback")
-                        html = await _cloudscraper_fetch(article["url"], extra_headers)
-                        if html and not _is_blocked(html):
-                            print(f"[MINGPAO] cloudscraper succeeded")
-                        elif not html:
-                            # Both fallbacks returned nothing — give up, use RSS
-                            _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
-                            return article
-
                 if html and _is_blocked(html):
-                    print(f"[BLOCK] {article['source']} — trying urllib fallback")
-                    html = await _urllib_fetch(article["url"], extra_headers)
-                    if html and not _is_blocked(html):
-                        print(f"[UNBLOCK] {article['source']} — urllib succeeded")
-                    else:
-                        print(f"[BLOCK] {article['source']} — trying cloudscraper fallback")
-                        html = await _cloudscraper_fetch(article["url"], extra_headers)
-                        if html and not _is_blocked(html):
-                            print(f"[UNBLOCK] {article['source']} — cloudscraper succeeded")
-                        else:
-                            print(f"[BLOCK] {article['source']} — falling back to RSS content")
-                            _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
-                            return article
+                    article["scrape_error"] = "access blocked"
+                    _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
+                    return article
 
                 loop = asyncio.get_running_loop()
                 # All synchronous HTML work — regex rewrites, BeautifulSoup
@@ -1421,6 +1402,10 @@ async def _scrape_one(
 
                 return article  # success, no retry needed
 
+            except SourceAccessDenied as exc:
+                article["scrape_error"] = str(exc)
+                _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
+                return article
             except Exception as exc:
                 if attempt == 1:
                     print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")

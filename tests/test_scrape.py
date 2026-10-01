@@ -773,3 +773,49 @@ def test_build_yahoo_content_returns_none_when_too_short():
 def test_is_yahoo_url_matches_hk_news_yahoo():
     assert scrape._is_yahoo_url("https://hk.news.yahoo.com/a-123456.html") is True
     assert scrape._is_yahoo_url("https://www.hk01.com/a/1") is False
+
+
+def test_mingpao_denial_preserves_rss_without_bypass(monkeypatch):
+    async def denied(*args):
+        raise scrape.SourceAccessDenied('HTTP 403')
+    async def forbidden(*args):
+        raise AssertionError('must not use alternate client after access denial')
+    monkeypatch.setattr(scrape, '_fetch_html', denied)
+    monkeypatch.setattr(scrape, '_urllib_fetch', forbidden)
+    monkeypatch.setattr(scrape, '_cloudscraper_fetch', forbidden)
+    article = _article()
+    article.update(source='明報 本地', url='https://news.mingpao.com/ins/test')
+    result = asyncio.run(scrape._scrape_one(None, article, asyncio.Semaphore(1)))
+    assert result['scrape_error'] == 'HTTP 403'
+    assert 'RSS fallback text' in result['content']
+    assert result['content_quality']['fallback'] == 'rss-blocked'
+
+
+def test_block_page_preserves_rss_without_bypass(monkeypatch):
+    async def blocked(*args): return '<html>challenge</html>'
+    monkeypatch.setattr(scrape, '_fetch_html', blocked)
+    monkeypatch.setattr(scrape, '_is_blocked', lambda html: True)
+    result = asyncio.run(scrape._scrape_one(None, _article(), asyncio.Semaphore(1)))
+    assert result['scrape_error'] == 'access blocked'
+    assert result['content_quality']['fallback'] == 'rss-blocked'
+
+
+def test_http_denial_statuses_stop_after_one_request():
+    for status in [401, 403, 406, 429, 451]:
+        calls = []
+        class Response:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+        response = Response()
+        response.status = status
+        class Session:
+            def get(self, *args, **kwargs):
+                calls.append(1)
+                return response
+        try:
+            asyncio.run(scrape._fetch_html(Session(), 'https://example.com/article'))
+        except scrape.SourceAccessDenied as exc:
+            assert str(exc) == f'HTTP {status}'
+        else:
+            raise AssertionError('denial must be explicit')
+        assert calls == [1]

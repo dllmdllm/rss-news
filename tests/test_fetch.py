@@ -385,3 +385,89 @@ def test_parse_yahoo_article_requires_a_date():
     cutoff = datetime(2026, 7, 24, 0, 0, tzinfo=timezone.utc)
 
     assert _parse_yahoo_article(html, "https://hk.news.yahoo.com/a-1.html", cutoff, _YAHOO_FEED) is None
+
+
+def test_recovered_feeds_use_identified_rss_client():
+    from src.feeds import RSS_FEEDS
+    targets = {'法庭線', 'The Collective HK', 'HuffPost 生活'}
+    selected = [f for f in RSS_FEEDS if f['name'] in targets]
+    assert len(selected) == 3
+    for feed in selected:
+        assert feed['headers']['User-Agent'].startswith('rss-news/')
+        assert 'application/rss+xml' in feed['headers']['Accept']
+
+
+def test_feed_request_headers_and_timeout_are_used(monkeypatch):
+    import asyncio
+    from src import fetch
+    seen = {}
+    class Response:
+        status = 200
+        headers = {}
+        async def read(self):
+            return b'<rss version="2.0"><channel></channel></rss>'
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+    class Session:
+        def get(self, url, **kwargs):
+            seen.update(kwargs)
+            return Response()
+    info = {'name':'test', 'url':'https://example.com/feed', 'category':'新聞',
+            'headers':{'User-Agent':'rss-news/test'}, 'request_timeout':30}
+    result = asyncio.run(fetch._fetch_one(Session(), info, datetime.now(timezone.utc),
+                                         {info['url']:{'etag':'old'}}))
+    assert seen['headers'] == {'User-Agent':'rss-news/test', 'If-None-Match':'old'}
+    assert seen['timeout'].total == 30
+    assert result == ([], 'empty feed: no entries', False)
+
+
+def test_feed_access_denial_is_reported_without_alternate_client():
+    import asyncio
+    from src import fetch
+    calls = []
+    class Response:
+        status = 403
+        headers = {}
+        async def read(self): return b'Forbidden'
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append(url)
+            return Response()
+    info = {'name':'test', 'url':'https://example.com/feed', 'category':'新聞'}
+    result = asyncio.run(fetch._fetch_one(Session(), info, datetime.now(timezone.utc), {}))
+    assert result == ([], 'HTTP 403', False)
+    assert len(calls) == 1
+
+
+def test_empty_feed_does_not_cache_validator(monkeypatch):
+    import asyncio
+    from src import fetch
+    async def read(*args, **kwargs):
+        return 200, b'<rss version="2.0"><channel></channel></rss>', {'ETag':'empty'}
+    monkeypatch.setattr(fetch, '_read_feed_with_tls_fallback', read)
+    info = {'name':'test', 'url':'https://example.com/feed', 'category':'新聞'}
+    cache = {info['url']:{'etag':'old'}}
+    result = asyncio.run(fetch._fetch_one(None, info, datetime.now(timezone.utc), cache))
+    assert result[1] == 'empty feed: no entries'
+    assert info['url'] not in cache
+
+
+def test_per_feed_timeout_cancels_only_slow_source(monkeypatch):
+    import asyncio
+    from src import fetch
+    cancelled = []
+    async def one(session, info, cutoff, cache):
+        if info['name'] == 'slow':
+            try: await asyncio.Event().wait()
+            finally: cancelled.append(True)
+        return [{'id':'fast'}], None, False
+    monkeypatch.setattr(fetch, '_fetch_one', one)
+    monkeypatch.setattr(fetch, '_PER_FEED_TIMEOUT', 0.01)
+    async def run():
+        return await asyncio.gather(*[fetch._fetch_one_capped(None, {'name':n}, None, {}) for n in ['slow','fast']])
+    slow, fast = asyncio.run(run())
+    assert slow == ([], 'timeout after 0.01s', False)
+    assert fast[0] == [{'id':'fast'}]
+    assert cancelled == [True]

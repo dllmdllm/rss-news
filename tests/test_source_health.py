@@ -125,3 +125,44 @@ def test_check_source_health_persists_and_sends(tmp_path, monkeypatch):
     asyncio.run(SH.check_source_health(_stats(**{"SkyPost": 0}), now=NOW))
     saved = json.loads((tmp_path / "source_health.json").read_text(encoding="utf-8"))
     assert saved["sources"]["SkyPost"]["zero_since"] == NOW.isoformat()
+
+
+@pytest.mark.parametrize('recovery', [False, True])
+@pytest.mark.parametrize('failure', ['status', 'exception'])
+def test_failed_transition_is_retried_next_build(tmp_path, monkeypatch, recovery, failure):
+    import asyncio
+    monkeypatch.setattr(SH, 'STATE_PATH', tmp_path / 'health.json')
+    monkeypatch.setattr(SH, 'TELEGRAM_BOT_TOKEN', 'fake-test-token')
+    initial = {'sources': {'A': {'zero_since': (NOW-timedelta(days=2)).isoformat()}}}
+    if recovery:
+        initial['sources']['A']['alerted_at'] = (NOW-timedelta(days=1)).isoformat()
+    SH._save_state(initial)
+    calls = []
+    async def send(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            if failure == 'exception': raise RuntimeError('mock failure')
+            return 500
+        return 200
+    monkeypatch.setattr(SH, '_send_telegram', send)
+    stats = _stats(A=3 if recovery else 0)
+    asyncio.run(SH.check_source_health(stats, now=NOW))
+    assert SH._load_state() == initial
+    asyncio.run(SH.check_source_health(stats, now=NOW+timedelta(minutes=20)))
+    assert len(calls) == 2
+    saved = SH._load_state()['sources']
+    if recovery: assert 'A' not in saved
+    else: assert saved['A']['alerted_at'] == (NOW+timedelta(minutes=20)).isoformat()
+
+
+def test_cancelled_delivery_keeps_transition_pending(tmp_path, monkeypatch):
+    import asyncio
+    monkeypatch.setattr(SH, 'STATE_PATH', tmp_path / 'health.json')
+    monkeypatch.setattr(SH, 'TELEGRAM_BOT_TOKEN', 'fake-test-token')
+    initial = {'sources': {'A': {'zero_since': (NOW-timedelta(days=2)).isoformat()}}}
+    SH._save_state(initial)
+    async def cancelled(*args): raise asyncio.CancelledError()
+    monkeypatch.setattr(SH, '_send_telegram', cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(SH.check_source_health(_stats(A=0), now=NOW))
+    assert SH._load_state() == initial
