@@ -819,3 +819,24 @@ def test_http_denial_statuses_stop_after_one_request():
         else:
             raise AssertionError('denial must be explicit')
         assert calls == [1]
+
+
+def test_rss_fallback_preserves_media_order_without_duplicate_hero():
+    from bs4 import BeautifulSoup
+    article = _article(thumbnail=None, url='https://example.com/news/article', rss_content='<p>First</p><figure><img data-src="/one.jpg"><figcaption>Caption</figcaption></figure><p>Second</p><img src="/two.jpg">')
+    result = scrape._rss_fallback_content(article, fallback='rss-blocked')
+    soup = BeautifulSoup(result, 'html.parser')
+    assert article['thumbnail'] == 'https://example.com/one.jpg'
+    assert [i['src'] for i in soup.find_all('img')] == ['https://example.com/one.jpg', 'https://example.com/two.jpg']
+    assert result.index('First') < result.index('one.jpg') < result.index('Second') < result.index('two.jpg')
+    assert 'Caption' in soup.get_text()
+    assert article['content_quality']['fallback'] == 'rss-blocked'
+
+
+def test_unsafe_only_rss_yields_readable_minimal_content():
+    article = _article(thumbnail='javascript:bad()', url='javascript:bad()', rss_content='<script>bad()</script><img src="data:image/svg+xml,evil">')
+    result = scrape._rss_fallback_content(article, fallback='rss-blocked', allow_minimal=True)
+    assert 'javascript:' not in result and '<script' not in result and 'data:image' not in result
+    assert '暫時未能' in result
+    assert article['thumbnail'] is None
+    assert article['content_quality']['fallback'] == 'minimal'

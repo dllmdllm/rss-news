@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 import trafilatura
+from src.rss_html import first_rss_image, safe_http_url, sanitize_rss_html
 from src.hk_text import from_simplified
 from bs4 import BeautifulSoup, Comment, NavigableString
 
@@ -1156,13 +1157,12 @@ def _split_fallback_text(text: str) -> list[str]:
     return sentences or [text]
 
 
-def _format_rss_fallback_html(rss: str) -> str:
-    soup = BeautifulSoup(rss or "", "html.parser")
-    text = soup.get_text(" ", strip=True)
-    parts = _split_fallback_text(text)
-    if not parts:
-        return ""
-    return "".join(f"<p>{_html_escape(part)}</p>" for part in parts)
+def _format_rss_fallback_html(rss: str, base_url: str = "") -> str:
+    safe = sanitize_rss_html(rss, base_url)
+    soup = BeautifulSoup(safe, "html.parser")
+    if soup.find(True):
+        return safe if soup.get_text(strip=True) or soup.find("img") else ""
+    return "".join(f"<p>{_html_escape(part)}</p>" for part in _split_fallback_text(soup.get_text(" ", strip=True)))
 
 
 def _rss_fallback_content(
@@ -1171,19 +1171,21 @@ def _rss_fallback_content(
     fallback: str,
     allow_minimal: bool = False,
 ) -> str | None:
-    """Build readable article content from RSS text and thumbnail."""
-    rss = _format_rss_fallback_html(article.get("rss_content") or "")
-    thumb = article.get("thumbnail") or ""
+    """Preserve safe RSS text/media and mark it as partial source content."""
+    rss = _format_rss_fallback_html(article.get("rss_content") or "", article.get("url") or "")
+    thumb = safe_http_url(article.get("thumbnail"), article.get("url") or "") or first_rss_image(rss)
+    article["thumbnail"] = thumb
+    inline_urls = {img.get("src") for img in BeautifulSoup(rss, "html.parser").find_all("img")}
     img_html = (
         f'<img src="{_html_escape(thumb, quote=True)}" '
         'style="max-width:100%;border-radius:6px;margin-bottom:1em">'
-        if thumb else ""
+        if thumb and thumb not in inline_urls else ""
     )
     if not (rss or img_html):
         if not allow_minimal:
             return None
         title = _html_escape(article.get("title") or "未能擷取全文")
-        url = _html_escape(article.get("url") or "#", quote=True)
+        url = _html_escape(safe_http_url(article.get("url")) or "#", quote=True)
         rss = (
             f"<p><strong>{title}</strong></p>"
             "<p>暫時未能從來源擷取全文或 RSS 摘要。</p>"

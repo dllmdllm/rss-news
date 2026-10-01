@@ -174,3 +174,34 @@ def test_translate_english_content_retranslates_when_source_text_changes(monkeyp
     changed = [_article(content="<p>Completely different text now.</p>")]
     asyncio.run(TC.translate_english_content(changed))
     assert call_count["n"] == 2
+
+
+def test_translation_cache_keeps_new_rss_images_without_api_call(monkeypatch):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'fake-key')
+    texts = ['First paragraph.', 'Second paragraph.']
+    cache = {'eng1':{'version':TC.TRANSLATE_VERSION,'source_hash':TC._source_hash(texts),'content':'<p>第一段。</p><p>第二段。</p>'}}
+    monkeypatch.setattr(TC, 'load_cache', lambda: cache)
+    monkeypatch.setattr(TC, 'save_cache', lambda cache: None)
+    async def forbidden(*args, **kwargs): raise AssertionError('no new paid request for cached text')
+    monkeypatch.setattr(TC, 'post_messages', forbidden)
+    article = _article()
+    asyncio.run(TC.translate_english_content([article]))
+    assert '第一段。' in article['content'] and '第二段。' in article['content']
+    assert 'https://example.com/x.jpg' in article['content']
+
+
+def test_nested_legacy_translation_cache_preserves_media_without_request(monkeypatch):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'fake-key')
+    content = '<blockquote><p>Nested paragraph.</p></blockquote><img src="https://example.com/new.jpg"><p>Second.</p>'
+    _, tags = TC.extract_paragraphs(content)
+    cache = {'eng1': {'version': TC.TRANSLATE_VERSION,
+        'source_hash': TC._source_hash([t.get_text(' ', strip=True) for t in tags]),
+        'content': '<blockquote>引文。</blockquote><p>第二段。</p>'}}
+    monkeypatch.setattr(TC, 'load_cache', lambda: cache)
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('matching legacy cache must not make a paid request')
+    monkeypatch.setattr(TC, 'post_messages', forbidden)
+    article = _article(content=content)
+    asyncio.run(TC.translate_english_content([article]))
+    assert '引文。' in article['content'] and '第二段。' in article['content']
+    assert 'https://example.com/new.jpg' in article['content']

@@ -733,10 +733,9 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     if not _images_match(first_url, thumbnail):
         return content, False
     figure_parent = first_img.find_parent("figure")
-    if figure_parent is not None:
+    first_img.decompose()
+    if figure_parent is not None and not figure_parent.get_text(strip=True) and not figure_parent.find(["img", "video", "audio"]):
         figure_parent.decompose()
-    else:
-        first_img.decompose()
     return str(soup), True
 
 

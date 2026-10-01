@@ -100,6 +100,25 @@
     return doc.body.innerHTML;
   }
 
+  function showContentAvailability(article) {
+    const fallback = article.content_quality?.fallback || "";
+    const partial = fallback.startsWith("rss-") || fallback === "minimal" || !article.content;
+    const notice = $("contentNotice");
+    notice.hidden = !partial;
+    if (partial) {
+      if (fallback.startsWith("rss-")) {
+        const short = Number(article.content_quality?.chars || 0) < 150;
+        notice.textContent = short
+          ? "RSS 摘要：未取得全文。以下只係來源 RSS 提供嘅短摘要。"
+          : "RSS 內容：未取得網頁全文，內容可能不完整。";
+        if (!article.thumbnail && !$("content").querySelector("img")) notice.textContent += " 來源 RSS 未提供可用圖片。";
+      } else {
+        notice.textContent = "未取得全文：暫時未有可用正文，請查看原文。";
+      }
+    }
+    document.querySelector('#articleTtsMode option[value="full"]').textContent = partial ? "現有內容" : "全文";
+  }
+
   function stripHtml(html) {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
     return doc.body.textContent.replace(/\s+/g, " ").trim();
@@ -283,7 +302,10 @@
     if (!article) throw new Error("搵唔到呢篇文章");
     if (contentRes && contentRes.ok) {
       const contentData = await contentRes.json();
-      if (contentData && contentData.content) article.content = contentData.content;
+      if (contentData && contentData.content) {
+        article.content = contentData.content;
+        if (contentData.quality) article.content_quality = contentData.quality;
+      }
     }
 
     let panelMap = null;
@@ -318,6 +340,7 @@
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
+    showContentAvailability(article);
     window.RssArticleReading.init(article);
     $("sourceLink").href = article.url || "#";
 
