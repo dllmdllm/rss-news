@@ -122,6 +122,19 @@ async def check_source_health(source_stats: dict, *, now: datetime | None = None
     now = now or datetime.now(timezone.utc)
     state = _load_state()
     new_state, events = evaluate_sources(source_stats, now=now, state=state)
+    # Persist transitions as pending before sending: cancellation/crash during
+    # delivery must not consume the reminder window either.
+    delivered_state = {"sources": {k: dict(v) for k, v in new_state["sources"].items()}}
+    if TELEGRAM_BOT_TOKEN:
+        for event in events:
+            name = event["source"]
+            previous = (state.get("sources") or {}).get(name) or {}
+            if event["kind"] == "recovered":
+                new_state["sources"][name] = dict(previous)
+            elif previous.get("alerted_at"):
+                new_state["sources"][name]["alerted_at"] = previous["alerted_at"]
+            else:
+                new_state["sources"][name].pop("alerted_at", None)
     _save_state(new_state)
 
     if not events:
@@ -134,7 +147,16 @@ async def check_source_health(source_stats: dict, *, now: datetime | None = None
     async with aiohttp.ClientSession() as session:
         for e in events:
             try:
-                await _send_telegram(session, _format(e))
+                status = await _send_telegram(session, _format(e))
+                if not 200 <= status < 300:
+                    raise RuntimeError(f"Telegram returned {status}")
             except Exception as exc:
                 print(f"[source-health] send failed: {exc!r}")
+            else:
+                name = e["source"]
+                if name in delivered_state["sources"]:
+                    new_state["sources"][name] = delivered_state["sources"][name]
+                else:
+                    new_state["sources"].pop(name, None)
+            _save_state(new_state)
     return events

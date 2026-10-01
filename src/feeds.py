@@ -8,6 +8,13 @@ HTTP_HEADERS = {
     )
 }
 
+# Explicit RSS identity for publishers rejecting the legacy browser header.
+# One request only: an access denial remains an error, with no client rotation.
+RSS_CLIENT_HEADERS = {
+    "User-Agent": "rss-news/1.0 (+https://github.com/dllmdllm/rss-news)",
+    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+}
+
 RSS_FEEDS = [
     # 新聞
     {"name": "RTHK 本地",         "url": "https://rthk9.rthk.hk/rthk/news/rss/c_expressnews_clocal.xml",        "category": "新聞"},
@@ -43,7 +50,7 @@ RSS_FEEDS = [
     {"name": "東網 娛樂",          "url": "https://hk.on.cc/hk/bkn/js/{date}/entertainment_dailyList.js",           "category": "娛樂", "fetcher": "oncc_daily", "oncc_section": "entertainment"},
     # 消閒
     {"name": "明報 消閒",          "url": "https://news.mingpao.com/rss/ins/s00024.xml",                           "category": "消閒"},
-    {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒"},
+    {"name": "WeekendHK",         "url": "https://www.weekendhk.com/feed",                                        "category": "消閒", "request_timeout": 30},
     {"name": "GoTrip",            "url": "https://www.gotrip.hk/feed",                                            "category": "消閒"},
     # ❌ SkyPost 要聞 — 2026-07-25 移除，連 fetcher / scraper / test 一併刪走。
     # 晴報轉型做「健康、娛樂、家庭生活資訊頻道」，唔再出港聞：/news/ 同首頁抽到
@@ -65,8 +72,8 @@ RSS_FEEDS = [
     {"name": "9to5Mac",           "url": "https://9to5mac.com/feed/",                                             "category": "科技"},
     {"name": "New MobileLife",    "url": "https://www.newmobilelife.com/feed/",                                   "category": "科技"},
     # 網媒
-    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒"},
-    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒"},
+    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒", "headers": RSS_CLIENT_HEADERS},
+    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒", "headers": RSS_CLIENT_HEADERS},
     {"name": "The Witness",       "url": "https://thewitnesshk.com/feed/",                                        "category": "網媒"},
     # HK01 — no RSS; uses public JSON feed API (web-data.api.hk01.com)
     {"name": "HK01 突發",          "url": "https://web-data.api.hk01.com/v2/feed/category/6",                      "category": "新聞", "fetcher": "hk01"},
@@ -83,9 +90,9 @@ RSS_FEEDS = [
     # entries，唔可以見到 200 就當得。呢種空殼正正係「靜默 0 篇」嘅來源。
     # max_items 收細：us-news 一個 feed 就 50 條，多數係美國內政，冇 cap
     # 會浸過本地新聞。
-    {"name": "HuffPost 新聞",      "url": "https://www.huffpost.com/section/us-news/feed",                        "category": "外媒", "max_items": 15},
-    {"name": "HuffPost 娛樂",      "url": "https://www.huffpost.com/section/entertainment/feed",                  "category": "外媒", "max_items": 15},
-    {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8},
+    {"name": "HuffPost 新聞",      "url": "https://www.huffpost.com/section/us-news/feed",                        "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
+    {"name": "HuffPost 娛樂",      "url": "https://www.huffpost.com/section/entertainment/feed",                  "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
+    {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8, "headers": RSS_CLIENT_HEADERS},
     # 電視台新聞
     # ⚠️ TVB 個 sitemap 30 小時窗口內有 245 篇（2026-07-25 實測）——冇呢個
     # override 就會浸曬新聞版。刻意寫死，唔好跟 MAX_ITEMS_PER_FEED 走。

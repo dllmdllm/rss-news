@@ -459,10 +459,11 @@ async def _read_feed(
     cond_headers: dict,
     *,
     ssl=True,
+    request_timeout=15,
 ) -> tuple[int, bytes, dict]:
     async with session.get(
         url,
-        timeout=aiohttp.ClientTimeout(total=15),
+        timeout=aiohttp.ClientTimeout(total=request_timeout),
         headers=cond_headers or None,
         ssl=ssl,
     ) as resp:
@@ -474,12 +475,13 @@ async def _read_feed_with_tls_fallback(
     session: aiohttp.ClientSession,
     url: str,
     cond_headers: dict,
+    *, request_timeout=15,
 ) -> tuple[int, bytes, dict]:
     try:
-        return await _read_feed(session, url, cond_headers)
+        return await _read_feed(session, url, cond_headers, request_timeout=request_timeout)
     except aiohttp.ClientSSLError as exc:
         print(f"[WARN] feed TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
-        return await _read_feed(session, url, cond_headers, ssl=False)
+        return await _read_feed(session, url, cond_headers, ssl=False, request_timeout=request_timeout)
 
 
 async def _fetch_hk01(
@@ -897,18 +899,29 @@ async def _fetch_one(
     articles = []
     url = feed_info["url"]
     prev = http_cache.get(url) or {}
-    cond_headers = {}
+    cond_headers = dict(feed_info.get("headers") or {})
     if prev.get("etag"):
         cond_headers["If-None-Match"] = prev["etag"]
     if prev.get("last_modified"):
         cond_headers["If-Modified-Since"] = prev["last_modified"]
     try:
-        status, raw, headers = await _read_feed_with_tls_fallback(session, url, cond_headers)
+        status, raw, headers = await _read_feed_with_tls_fallback(
+            session, url, cond_headers, request_timeout=feed_info.get("request_timeout", 15)
+        )
         if status == 304:
             return articles, None, True
         if status >= 400:
             return articles, f"HTTP {status}", False
 
+        feed = feedparser.parse(raw)
+        if getattr(feed, "bozo", False):
+            if not feed.entries:
+                http_cache.pop(url, None)
+                return articles, f"parse: {feed.bozo_exception!r}", False
+            print(f"[WARN] feed {feed_info['name']}: bozo ({feed.bozo_exception!r}) but {len(feed.entries)} entries — proceeding")
+        if not feed.entries:
+            http_cache.pop(url, None)
+            return articles, "empty feed: no entries", False
         # Store new validators for next run
         new_entry = {}
         if headers.get("ETag"):
@@ -919,11 +932,6 @@ async def _fetch_one(
             http_cache[url] = new_entry
         elif url in http_cache:
             http_cache.pop(url, None)
-        feed = feedparser.parse(raw)
-        if getattr(feed, "bozo", False):
-            if not feed.entries:
-                return articles, f"parse: {feed.bozo_exception!r}", False
-            print(f"[WARN] feed {feed_info['name']}: bozo ({feed.bozo_exception!r}) but {len(feed.entries)} entries — proceeding")
         # Per-feed override lets mixed-category feeds (星島 main RSS) keep
         # enough items that category reclassification via `url_category`
         # actually picks up entertainment/leisure items, which tend to sit
