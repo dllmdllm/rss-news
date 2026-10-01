@@ -619,7 +619,17 @@ def _isolate_core(monkeypatch, tmp_path):
     monkeypatch.setattr(build, 'analyse_all', identity)
 
 
-def test_global_cancellation_saves_partial_core(monkeypatch, tmp_path):
+@pytest.fixture
+def windows_read_defaults(monkeypatch):
+    """Keep UTF-8 snapshot tests independent of the host's default locale."""
+    from pathlib import Path
+    original = Path.read_text
+    def read(self, encoding=None, errors=None, **kwargs):
+        return original(self, encoding=encoding or "cp1252", errors=errors, **kwargs)
+    monkeypatch.setattr(Path, "read_text", read)
+
+
+def test_global_cancellation_saves_partial_core(monkeypatch, tmp_path, windows_read_defaults):
     _isolate_core(monkeypatch, tmp_path)
     async def scenario():
         entered = asyncio.Event()
@@ -638,13 +648,13 @@ def test_global_cancellation_saves_partial_core(monkeypatch, tmp_path):
         else:
             raise AssertionError('Cancellation must propagate')
     asyncio.run(scenario())
-    data = json.loads((build.DATA_DIR / 'articles.json').read_text())
+    data = json.loads((build.DATA_DIR / 'articles.json').read_text(encoding="utf-8"))
     assert data['articles'][0]['summary'] == '已完成摘要'
-    assert '完整內文' in (build.CONTENT_DIR / 'partial.json').read_text()
+    assert '完整內文' in (build.CONTENT_DIR / 'partial.json').read_text(encoding="utf-8")
     assert build._core_saved
 
 
-def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
+def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path, windows_read_defaults):
     _isolate_core(monkeypatch, tmp_path)
     async def scrape(articles):
         monkeypatch.setattr(build, 'CORE_BUDGET_SECONDS', 0)
@@ -656,7 +666,7 @@ def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
     asyncio.run(build.main())
     assert build._core_saved
     assert (build.CONTENT_DIR / 'partial.json').exists()
-    status = json.loads((build.DATA_DIR / 'build_status.json').read_text())
+    status = json.loads((build.DATA_DIR / 'build_status.json').read_text(encoding="utf-8"))
     assert status['steps']['analyse']['ok'] is False
 
 
@@ -664,14 +674,14 @@ def test_exhausted_core_budget_skips_analysis_but_saves(monkeypatch, tmp_path):
     '<img src="https://example.com/cover.jpg">',
     '<html><body><figure><img src="https://example.com/cover.jpg"></figure></body></html>',
 ])
-def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch, body):
+def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch, body, windows_read_defaults):
     monkeypatch.setattr(build, 'DATA_DIR', tmp_path / 'data')
     monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'data' / 'content')
     article = _article('image-only', body)
     article['thumbnail'] = 'https://example.com/cover.jpg'
     article['summary'] = '摘要內容'
     build.save_json([article], {})
-    record = json.loads((build.CONTENT_DIR / 'image-only.json').read_text())
+    record = json.loads((build.CONTENT_DIR / 'image-only.json').read_text(encoding="utf-8"))
     assert '摘要內容' in record['content']
     assert '閱讀原文' in record['content']
     assert '<img' not in record['content']

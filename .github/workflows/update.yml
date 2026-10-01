@@ -216,7 +216,7 @@ jobs:
         # failed 73 consecutive runs — 20h frozen site while build.py was
         # producing good data the whole time). A failure here still fails the
         # run and fires the Telegram notify, but the articles already shipped.
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q -rs
 
       - name: Daily heartbeat
         # Silence is ambiguous: "no failure notify" can mean "all green" OR
