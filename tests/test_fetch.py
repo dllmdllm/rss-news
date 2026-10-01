@@ -471,3 +471,28 @@ def test_per_feed_timeout_cancels_only_slow_source(monkeypatch):
     assert slow == ([], 'timeout after 0.01s', False)
     assert fast[0] == [{'id':'fast'}]
     assert cancelled == [True]
+
+
+def test_rss_thumbnail_uses_safe_html_image_and_rejects_unsafe_media():
+    from src.fetch import _rss_thumbnail
+    entry = {'link':'https://example.com/news/article', 'media_thumbnail':[{'url':'javascript:bad()'}], 'content':[{'value':'<img data-original="../photo.jpg" onerror="bad()">'}]}
+    assert _rss_thumbnail(entry) == 'https://example.com/photo.jpg'
+    assert _rss_thumbnail({'summary':'Only a short summary'}) is None
+
+
+def test_rss_media_migration_fetches_once_then_restores_conditionals(monkeypatch):
+    import asyncio
+    from src import fetch
+    from src.rss_html import RSS_HTML_VERSION
+    seen = []
+    async def read(session, url, headers, **kwargs):
+        seen.append(dict(headers))
+        return 200, b'<rss version="2.0"><channel><item><title>News</title><link>https://example.com/a</link><description>Text</description></item></channel></rss>', {'ETag':'new'}
+    monkeypatch.setattr(fetch, '_read_feed_with_tls_fallback', read)
+    info = {'name':'法庭線','url':'https://example.com/feed','category':'網媒','rss_media':True}
+    cache = {info['url']:{'etag':'old'}}
+    for _ in range(2):
+        asyncio.run(fetch._fetch_one(None, info, datetime(2000,1,1,tzinfo=timezone.utc), cache))
+    assert 'If-None-Match' not in seen[0]
+    assert seen[1]['If-None-Match'] == 'new'
+    assert cache[info['url']]['rss_html_version'] == RSS_HTML_VERSION

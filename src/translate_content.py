@@ -209,7 +209,7 @@ async def translate_english_content(articles: list) -> None:
     for a in articles:
         if a.get("source") not in ENGLISH_SOURCES or not a.get("content"):
             continue
-        _, tags = extract_paragraphs(a["content"])
+        soup, tags = extract_paragraphs(a["content"])
         if not tags:
             continue
         texts = [t.get_text(" ", strip=True) for t in tags]
@@ -219,8 +219,23 @@ async def translate_english_content(articles: list) -> None:
             and cached.get("version") == TRANSLATE_VERSION
             and cached.get("source_hash") == _source_hash(texts)
         ):
-            a["content"] = cached["content"]
-            continue
+            # Reuse translated text, not stale HTML that may predate repaired
+            # RSS images. Keep the current sanitized media and document order.
+            _, translated_tags = extract_paragraphs(cached["content"])
+            # Legacy translation clears selected parent tags, so nested selected
+            # children disappear. Replay only the surviving outermost blocks.
+            def outermost(selected):
+                selected_ids = {id(tag) for tag in selected}
+                return [tag for tag in selected if not any(
+                    id(parent) in selected_ids for parent in tag.parents
+                )]
+            tags = outermost(tags)
+            translated_tags = outermost(translated_tags)
+            if len(translated_tags) == len(tags):
+                for tag, translated_tag in zip(tags, translated_tags):
+                    _replace_tag_text(tag, translated_tag.get_text(" ", strip=True))
+                a["content"] = str(soup)
+                continue
         pending.append(a)
 
     if not pending:

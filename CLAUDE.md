@@ -804,3 +804,12 @@ Article HTTP 401/403/406/429/451 and challenge pages stop scraping, record
 `scrape_error`, and retain RSS/minimal content. Do not switch clients to bypass
 access restrictions. Source-health messages mark delivery only after a 2xx;
 failed dead/recovery transitions remain pending for the next build.
+
+RSS fallback HTML passes through `src/rss_html.py`: allowlisted markup only,
+validated public HTTP(S) media/links, lazy image normalization, and duplicate
+image removal. Never retain scripts, event handlers or publisher embeds.
+Only the three repaired RSS-media feeds invalidate old conditional validators
+once per `RSS_HTML_VERSION`; article history is retained. Translation cache
+replays text into current media markup, including legacy nested blocks.
+Article pages label RSS/minimal fallback as partial content and disclose when
+RSS supplies no usable image. Missing publisher media must not be invented.

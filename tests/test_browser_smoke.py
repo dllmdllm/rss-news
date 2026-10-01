@@ -132,3 +132,29 @@ def test_article_tts_start_pause_stop_and_error(browser, news_data):
         assert page.locator('#articleTtsStatus').inner_text() == '朗讀失敗，請再試'
         assert page.locator('#articleTtsPause').is_disabled()
         context.close()
+
+
+@pytest.mark.parametrize('has_image', [True, False])
+def test_partial_rss_content_notice(browser, news_data, has_image):
+    with _static_server() as base_url:
+        context = browser.new_context(viewport={'width': 390, 'height': 900}, service_workers='block')
+        page = context.new_page()
+        _route_data(page, news_data)
+        content = '<p>來源提供的短摘要。</p>'
+        if has_image:
+            content += '<figure><img src="/rss-test.svg"><figcaption>來源圖片說明</figcaption></figure>'
+        page.route('**/data/content/**', lambda route: route.fulfill(json={
+            'version': 1, 'content': content, 'quality': {'fallback': 'rss-blocked'}}))
+        page.route('**/rss-test.svg', lambda route: route.fulfill(content_type='image/svg+xml',
+            body='<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="blue"/></svg>'))
+        page.goto(base_url + '/article.html?id=a0')
+        notice = page.locator('#contentNotice')
+        notice.wait_for(state='visible')
+        assert '未取得全文' in notice.inner_text()
+        assert ('未提供可用圖片' in notice.inner_text()) == (not has_image)
+        assert page.locator('#articleTtsMode option[value="full"]').inner_text() == '現有內容'
+        if has_image:
+            page.wait_for_function('document.querySelector("#content img").naturalWidth > 0')
+            assert page.locator('#content figcaption').inner_text() == '來源圖片說明'
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        context.close()

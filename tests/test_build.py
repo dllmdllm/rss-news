@@ -234,7 +234,7 @@ def test_save_json_removes_duplicate_leading_thumbnail(tmp_path, monkeypatch):
     assert saved["quality"]["images"] == 0
 
 
-def test_save_json_removes_duplicate_thumbnail_figure_wrapper(tmp_path, monkeypatch):
+def test_save_json_preserves_caption_after_thumbnail_deduplication(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     content_dir = data_dir / "content"
 
@@ -254,8 +254,7 @@ def test_save_json_removes_duplicate_thumbnail_figure_wrapper(tmp_path, monkeypa
 
     saved = json.loads((content_dir / "dupfig.json").read_text(encoding="utf-8"))
     assert "<img" not in saved["content"]
-    assert "<figure" not in saved["content"]
-    assert "caption text" not in saved["content"]
+    assert "caption text" in saved["content"]
 
 
 def test_save_json_dedupes_thumbnail_with_different_size_variant(tmp_path, monkeypatch):

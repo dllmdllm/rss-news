@@ -600,6 +600,7 @@
         -webkit-line-clamp: 5;
       }
     }
+    .content-notice { padding: 12px 16px; margin: 16px 0; border-left: 3px solid var(--accent-2); background: var(--panel-2); color: var(--muted); }
     .reading-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
     .reading-controls label { font-size: 1rem; }
     .reading-controls select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
@@ -667,6 +668,7 @@
           <h2>關鍵句</h2>
           <ul class="fact-list" id="facts"></ul>
         </section>
+        <p class="content-notice" id="contentNotice" role="note" hidden></p>
         <section class="reading-controls" aria-label="朗讀及重點標示">
           <label>朗讀範圍 <select id="articleTtsMode"><option value="full">全文</option><option value="summary">摘要</option></select></label>
           <label>速度 <select id="articleTtsRate"><option value="0.85">0.85×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></label>
@@ -700,6 +702,6 @@
   </div>
   <script src="js/common.js?v=20260714-polish"></script>
   <script src="js/article-reading.js?v=20260905-reading"></script>
-  <script src="js/article.js?v=20260905-reading"></script>
+  <script src="js/article.js?v=20261001-rss-media"></script>
 </body>
 </html>

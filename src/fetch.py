@@ -12,6 +12,7 @@ from urllib.parse import unquote, urljoin
 
 import aiohttp
 import feedparser
+from src.rss_html import RSS_HTML_VERSION, first_rss_image, safe_http_url
 from src.hk_text import from_simplified, to_hk
 from bs4 import BeautifulSoup
 
@@ -178,19 +179,22 @@ def _map_category_for_url(article_url: str, feed_info: dict) -> str:
     return feed_info["category"]
 
 
-def _rss_thumbnail(entry) -> str | None:
-    """Extract image URL from RSS media tags."""
-    if getattr(entry, "media_thumbnail", None):
-        return entry.media_thumbnail[0].get("url") or None
-    if getattr(entry, "media_content", None):
-        for m in entry.media_content:
-            url = m.get("url", "")
-            if url and any(ext in url.lower() for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")):
-                return url
-    if getattr(entry, "enclosures", None):
-        for enc in entry.enclosures:
-            if enc.get("type", "").startswith("image/"):
-                return enc.get("href") or enc.get("url") or None
+def _rss_thumbnail(entry, base_url: str = "") -> str | None:
+    """Use validated RSS media fields, then images supplied in RSS HTML."""
+    base_url = base_url or entry.get("link", "")
+    candidates = [m.get("url") for m in (entry.get("media_thumbnail") or [])]
+    candidates += [m.get("url") for m in (entry.get("media_content") or [])
+                   if m.get("type", "").startswith("image/") or any(ext in str(m.get("url", "")).lower() for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"))]
+    candidates += [m.get("href") or m.get("url") for m in (entry.get("enclosures") or []) if m.get("type", "").startswith("image/")]
+    for candidate in candidates:
+        url = safe_http_url(candidate, base_url)
+        if url:
+            return url
+    fragments = [c.get("value") for c in (entry.get("content") or [])] + [entry.get("summary")]
+    for fragment in fragments:
+        image = first_rss_image(fragment or "", base_url)
+        if image:
+            return image
     return None
 
 
@@ -900,6 +904,9 @@ async def _fetch_one(
     url = feed_info["url"]
     prev = http_cache.get(url) or {}
     cond_headers = dict(feed_info.get("headers") or {})
+    # One migration fetch for feeds whose old sidecars flattened RSS media.
+    if feed_info.get("rss_media") and prev.get("rss_html_version") != RSS_HTML_VERSION:
+        prev = {}
     if prev.get("etag"):
         cond_headers["If-None-Match"] = prev["etag"]
     if prev.get("last_modified"):
@@ -923,7 +930,7 @@ async def _fetch_one(
             http_cache.pop(url, None)
             return articles, "empty feed: no entries", False
         # Store new validators for next run
-        new_entry = {}
+        new_entry = {"rss_html_version": RSS_HTML_VERSION} if feed_info.get("rss_media") else {}
         if headers.get("ETag"):
             new_entry["etag"] = headers["ETag"]
         if headers.get("Last-Modified"):
@@ -948,7 +955,7 @@ async def _fetch_one(
                 continue  # skip articles older than ARTICLE_MAX_AGE_HOURS
 
             # RSS image
-            thumbnail = _rss_thumbnail(entry)
+            thumbnail = _rss_thumbnail(entry, article_url)
 
             # RSS full content (fallback for blocked sites)
             rss_content = None

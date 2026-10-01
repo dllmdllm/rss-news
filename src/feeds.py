@@ -72,8 +72,8 @@ RSS_FEEDS = [
     {"name": "9to5Mac",           "url": "https://9to5mac.com/feed/",                                             "category": "科技"},
     {"name": "New MobileLife",    "url": "https://www.newmobilelife.com/feed/",                                   "category": "科技"},
     # 網媒
-    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒", "headers": RSS_CLIENT_HEADERS},
-    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒", "headers": RSS_CLIENT_HEADERS},
+    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True},
+    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True},
     {"name": "The Witness",       "url": "https://thewitnesshk.com/feed/",                                        "category": "網媒"},
     # HK01 — no RSS; uses public JSON feed API (web-data.api.hk01.com)
     {"name": "HK01 突發",          "url": "https://web-data.api.hk01.com/v2/feed/category/6",                      "category": "新聞", "fetcher": "hk01"},
@@ -92,7 +92,7 @@ RSS_FEEDS = [
     # 會浸過本地新聞。
     {"name": "HuffPost 新聞",      "url": "https://www.huffpost.com/section/us-news/feed",                        "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
     {"name": "HuffPost 娛樂",      "url": "https://www.huffpost.com/section/entertainment/feed",                  "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
-    {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8, "headers": RSS_CLIENT_HEADERS},
+    {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8, "headers": RSS_CLIENT_HEADERS, "rss_media": True},
     # 電視台新聞
     # ⚠️ TVB 個 sitemap 30 小時窗口內有 245 篇（2026-07-25 實測）——冇呢個
     # override 就會浸曬新聞版。刻意寫死，唔好跟 MAX_ITEMS_PER_FEED 走。
