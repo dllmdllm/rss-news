@@ -1,4 +1,5 @@
-# synced 2026-10-02T09:04:23.621973+08:00
+# synced 2026-10-02T09:17:00.490836+08:00
+facebook
 weather
 所得
 生肖
@@ -8,4 +9,3 @@ weather
 denmark vs portugal
 丹麥對葡萄牙
 東北季風
-weather tomorrow
