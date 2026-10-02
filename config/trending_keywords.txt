@@ -1,4 +1,5 @@
-# synced 2026-10-03T06:16:59.396048+08:00
+# synced 2026-10-03T06:36:59.892872+08:00
+weather
 香港天文台
 france vs italy
 超級市場
@@ -8,4 +9,3 @@ france vs italy
 蔡天鳳
 外傭最低工資
 黎姿
-hko
