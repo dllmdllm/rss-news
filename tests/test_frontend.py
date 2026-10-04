@@ -580,7 +580,7 @@ def test_index_summary_points_normalise_bullets():
     fn = _extract_js_function(source, "summaryPoints")
     js = fn + """
     const cases = [
-      ["・one・two", ["one", "two"]],
+      ["・one ・two", ["one", "two"]],
       ["one\\ntwo", ["one", "two"]],
       [" ・one\\n・two ", ["one", "two"]],
     ];
@@ -1470,3 +1470,21 @@ def test_every_feed_category_is_wired_into_the_whole_frontend():
     at = index_js.index("function categoryClass")
     for cls in re.findall(r'"[^"]+"\s*:\s*"(cat-[a-z]+)"', index_js[at:index_js.index("}", at)]):
         assert f".{cls} {{" in index_html, f"index.html 冇 .{cls} 嘅 --cat-color"
+
+
+@pytest.mark.parametrize('filename', ['index.js', 'article.js'])
+def test_summary_keeps_interpunct_names_and_fifth_point(filename):
+    node = _require_node()
+    source = (ROOT / 'docs/js' / filename).read_text(encoding='utf-8')
+    common = (ROOT / 'docs/js/common.js').read_text(encoding='utf-8')
+    funcs = _extract_js_function(common, 'summaryIsTitleFallback') + '\n' + _extract_js_function(source, 'summaryPoints')
+    script = funcs + r'''
+    const expected = ['第一點', '參議員湯姆・科頓擱置了法案', '第三點', '第四點', '真正第五點'];
+    for (const separator of ['\n', '\\n', ' ']) {
+      const article = {title: '標題', summary: expected.map(x => '・' + x).join(separator) + separator + '・第六點'};
+      if (JSON.stringify(summaryPoints(article)) !== JSON.stringify(expected)) throw new Error(JSON.stringify(summaryPoints(article)));
+    }
+    if (summaryPoints({summary: '湯姆・科頓表態。下一句；最後一句'}).length !== 3) throw new Error('sentences');
+    if (summaryPoints({summary: ''}).length) throw new Error('absent');
+    '''
+    subprocess.run([node, '-e', script], check=True)

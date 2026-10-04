@@ -739,7 +739,34 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     return str(soup), True
 
 
+def _retain_verified_content(articles: list, old_articles: list) -> None:
+    """Select same-URL verified bodies before translation/analysis and saving."""
+    old_by_id = {a["id"]: a for a in old_articles}
+    for article in articles:
+        fallback = (article.get("content_quality") or {}).get("fallback", "")
+        if article.get("content") and not (fallback.startswith("rss-") or fallback == "minimal"):
+            continue
+        previous = old_by_id.get(article["id"])
+        if not previous or not article.get("url") or previous.get("url") != article["url"]:
+            continue
+        record = _load_old_content_record(article["id"])
+        quality = (record or {}).get("quality") or {}
+        # Length alone cannot prove full text. Legacy unknown/reused records
+        # and RSS bodies must never acquire verified-full provenance.
+        if not record or not record.get("content") or quality.get("fallback") != "none":
+            continue
+        article["content"] = record["content"]
+        article["content_quality"] = dict(quality)
+        article["thumbnail"] = previous.get("thumbnail")
+        article["content_retention"] = {
+            "scraped_at": record.get("scraped_at"),
+            "latest_fallback": fallback or "unavailable",
+            "latest_error": article.get("scrape_error"),
+        }
+
+
 def _write_content_sidecars(articles: list) -> dict[str, int]:
+    _retain_verified_content(articles, _load_old_articles())
     written = 0
     unchanged = 0
     reused = 0
@@ -747,7 +774,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
     deduped = 0
     for a in articles:
         content = a.get("content")
-        old_record = None
+        old_record = _load_old_content_record(a["id"])
         # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
         # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
         # remove_duplicate_leading_thumbnail 重算 quality 就會覆蓋走原標籤，
@@ -810,7 +837,10 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
             {
                 "version": CONTENT_SCHEMA_VERSION,
                 "content": content,
-                "scraped_at": datetime.now(timezone.utc).isoformat(),
+                "scraped_at": ((a.get("content_retention") or {}).get("scraped_at")
+                               if a.get("content_retention") else
+                               old_record.get("scraped_at") if old_record and old_record.get("content") == content
+                               else datetime.now(timezone.utc).isoformat()),
                 "quality": quality,
             },
             ensure_ascii=False,
@@ -1117,6 +1147,8 @@ async def main():
             _tlog("scrape outer timeout — using partial")
             mark_step("scrape", ok=False, error="timeout", seconds=time.monotonic() - t)
         _tlog(f"scrape done {time.monotonic()-t:.1f}s")
+
+        _retain_verified_content(articles, old_articles)
 
         # --- translate English source bodies (hard cap 90s) ---
         # Must run before analyse: analyse's key_sentences are quoted verbatim
