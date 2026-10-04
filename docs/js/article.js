@@ -16,11 +16,11 @@
     // 唔好用 "-" 做分隔符：會炒散「5-4 裁決」「e-sports」呢類內容。
     const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
-      .split(/\n|・|•|●/)
-      .map((line) => line.replace(/\s+/g, " ").trim())
+      .split(/\n|\s+(?=[・•●])/)
+      .map((line) => line.replace(/^\s*[・•●]\s*/, "").replace(/\s+/g, " ").trim())
       .filter(Boolean);
     if (points.length <= 1) {
-      points = raw.split(/。|；|;/).map((line) => line.trim()).filter(Boolean);
+      points = (points[0] || "").split(/。|；|;/).map((line) => line.trim()).filter(Boolean);
     }
     return points.slice(0, limit);
   }
@@ -104,7 +104,13 @@
     const fallback = article.content_quality?.fallback || "";
     const partial = fallback.startsWith("rss-") || fallback === "minimal" || !article.content;
     const notice = $("contentNotice");
-    notice.hidden = !partial;
+    const retained = article.content_retention;
+    notice.hidden = !partial && !retained;
+    if (retained) {
+      const when = retained.scraped_at ? `（擷取時間：${retained.scraped_at}）` : "（擷取時間未有記錄）";
+      const status = retained.latest_fallback === "rss-blocked" ? "來源限制存取" : "最新嘗試未取得全文";
+      notice.textContent = `保留上次成功擷取嘅全文${when}。${status}，現時顯示已儲存內容。`;
+    }
     if (partial) {
       if (fallback.startsWith("rss-")) {
         const short = Number(article.content_quality?.chars || 0) < 150;

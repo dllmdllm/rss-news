@@ -158,3 +158,36 @@ def test_partial_rss_content_notice(browser, news_data, has_image):
             assert page.locator('#content figcaption').inner_text() == '來源圖片說明'
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
         context.close()
+
+
+@pytest.mark.parametrize('width', [390, 1280])
+def test_retained_full_content_and_interpunct_summary(browser, news_data, width):
+    points = ['第一點', '參議員湯姆・科頓擱置了法案', '第三點', '第四點', '真正第五點']
+    news_data['articles'][0]['summary'] = '\n'.join('・' + p for p in points)
+    news_data['articles'][0]['content_retention'] = {
+        'scraped_at': '2026-10-01T12:00:00+00:00', 'latest_fallback': 'rss-blocked', 'latest_error': 'HTTP 403'}
+    with _static_server() as base_url:
+        context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
+        page = context.new_page()
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        _route_data(page, news_data)
+        page.route('**/data/content/**', lambda route: route.fulfill(json={
+            'version': 1, 'quality': {'fallback': 'none'},
+            'content': '<p>Last verified complete body.</p><img src="/retained.svg">'}))
+        page.route('**/retained.svg', lambda route: route.fulfill(content_type='image/svg+xml',
+            body='<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="blue"/></svg>'))
+        page.goto(base_url + '/index.html')
+        page.locator('#feed a.card').first.wait_for()
+        page.get_by_text('參議員湯姆・科頓擱置了法案', exact=True).first.wait_for()
+        assert page.get_by_text('真正第五點', exact=True).count() > 0
+        page.goto(base_url + '/article.html?id=a0')
+        page.locator('#contentNotice').wait_for(state='visible')
+        assert '2026-10-01T12:00:00+00:00' in page.locator('#contentNotice').inner_text()
+        assert '來源限制存取' in page.locator('#contentNotice').inner_text()
+        assert 'Last verified complete body.' in page.locator('#content').inner_text()
+        assert page.locator('#summaryBox li').all_text_contents() == points
+        page.wait_for_function('document.querySelector("#content img").naturalWidth > 0')
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        assert not errors
+        context.close()

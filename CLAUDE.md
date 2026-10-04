@@ -813,3 +813,19 @@ once per `RSS_HTML_VERSION`; article history is retained. Translation cache
 replays text into current media markup, including legacy nested blocks.
 Article pages label RSS/minimal fallback as partial content and disclose when
 RSS supplies no usable image. Missing publisher media must not be invented.
+
+### Verified article retention and summary markers (2026-10-04)
+
+Before translation/analysis, same-ID/same-URL articles retain a stored body and
+thumbnail only when the sidecar explicitly has `quality.fallback = "none"` and
+the current scrape returns RSS/minimal content or no body. Unknown legacy quality
+is not evidence of full text. `content_retention` records the original retrieval
+time and latest fallback/error; the reader discloses stored content and current
+access failure. Sidecar rewrites/deduplication must not advance that retrieval
+time. Successful new full-text scrapes still replace old content.
+
+Summary markers are removed at item starts. Newlines (including literal `\n`)
+and whitespace before bullet markers separate items; interpuncts within names
+(e.g. 湯姆・科頓) remain intact in cards, article summaries, digests and TTS.
+A compact string without any whitespace is ambiguous and stays together rather
+than treating every name interpunct as a new item.

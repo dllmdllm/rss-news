@@ -685,3 +685,93 @@ def test_image_only_body_stays_readable_after_hero_dedup(tmp_path, monkeypatch, 
     assert '閱讀原文' in record['content']
     assert '<img' not in record['content']
     assert record['quality']['fallback'] == 'minimal'
+
+
+@pytest.mark.parametrize('fallback,body', [('rss-blocked', '<p>RSS</p>'), ('rss-empty', '<p>RSS</p>'), ('minimal', '<p>link</p>'), ('', None)])
+def test_verified_body_survives_degraded_fetch(tmp_path, monkeypatch, fallback, body):
+    monkeypatch.setattr(build, 'DATA_DIR', tmp_path)
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'content')
+    build.CONTENT_DIR.mkdir()
+    old = _article('retained')
+    old['thumbnail'] = 'https://example.com/hero.jpg'
+    full = '<p>Verified complete body.</p><img src="https://example.com/inline.jpg">'
+    quality = build.content_quality(full, source=old['source'], fallback='none')
+    stamp = '2026-10-01T12:00:00+00:00'
+    path = build.CONTENT_DIR / 'retained.json'
+    path.write_text(json.dumps({'version': build.CONTENT_SCHEMA_VERSION, 'content': full, 'quality': quality, 'scraped_at': stamp}))
+    (tmp_path / 'articles.json').write_text(json.dumps({'articles': [old]}))
+    current = _article('retained', body)
+    current.update(thumbnail='https://example.com/degraded.jpg', scrape_error='HTTP 403', content_quality={'fallback': fallback})
+    build._retain_verified_content([current], [old])
+    assert current['content'] == full  # selected before analysis
+    assert current['thumbnail'] == old['thumbnail']
+    assert current['content_quality'] == quality
+    assert current['content_retention']['scraped_at'] == stamp
+    assert current['content_retention']['latest_error'] == 'HTTP 403'
+    build._write_content_sidecars([current])
+    assert json.loads(path.read_text())['scraped_at'] == stamp
+    assert json.loads(path.read_text())['content'] == full
+
+
+@pytest.mark.parametrize('old_fallback,new_fallback,same_url,expected', [
+    ('none', 'none', True, '<p>new full</p>'),
+    ('rss-blocked', 'rss-blocked', True, '<p>new full</p>'),
+    ('unknown', 'rss-blocked', True, '<p>new full</p>'),
+    (None, 'rss-blocked', True, '<p>new full</p>'),
+    ('none', 'rss-blocked', False, '<p>new full</p>'),
+])
+def test_retention_never_promotes_unverified_or_wrong_url(tmp_path, monkeypatch, old_fallback, new_fallback, same_url, expected):
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path)
+    old = _article('same')
+    record = {'content': '<p>old body</p>'}
+    if old_fallback:
+        record['quality'] = {'fallback': old_fallback}
+    (tmp_path / 'same.json').write_text(json.dumps(record))
+    current = _article('same', '<p>new full</p>')
+    current['content_quality'] = {'fallback': new_fallback}
+    if not same_url:
+        current['url'] += '/different'
+    build._retain_verified_content([current], [old])
+    assert current['content'] == expected
+    assert 'content_retention' not in current
+
+
+def test_retained_thumbnail_dedup_keeps_original_retrieval_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, 'DATA_DIR', tmp_path)
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'content')
+    build.CONTENT_DIR.mkdir()
+    old = _article('hero')
+    old['thumbnail'] = 'https://example.com/hero.jpg'
+    full = '<img src="https://example.com/hero.jpg"><p>Full body</p><img src="https://example.com/inline.jpg">'
+    record = {'version': build.CONTENT_SCHEMA_VERSION, 'content': full,
+              'quality': build.content_quality(full, source=old['source'], fallback='none'),
+              'scraped_at': '2026-10-01T12:00:00+00:00'}
+    path = build.CONTENT_DIR / 'hero.json'
+    path.write_text(json.dumps(record))
+    (tmp_path / 'articles.json').write_text(json.dumps({'articles': [old]}))
+    current = _article('hero', '<p>RSS summary</p>')
+    current['content_quality'] = {'fallback': 'rss-blocked'}
+    build._write_content_sidecars([current])
+    saved = json.loads(path.read_text())
+    assert saved['scraped_at'] == record['scraped_at']
+    assert 'inline.jpg' in saved['content'] and 'hero.jpg' not in saved['content']
+    assert current['thumbnail'] == old['thumbnail']
+    before = path.read_bytes()
+    build._write_content_sidecars([current])
+    assert path.read_bytes() == before
+
+
+def test_unchanged_verified_carryover_keeps_sidecar_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, 'DATA_DIR', tmp_path)
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path)
+    article = _article('cached', '<p>full body</p>')
+    article['content_quality'] = build.content_quality(article['content'], source=article['source'], fallback='none')
+    record = {'version': build.CONTENT_SCHEMA_VERSION, 'content': article['content'],
+              'quality': article['content_quality'], 'scraped_at': '2026-10-01T00:00:00+00:00'}
+    path = tmp_path / 'cached.json'
+    path.write_text(json.dumps(record))
+    before = path.read_bytes()
+    result = build._write_content_sidecars([article])
+    assert result['unchanged'] == 1
+    assert path.read_bytes() == before
+    assert 'content_retention' not in article

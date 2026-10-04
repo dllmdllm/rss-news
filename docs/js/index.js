@@ -83,7 +83,7 @@
 
   function summaryText(article, limit = 120) {
     if (summaryIsTitleFallback(article)) return "";
-    const raw = String(article.summary || "").replace(/・/g, " ").replace(/\s+/g, " ").trim();
+    const raw = String(article.summary || "").replace(/\\n/g, "\n").replace(/(?:^|\n)\s*[・•●]\s*/g, " ").replace(/\s+/g, " ").trim();
     return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
   }
 
@@ -93,11 +93,11 @@
     // 唔好用 "-" 做分隔符：會炒散「5-4 裁決」「e-sports」呢類內容。
     const raw = String(article.summary || "").replace(/\\n/g, "\n").trim();
     let points = raw
-      .split(/\n|・|•|●/)
-      .map((line) => line.replace(/\s+/g, " ").trim())
+      .split(/\n|\s+(?=[・•●])/)
+      .map((line) => line.replace(/^\s*[・•●]\s*/, "").replace(/\s+/g, " ").trim())
       .filter(Boolean);
     if (points.length <= 1) {
-      const text = raw.replace(/\s+/g, " ").trim();
+      const text = points[0] || "";
       points = text
         ? text.split(/。|；|;/).map((line) => line.trim()).filter(Boolean)
         : [];

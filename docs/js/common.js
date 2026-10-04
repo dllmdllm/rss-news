@@ -149,9 +149,8 @@ function summaryPoints(summary) {
   const text = String(summary || "").replace(/\\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!text) return [];
   return text
-    .replace(/\s*・\s*/g, "\n")
-    .split(/\n+/)
-    .map(line => line.replace(/^・+/, "").trim())
+    .split(/\n+|\s+(?=[・•●])/)
+    .map(line => line.replace(/^\s*[・•●]\s*/, "").trim())
     .filter(Boolean);
 }
 

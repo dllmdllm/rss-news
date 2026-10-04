@@ -96,7 +96,7 @@
     play.addEventListener('click', () => {
       if (active) { stop(); return; }
       const text = mode.value === 'summary'
-        ? String(article.summary || '').replace(/[・•●]/g, '').replace(/\\n/g, '\n')
+        ? String(article.summary || '').replace(/\\n/g, '\n').replace(/(?:^|\n)\s*[・•●]\s*/g, '')
         : root.innerText;
       if (!text.trim()) { status.textContent = '暫時未有可朗讀內容'; return; }
       // Short chunks avoid long-utterance stalls on mobile. Start synchronously
