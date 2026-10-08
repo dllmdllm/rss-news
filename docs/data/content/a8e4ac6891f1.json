@@ -1,0 +1,1 @@
+{"version":1,"content":"<p>【新技術 ㊙️】在現今 Linux 系統中，為了提升可用記憶體容量，多數發行版均仰賴 ZRAM 或 zswap 等壓縮技術。</p><p>然而兩者本質上仍建構於「交換層」（Swap）邏輯之上，記憶體壓縮雖然帶來更大容量，卻同時伴隨嚴重的分頁錯誤（Page Fault）開銷。</p>","scraped_at":"2026-10-08T00:18:33.089639+00:00","quality":{"score":0,"chars":131,"images":0,"source":"HKEPC","fallback":"rss-blocked"}}
