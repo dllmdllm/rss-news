@@ -1491,7 +1491,7 @@ def test_summary_keeps_interpunct_names_and_fifth_point(filename):
 @pytest.mark.parametrize('tz', ['Asia/Hong_Kong', 'UTC', 'America/New_York', 'Pacific/Auckland'])
 def test_ics_exclusive_end_date_is_timezone_independent(tz):
     import os
-    source = (ROOT / 'docs/upcoming.html').read_text()
+    source = (ROOT / 'docs/upcoming.html').read_text(encoding="utf-8")
     script = _extract_js_function(source, 'icsEscape') + '\n' + _extract_js_function(source, 'buildVEvent') + '''
       for (const [date, end] of [['2026-10-12','20261013'], ['2026-12-31','20270101'], ['2028-02-29','20280301'], ['2026-03-08','20260309']]) {
         const result = buildVEvent({date, title:'測試', articles:[]});
@@ -1503,7 +1503,7 @@ def test_ics_exclusive_end_date_is_timezone_independent(tz):
 
 
 def test_brief_tts_ignores_old_callbacks_and_exposes_failure():
-    source = (ROOT / 'docs/js/index.js').read_text()
+    source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
     script = '''
       let briefGeneration = 0, briefSpeaking = true, briefChunks = ['first','second'];
       const button = {classList:{remove(){}}, textContent:''};
@@ -1525,7 +1525,7 @@ def test_brief_tts_ignores_old_callbacks_and_exposes_failure():
 
 
 def test_feed_health_identifies_failed_feed_despite_retained_articles():
-    source = (ROOT / 'docs/js/index.js').read_text()
+    source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
     script = '''
       const elements = new Map();
       const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
@@ -1542,7 +1542,7 @@ def test_feed_health_identifies_failed_feed_despite_retained_articles():
       if (!result.includes('明報 國際') || !result.includes('最新抓取失敗') || !result.includes('保留 8 篇舊資料') || !result.includes('https://example.com/feed')) throw Error(result);
       if ($('sourceHealth').textContent !== '1 個 feed 需要檢查') throw Error('health masked failure');
     '''
-    common = (ROOT / 'docs/js/common.js').read_text()
+    common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
     constants = common[common.index('const _ESC'):common.index('function esc')]
     script = 'const OUTLET_PREFIXES = ["明報"];\n' + constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common, 'safeUrl') + '\n' + script
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
@@ -1550,7 +1550,7 @@ def test_feed_health_identifies_failed_feed_despite_retained_articles():
 
 
 def test_upcoming_preserves_uncertain_dates_without_fabricating_calendar_dates():
-    source = (ROOT / 'docs/js/index.js').read_text()
+    source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
     script = '''
       const hosts = {upcomingList:{innerHTML:''},upcomingBlock:{hidden:true}};
       const $ = id => hosts[id];
@@ -1564,8 +1564,8 @@ def test_upcoming_preserves_uncertain_dates_without_fabricating_calendar_dates()
 
 
 def test_contradiction_display_rejects_legacy_pairs_and_tension():
-    source = (ROOT / 'docs/js/index.js').read_text()
-    common = (ROOT / 'docs/js/common.js').read_text()
+    source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
+    common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
     constants = common[common.index('const _ESC'):common.index('function esc')]
     script = constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common,'safeUrl') + '''
       const elements = {contraBlock:{hidden:true},contraList:{innerHTML:''}};
