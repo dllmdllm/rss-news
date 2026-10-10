@@ -52,16 +52,21 @@ jobs:
           set -uo pipefail
           now=$(date -u +%s)
 
-          last_status="ok"; last_alert=0
+          last_status="ok"; last_alert=0; delivered_status="ok"
           if [ -f state.json ]; then
             last_status=$(jq -r '.status // "ok"' state.json)
+            delivered_status=$(jq -r '.delivered_status // .status // "ok"' state.json)
             last_alert=$(jq -r '.last_alert // 0' state.json)
           fi
 
           tg() {
-            curl -fsS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-              -d chat_id="${TG_CHAT}" --data-urlencode text="$1" >/dev/null \
-              || echo "::warning::telegram send failed"
+            local response
+            response=$(curl -fsS --max-time 30 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d chat_id="${TG_CHAT}" --data-urlencode text="$1") && \
+              [ "$(printf '%s' "$response" | jq -r '.ok // false')" = "true" ] || {
+                echo "::warning::telegram send failed"
+                return 1
+              }
           }
 
           # --- 1. cancel wedged runs --------------------------------------
@@ -88,21 +93,30 @@ jobs:
           age_min=$(( (now - $(date -u -d "$last_commit" +%s)) / 60 ))
           echo "last data commit ${last_commit} (${age_min} min ago); previous status: ${last_status}"
 
+          pending_delivery=false
           status="ok"
           if [ "$age_min" -ge "$STALE_MIN" ]; then
             status="stale"
             echo "stale -> re-dispatching update.yml"
             gh workflow run update.yml -R "$GITHUB_REPOSITORY" || true
-            if [ "$last_status" != "stale" ] || [ $(( now - last_alert )) -ge "$REALERT_SEC" ]; then
-              tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。Guardian 已自動補 dispatch；如持續，檢查 runner：Get-Service actions.runner.*"
-              last_alert=$now
+            if [ "$delivered_status" != "stale" ] || [ $(( now - last_alert )) -ge "$REALERT_SEC" ]; then
+              pending_delivery=true
+              if tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。Guardian 已自動補 dispatch；如持續，檢查 runner：Get-Service actions.runner.*"; then
+                last_alert=$now
+                delivered_status="stale"
+                pending_delivery=false
+              fi
             fi
-          elif [ "$last_status" = "stale" ]; then
-            tg "🟢 rss-news 已恢復更新（最新 data commit ${age_min} 分鐘前）"
+          elif [ "$delivered_status" = "stale" ]; then
+            pending_delivery=true
+            if tg "🟢 rss-news 已恢復更新（最新 data commit ${age_min} 分鐘前）"; then
+              delivered_status="ok"
+              pending_delivery=false
+            fi
           fi
 
-          jq -n --arg s "$status" --argjson a "$last_alert" \
-            '{status: $s, last_alert: $a}' > state.json
+          jq -n --arg s "$status" --argjson a "$last_alert" --arg d "$delivered_status" --argjson p "$pending_delivery" \
+            '{status: $s, delivered_status: $d, pending_delivery: $p, last_alert: $a}' > state.json
 
       - name: Save guardian state
         if: always()

@@ -48,7 +48,11 @@ from src.analyse import (
     _normalise_upcoming_events,
     analyse_all,
     looks_like_prompt_schema_summary,
+    analysis_input_hash,
+    ANALYSIS_VERSION,
+    _article_text,
 )
+from src.event_dates import event_identity, validate_event
 from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
@@ -501,7 +505,7 @@ def build_upcoming(articles: list, *, today=None) -> dict:
     today_hk = today or datetime.now(timezone(timedelta(hours=8))).date()
     horizon = today_hk + timedelta(days=UPCOMING_LOOKAHEAD_DAYS)
 
-    # key = (date, lowercased+stripped title) → merged record
+    # Identity is conservative; conflicting source dates stay uncertain.
     merged: dict[tuple, dict] = {}
     for article in articles:
         if article.get("duplicate_of"):
@@ -512,43 +516,61 @@ def build_upcoming(articles: list, *, today=None) -> dict:
         for ev in events:
             if not isinstance(ev, dict):
                 continue
-            date_s = str(ev.get("date") or "")
-            title  = str(ev.get("title") or "").strip()
-            if not date_s or not title:
+            verified = validate_event(ev, title=article.get("title", ""),
+                                      text=_article_text(article), published=article.get("date"))
+            if not verified:
                 continue
-            try:
-                date_obj = datetime.strptime(date_s, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            if date_obj < today_hk or date_obj > horizon:
-                continue
-            key = (date_s, re.sub(r"\s+", "", title.lower())[:30])
+            date_s, title = verified["date"], verified["title"]
+            identity = event_identity(title)
+            # Same-title recurring events are separate occurrences. Only an
+            # explicit one-time identity can establish that different dates
+            # describe the same event. Topic clusters may contain recurrences.
+            key = (identity, None if identity == "皇崗口岸啟用" else
+                   (date_s or verified["date_expression"]))
             row = merged.setdefault(key, {
-                "date": date_s,
                 "title": title,
+                "dates": set(),
+                "expressions": set(),
                 "articles": [],
                 "_seen": set(),
             })
+            row["dates"].add(date_s)
+            row["expressions"].add(verified["date_expression"])
             aid = article.get("id")
             if aid and aid not in row["_seen"]:
                 row["articles"].append({
                     "id": aid,
                     "title": article.get("title", ""),
                     "source": article.get("source", ""),
+                    "url": article.get("url", ""),
+                    "evidence": verified["evidence"],
+                    "date_expression": verified["date_expression"],
                 })
                 row["_seen"].add(aid)
 
-    events_out = sorted(
-        ({"date": r["date"], "title": r["title"], "articles": r["articles"][:6]}
-         for r in merged.values()),
-        key=lambda r: (r["date"], r["title"]),
-    )[:UPCOMING_MAX_EVENTS]
+    events_out, uncertain = [], []
+    for row in merged.values():
+        dates = sorted(d for d in row["dates"] if d)
+        # Filter after collecting all source dates: a past/outside candidate must
+        # not turn an unresolved conflict into an apparently confirmed date.
+        if dates and None not in row["dates"] and not any(
+                today_hk <= datetime.strptime(day, "%Y-%m-%d").date() <= horizon for day in dates):
+            continue
+        exact = len(row["dates"]) == 1 and len(dates) == 1
+        event = {"date": dates[0] if exact else None, "title": row["title"],
+                 "articles": row["articles"][:6], "precision": "day" if exact else "uncertain",
+                 "date_label": dates[0] if exact else ("日期有分歧：" + " / ".join(dates) if len(dates) > 1 else " / ".join(sorted(row["expressions"]))),
+                 "candidate_dates": dates}
+        (events_out if exact else uncertain).append(event)
+    events_out = sorted(events_out, key=lambda r: (r["date"], r["title"]))[:UPCOMING_MAX_EVENTS]
 
     return {
         "updated": datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
         "today":   today_hk.isoformat(),
         "lookahead_days": UPCOMING_LOOKAHEAD_DAYS,
         "events":  events_out,
+        "uncertain_events": uncertain[:UPCOMING_MAX_EVENTS],
+        "timezone": "Asia/Hong_Kong",
     }
 
 
@@ -618,6 +640,7 @@ def save_json(articles: list, source_stats: dict):
              "score": a.get("score"), "tags": a.get("tags"),
              "topic": a.get("topic"), "cluster_size": a.get("cluster_size"),
              "event_type": a.get("event_type"),
+             "duplicate_of": a.get("duplicate_of"), "duplicate_count": a.get("duplicate_count"),
              "headline_fit": a.get("headline_fit")}
             for a in articles
         ],
@@ -950,6 +973,11 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     for a in articles:
         if not a.get("summary") and a["id"] in old:
             src = old[a["id"]]
+            if (src.get("analysis_version") != ANALYSIS_VERSION
+                    or src.get("analysis_input_hash") != analysis_input_hash(a)):
+                continue
+            a["analysis_input_hash"] = src["analysis_input_hash"]
+            a["analysis_version"] = src["analysis_version"]
             for field in ("summary", "score", "tags", "sentiment", "topic", "event_type"):
                 if src.get(field) is not None:
                     a[field] = src[field]

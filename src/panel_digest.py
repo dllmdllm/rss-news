@@ -14,9 +14,10 @@ from pathlib import Path
 
 import aiohttp
 
-from src.analyse import _strip_fences
+from src.analyse import _article_text, _strip_fences
 from src.minimax_client import (
     MINIMAX_API_KEY,
+    MINIMAX_MODEL,
     post_messages,
     should_retry as _should_retry,
 )
@@ -38,6 +39,8 @@ DIGEST_PER_CLUSTER_MAX = 25       # cap clusters per build to bound LLM cost
 PANEL_PROMPT = (
     "你係一個新聞編輯助手。輸入係幾個媒體就同一件事嘅分別報導，"
     "請對比佢哋嘅角度、共識同分歧。"
+    "矛盾必須係同一件事嘅互不相容事實；相同日期、相同說法、至少15%同15–20%都唔係矛盾。"
+    "claim_a/claim_b必須等於quote_a/quote_b嘅逐字原文，並附正確文章ID；唔可捏造來源或原文。"
     "輸出一個 JSON object，唔好有任何其他文字、markdown 或思考過程。\n"
     "格式：\n"
     '{"headline":"事件一句話總結（中文，唔超過25字）",'
@@ -47,20 +50,23 @@ PANEL_PROMPT = (
     "]（最多 4 個 angle，至少 2 個）,"
     '"tension":"分歧、矛盾或缺口（如有，唔超過60字；冇就空字串 \\"\\"）",'
     '"contradictions":['
-    '{"claim_a":"來源A嘅具體說法","source_a":"來源名稱","claim_b":"來源B嘅具體說法","source_b":"來源名稱","type":"數字|時間|人物|地點"}'
+    '{"claim_a":"來源A嘅具體說法","source_a":"來源名稱","claim_b":"來源B嘅具體說法","source_b":"來源名稱","article_id_a":"文章ID","quote_a":"原文逐字證據","article_id_b":"文章ID","quote_b":"原文逐字證據","type":"數字|時間|人物|地點"}'
     "]（若有可核實嘅事實矛盾就列出，最多 3 個；冇就空陣列 []）,"
     '"timeline":['
     '{"date":"YYYY-MM-DD","event":"事件描述（唔超過20字）"}'
     "]（若報導日期橫跨兩日或以上就列出事件發展時間軸，最多 6 個；單日或日期不明就空陣列 []）}"
 )
 
-DIGEST_VERSION = "d-" + hashlib.md5(PANEL_PROMPT.encode("utf-8")).hexdigest()[:8]
+DIGEST_VERSION = "d-" + hashlib.sha256(("evidence-v3|" + MINIMAX_MODEL + "|" + PANEL_PROMPT).encode("utf-8")).hexdigest()[:12]
 
 
-def _signature(cluster_id: str, article_ids: list[str]) -> str:
-    """Stable hash of cluster membership — re-analyse only when it changes."""
-    payload = cluster_id + "|" + "|".join(sorted(article_ids))
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()[:12]
+def _signature(cluster_id: str, members: list) -> str:
+    """Hash the actual model input, including source provenance and model version."""
+    ordered = sorted(members, key=lambda m: str(m.get("id", "")) if isinstance(m, dict) else str(m))
+    parts = [_format_member(m, i + 1) if isinstance(m, dict) else str(m)
+             for i, m in enumerate(ordered)]
+    payload = json.dumps([cluster_id, DIGEST_VERSION, MINIMAX_MODEL, parts], ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def load_cache() -> dict:
@@ -114,10 +120,87 @@ def _format_member(member: dict, idx: int) -> str:
     source = member.get("source", "").strip()
     date = (member.get("date") or "")[:10]
     date_str = f"（{date}）" if date else ""
-    return f"### 第 {idx} 篇\n來源：{source}{date_str}\n標題：{title}\n摘要：{summary}"
+    return f"### 第 {idx} 篇\n文章ID：{member.get('id', '')}\n網址：{member.get('url', '')}\n來源：{source}{date_str}\n標題：{title}\n摘要：{summary}\n原文：{_article_text(member)[:3000]}"
 
 
-def _normalise_digest(data) -> dict | None:
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def _quantity_claim(text: str):
+    """Conservative comparable percentage bounds; different contexts stay unproven."""
+    pattern = r"(?P<qual>至少|最少|不少於|不低於|超過|至多|最多|不多於|低於|at least\s*|>=|≥|<=|≤)?(?P<low>\d+(?:\.\d+)?)\s*(?:%|％)?\s*(?:[–—~至-]\s*(?P<high>\d+(?:\.\d+)?))?\s*[%％]"
+    matches = list(re.finditer(pattern, text, re.I))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    low = float(match["low"])
+    high = float(match["high"]) if match["high"] else low
+    qual = (match["qual"] or "").strip().casefold()
+    if qual in {"至少", "最少", "不少於", "不低於", "超過", "at least", ">=", "≥"}:
+        high = float("inf")
+    elif qual in {"至多", "最多", "不多於", "低於", "<=", "≤"}:
+        low = float("-inf")
+    context = _compact(text[:match.start()] + "#" + text[match.end():])
+    return context, low, high
+
+
+def _provably_conflicting(a: str, b: str) -> bool:
+    # Estimates and tentative dates have no exact incompatible bounds.
+    if any(re.search(r"大約|約|估計|預計|可能|暫定|左右|前後|approximately|about|around", value, re.I)
+           for value in (a, b)):
+        return False
+    if _compact(a) == _compact(b):
+        return False
+    qa, qb = _quantity_claim(a), _quantity_claim(b)
+    if qa and qb and qa[0] == qb[0]:
+        return qa[2] < qb[1] or qb[2] < qa[1]
+    # Exact calendar dates only. Approximate/relative dates cannot prove a conflict.
+    pattern = r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:\d{4}年)?\d{1,2}月\d{1,2}日"
+    da, db = list(re.finditer(pattern, a)), list(re.finditer(pattern, b))
+    if len(da) == len(db) == 1:
+        ma, mb = da[0], db[0]
+        context_a = _compact(a[:ma.start()] + "#" + a[ma.end():])
+        context_b = _compact(b[:mb.start()] + "#" + b[mb.end():])
+        values_a = tuple(map(int, re.findall(r"\d+", ma[0])))
+        values_b = tuple(map(int, re.findall(r"\d+", mb[0])))
+        return context_a == context_b and len(values_a) == len(values_b) and values_a != values_b
+    return False
+
+
+def _validated_contradiction(item: dict, members: list[dict]) -> dict | None:
+    """Require attributable verbatim claims and deterministic incompatible facts.
+
+    Unproven differences remain in angles; they must not be labelled contradictions.
+    Model-provided URLs are never trusted.
+    """
+    by_id = {str(m.get("id")): m for m in members}
+    evidence = {}
+    claims = []
+    for side in ("a", "b"):
+        aid = str(item.get(f"article_id_{side}") or "")
+        member = by_id.get(aid)
+        quote = str(item.get(f"quote_{side}") or "").strip()
+        claim = str(item.get(f"claim_{side}") or "").strip()
+        if not member or not quote or len(quote) > 100 or _compact(claim) != _compact(quote):
+            return None
+        if item.get(f"source_{side}") != member.get("source"):
+            return None
+        # Validate against precisely the text supplied to the model (no inferred evidence).
+        supplied = [str(member.get("title") or ""), _article_text(member)[:3000]]
+        if not any(_compact(quote) in _compact(text) for text in supplied):
+            return None
+        url = str(member.get("url") or "")
+        if not re.match(r"^https?://[^\s]+$", url, re.I):
+            return None
+        evidence.update({f"article_id_{side}": aid, f"quote_{side}": quote, f"url_{side}": url})
+        claims.append(quote)
+    if evidence["article_id_a"] == evidence["article_id_b"] or not _provably_conflicting(*claims):
+        return None
+    return evidence
+
+
+def _normalise_digest(data, members: list[dict] | None = None) -> dict | None:
     if not isinstance(data, dict):
         return None
     headline = re.sub(r"\s+", " ", str(data.get("headline") or "")).strip()[:50]
@@ -151,8 +234,10 @@ def _normalise_digest(data) -> dict | None:
             claim_b  = re.sub(r"\s+", " ", str(item.get("claim_b")  or "")).strip()[:100]
             source_b = re.sub(r"\s+", " ", str(item.get("source_b") or "")).strip()[:20]
             ctype    = re.sub(r"\s+", " ", str(item.get("type")     or "")).strip()[:10]
-            if claim_a and source_a and claim_b and source_b:
+            evidence = _validated_contradiction(item, members or [])
+            if claim_a and source_a and claim_b and source_b and evidence:
                 contradictions.append({
+                    **evidence,
                     "claim_a": claim_a, "source_a": source_a,
                     "claim_b": claim_b, "source_b": source_b,
                     "type": ctype,
@@ -182,13 +267,13 @@ def _normalise_digest(data) -> dict | None:
     }
 
 
-def _parse_digest(raw: str) -> dict | None:
+def _parse_digest(raw: str, members: list[dict] | None = None) -> dict | None:
     text = _strip_fences(raw)
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None
     try:
-        return _normalise_digest(json.loads(m.group(0)))
+        return _normalise_digest(json.loads(m.group(0)), members)
     except Exception:
         return None
 
@@ -200,6 +285,7 @@ async def _digest_one(
     sem: asyncio.Semaphore,
     out: dict,
 ):
+    members = sorted(members, key=lambda m: str(m.get("id", "")))
     parts = [_format_member(m, i + 1) for i, m in enumerate(members)]
     user = (
         f"以下係 {len(members)} 個媒體就同一新聞嘅報導，請做對比分析：\n\n"
@@ -226,7 +312,7 @@ async def _digest_one(
                     continue
                 if not raw:
                     return
-                parsed = _parse_digest(raw)
+                parsed = _parse_digest(raw, members)
                 if parsed:
                     out[cid] = parsed
                     return
@@ -255,24 +341,23 @@ async def generate_panel_digests(articles: list) -> dict:
     (signature + version on each entry → re-analyse only if changed)
     and the frontend-readable artefact. Returns the cluster_id → digest
     map for direct use by callers."""
-    if not MINIMAX_API_KEY:
-        print("[digest] Skipped — set MINIMAX_API_KEY")
-        return {}
-
     qualifying = collect_qualifying_clusters(articles)
-    if not qualifying:
+    if not MINIMAX_API_KEY:
+        # Offline builds may retain only evidence that still matches current inputs.
         existing = load_cache()
-        if existing:
-            current_cids = {a.get("cluster_id") for a in articles if a.get("cluster_id")}
-            pruned = {cid: entry for cid, entry in existing.items() if cid in current_cids}
-            if len(pruned) < len(existing):
-                save_cache(pruned)
-                print(f"[digest] No qualifying clusters — pruned {len(existing) - len(pruned)} stale entries")
-            else:
-                print("[digest] No qualifying clusters this run — keeping existing cache")
-        else:
-            print("[digest] No qualifying clusters")
-            save_cache({})
+        signatures = {cid: _signature(cid, members) for cid, members in qualifying}
+        valid = {cid: entry for cid, entry in existing.items()
+                 if isinstance(entry, dict) and entry.get("signature") == signatures.get(cid)
+                 and cid in signatures and entry.get("version") == DIGEST_VERSION
+                 and isinstance(entry.get("digest"), dict)}
+        if valid != existing:
+            save_cache(valid)
+        print("[digest] Skipped — set MINIMAX_API_KEY")
+        return {cid: entry["digest"] for cid, entry in valid.items()}
+
+    if not qualifying:
+        save_cache({})
+        print("[digest] No qualifying clusters")
         return {}
 
     cache = load_cache()
@@ -281,7 +366,7 @@ async def generate_panel_digests(articles: list) -> dict:
 
     # Reuse cached digests when the cluster's membership signature is unchanged.
     for cid, members in qualifying:
-        sig = _signature(cid, [m["id"] for m in members])
+        sig = _signature(cid, members)
         cached = cache.get(cid)
         if (
             isinstance(cached, dict)
@@ -291,6 +376,7 @@ async def generate_panel_digests(articles: list) -> dict:
         ):
             output[cid] = cached["digest"]
         else:
+            cache.pop(cid, None)  # Failed refresh must not republish obsolete evidence.
             pending.append((cid, members, sig))
 
     print(f"[digest] {len(output)} cached, {len(pending)} to generate "

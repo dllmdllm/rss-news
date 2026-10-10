@@ -45,8 +45,51 @@ def test_normalise_already_formatted_passthrough():
 
 
 def test_normalise_string_with_bullets_no_newlines_split():
-    out = _normalise_summary("・foo・bar・baz")
+    out = _normalise_summary("・foo ・bar ・baz")
     assert out == "・foo\n・bar\n・baz"
+
+
+def test_normalise_bullet_preserves_internal_middle_dot_names():
+    assert _normalise_summary("・湯姆・科頓發言 ・第二點") == "・湯姆・科頓發言\n・第二點"
+    assert _normalise_summary("・湯姆・科頓發言") == "・湯姆・科頓發言"
+    assert _normalise_summary("・foo・bar") == "・foo・bar"
+
+
+def test_analysis_input_hash_tracks_corrected_inputs_and_model_provenance():
+    article = dict(id="same", title="Title", content="<p>original body</p>",
+                   date="2026-10-09T00:00:00Z", source="Outlet", url="https://example.org/a")
+    original = analyse.analysis_input_hash(article)
+    for field, value in (("title", "Correction"), ("content", "<p>corrected body</p>"),
+                         ("date", "2026-10-10T00:00:00Z"), ("source", "Correct outlet")):
+        assert analyse.analysis_input_hash(dict(article, **{field: value})) != original
+    cached = dict(score=5, summary="・old", version=ANALYSIS_VERSION, input_hash=original)
+    assert not _needs_full_analysis(cached, article)
+    assert _needs_full_analysis(cached, dict(article, title="Correction"))
+    assert _needs_full_analysis(dict(cached, input_hash=None), article)
+
+
+def test_failed_corrected_input_refresh_evicts_old_analysis(tmp_path, monkeypatch):
+    import json
+    article = dict(id="same", title="Correction", content="<p>corrected</p>", url="https://example.org/a")
+    old = dict(summary="・outdated", score=8, version=ANALYSIS_VERSION,
+               input_hash=analyse.analysis_input_hash(dict(article, title="Old")))
+    article.update(summary=old["summary"], upcoming_events=[dict(date="2026-10-31", title="unsupported")])
+    path = tmp_path / "analyses.json"
+    path.write_text(json.dumps({"same": old}))
+    monkeypatch.setattr(analyse, "CACHE_PATH", path)
+    monkeypatch.setattr(analyse, "MINIMAX_API_KEY", "mock")
+    async def failed(*args):
+        return None
+    monkeypatch.setattr(analyse, "_analyse_batch", failed)
+    asyncio.run(analyse.analyse_all([article]))
+    assert json.loads(path.read_text()) == {}
+    assert article["summary"] == "" and article["upcoming_events"] == []
+
+
+def test_analysis_prompt_contains_publication_date_and_source():
+    formatted = analyse._format_article(dict(title="Headline", date="2026-10-09T13:39:00Z", source="Now 新聞"), 1)
+    assert "2026-10-09T13:39:00Z" in formatted
+    assert "Now 新聞" in formatted and "香港時間" in formatted
 
 
 def test_normalise_preserves_interdot_names_in_prose():

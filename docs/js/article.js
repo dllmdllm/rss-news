@@ -77,13 +77,22 @@
 
   function sanitizeHtml(html, heroImage = "") {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
-    doc.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
-    doc.querySelectorAll("*").forEach((node) => {
-      [...node.attributes].forEach((attr) => {
+    const allowedTags = new Set(["P", "DIV", "SPAN", "BR", "HR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "FIGURE", "FIGCAPTION", "IMG", "A", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "PRE", "CODE", "SUP", "SUB"]);
+    doc.querySelectorAll("script, style, iframe, object, embed, form, input, button, svg, math, template").forEach(node => node.remove());
+    doc.body.querySelectorAll("*").forEach(node => {
+      if (!allowedTags.has(node.tagName)) { node.replaceWith(...node.childNodes); return; }
+      [...node.attributes].forEach(attr => {
         const name = attr.name.toLowerCase();
-        const value = String(attr.value || "");
-        if (name.startsWith("on") || value.trim().toLowerCase().startsWith("javascript:")) {
-          node.removeAttribute(attr.name);
+        const permitted = name === "title" || name === "alt" ||
+          (node.tagName === "A" && name === "href") ||
+          (node.tagName === "IMG" && name === "src");
+        if (!permitted) { node.removeAttribute(attr.name); return; }
+        if (name === "href" || name === "src") {
+          try {
+            const url = new URL(attr.value, document.baseURI);
+            const protocols = name === "href" ? ["https:", "http:", "mailto:"] : ["https:", "http:"];
+            if (!protocols.includes(url.protocol)) node.removeAttribute(attr.name);
+          } catch (_) { node.removeAttribute(attr.name); }
         }
       });
     });

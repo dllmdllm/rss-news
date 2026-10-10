@@ -1045,13 +1045,11 @@ def test_source_health_heading_not_duplicated():
 
 # ── AI tab：2026-07-25 review 發現生成咗但冇出街嘅 AI 數據 ──
 
-def test_ai_rail_surfaces_tension_not_only_contradictions():
-    # `contradictions` 只有約 3/7 個 topic 有，`tension` 7/7 都有但一直冇讀，
-    # 所以嗰格成日空白，令成個 AI tab 睇落淨係得「排序過嘅新聞清單」。
+def test_ai_rail_requires_evidence_and_omits_unverified_tension():
     source = (ROOT / "docs/js/index.js").read_text(encoding="utf-8")
     fn = _extract_js_function(source, "renderContradictions")
-    assert "digest.tension" in fn or "digest.contradictions" in fn
-    assert "tension" in fn, "renderContradictions 要一齊出 tension"
+    assert "c.quote_a && c.quote_b && c.article_id_a && c.article_id_b" in fn
+    assert "digest.tension" not in fn
 
 
 def test_ai_rail_renders_timeline():
@@ -1488,3 +1486,95 @@ def test_summary_keeps_interpunct_names_and_fifth_point(filename):
     if (summaryPoints({summary: ''}).length) throw new Error('absent');
     '''
     subprocess.run([node, '-e', script], check=True)
+
+
+@pytest.mark.parametrize('tz', ['Asia/Hong_Kong', 'UTC', 'America/New_York', 'Pacific/Auckland'])
+def test_ics_exclusive_end_date_is_timezone_independent(tz):
+    import os
+    source = (ROOT / 'docs/upcoming.html').read_text()
+    script = _extract_js_function(source, 'icsEscape') + '\n' + _extract_js_function(source, 'buildVEvent') + '''
+      for (const [date, end] of [['2026-10-12','20261013'], ['2026-12-31','20270101'], ['2028-02-29','20280301'], ['2026-03-08','20260309']]) {
+        const result = buildVEvent({date, title:'測試', articles:[]});
+        if (!result.includes('DTSTART;VALUE=DATE:' + date.replaceAll('-', '')) || !result.includes('DTEND;VALUE=DATE:' + end)) throw Error(result);
+      }
+    '''
+    result = subprocess.run([_require_node(), '-e', script], env={**os.environ, 'TZ':tz}, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_brief_tts_ignores_old_callbacks_and_exposes_failure():
+    source = (ROOT / 'docs/js/index.js').read_text()
+    script = '''
+      let briefGeneration = 0, briefSpeaking = true, briefChunks = ['first','second'];
+      const button = {classList:{remove(){}}, textContent:''};
+      const $ = () => button;
+      const window = {speechSynthesis:{cancel(){}, speak(u){globalThis.last=u;}}};
+      function SpeechSynthesisUtterance(text){this.text=text;}
+    ''' + '\n'.join(_extract_js_function(source, name) for name in ['resetBriefTtsBtn','stopBriefTts','speakNextChunk']) + '''
+      speakNextChunk(null);
+      const old = last;
+      stopBriefTts();
+      briefSpeaking = true; briefChunks = ['new']; speakNextChunk(null);
+      old.onend(); old.onerror();
+      if (last.text !== 'new' || !briefSpeaking) throw Error('stale callback changed new playback');
+      last.onerror();
+      if (button.textContent !== '朗讀失敗，請再試' || briefSpeaking) throw Error('failure not shown');
+    '''
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_feed_health_identifies_failed_feed_despite_retained_articles():
+    source = (ROOT / 'docs/js/index.js').read_text()
+    script = '''
+      const elements = new Map();
+      const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
+      const state = {category:'全部',articles:[],topics:[],sources:{
+        '明報 國際':{count:0,fresh_count:0,effective_count:8,error:'parse failure',fetch_status:'failed',feed_url:'https://example.com/feed'},
+        '明報 中國':{count:2,fresh_count:2,effective_count:2,fetch_status:'success'}
+      }};
+      let criticalShownIds;
+      function criticalScore(){return 0;}
+      function sortedArticles(a){return a;}
+    ''' + '\n'.join(_extract_js_function(source, name) for name in ['outletOf', 'groupSourcesByOutlet', 'renderAiPanel']) + '''
+      renderAiPanel([]);
+      const result = $('sideSourceHealth').innerHTML;
+      if (!result.includes('明報 國際') || !result.includes('最新抓取失敗') || !result.includes('保留 8 篇舊資料') || !result.includes('https://example.com/feed')) throw Error(result);
+      if ($('sourceHealth').textContent !== '1 個 feed 需要檢查') throw Error('health masked failure');
+    '''
+    common = (ROOT / 'docs/js/common.js').read_text()
+    constants = common[common.index('const _ESC'):common.index('function esc')]
+    script = 'const OUTLET_PREFIXES = ["明報"];\n' + constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common, 'safeUrl') + '\n' + script
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_upcoming_preserves_uncertain_dates_without_fabricating_calendar_dates():
+    source = (ROOT / 'docs/js/index.js').read_text()
+    script = '''
+      const hosts = {upcomingList:{innerHTML:''},upcomingBlock:{hidden:true}};
+      const $ = id => hosts[id];
+      function esc(s){return String(s || '');}
+    ''' + _extract_js_function(source, 'renderUpcoming') + '''
+      renderUpcoming({events:[], uncertain_events:[{title:'月底公布',date_label:'月底，未確定日期',articles:[{id:'source'}]}]});
+      if (hosts.upcomingBlock.hidden || !hosts.upcomingList.innerHTML.includes('日期未定') || !hosts.upcomingList.innerHTML.includes('月底，未確定日期')) throw Error('uncertainty hidden');
+    '''
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_contradiction_display_rejects_legacy_pairs_and_tension():
+    source = (ROOT / 'docs/js/index.js').read_text()
+    common = (ROOT / 'docs/js/common.js').read_text()
+    constants = common[common.index('const _ESC'):common.index('function esc')]
+    script = constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common,'safeUrl') + '''
+      const elements = {contraBlock:{hidden:true},contraList:{innerHTML:''}};
+      const $ = id => elements[id];
+    ''' + _extract_js_function(source,'claimEvidence') + '\n' + _extract_js_function(source,'renderContradictions') + '''
+      renderContradictions({topic:{digest:{tension:'unverified',contradictions:[{claim_a:'legacy',claim_b:'legacy'}]}}});
+      if (!elements.contraBlock.hidden || elements.contraList.innerHTML) throw Error('legacy data shown');
+      renderContradictions({topic:{digest:{contradictions:[{claim_a:'27日',claim_b:'28日',quote_a:'原文27日',quote_b:'原文28日',article_id_a:'a',article_id_b:'b'}]}}});
+      if (elements.contraBlock.hidden || !elements.contraList.innerHTML.includes('原文27日') || !elements.contraList.innerHTML.includes('article.html?id=a')) throw Error('evidence missing');
+    '''
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

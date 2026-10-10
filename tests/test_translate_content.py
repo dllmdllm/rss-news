@@ -205,3 +205,27 @@ def test_nested_legacy_translation_cache_preserves_media_without_request(monkeyp
     asyncio.run(TC.translate_english_content([article]))
     assert '引文。' in article['content'] and '第二段。' in article['content']
     assert 'https://example.com/new.jpg' in article['content']
+
+
+def test_retained_translation_is_not_translated_again(monkeypatch):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'test-key')
+    saved = {}
+    monkeypatch.setattr(TC, 'load_cache', lambda: saved)
+    monkeypatch.setattr(TC, 'save_cache', lambda cache: saved.update(cache))
+    calls = []
+    async def fake_post(session, **kwargs):
+        calls.append(kwargs['user_text'])
+        return json.dumps(['第一段。', '第二段。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    article = _article()
+    asyncio.run(TC.translate_english_content([article]))
+    original_hash = saved['eng1']['source_hash']
+    article['content_retention'] = {'scraped_at': '2026-10-01T00:00:00Z'}
+    asyncio.run(TC.translate_english_content([article]))
+    assert len(calls) == 1
+    assert saved['eng1']['source_hash'] == original_hash
+    assert saved['eng1']['translated_hash'] != original_hash
+    # A real English source correction must invalidate the cached translation.
+    article['content'] = '<p>Corrected first paragraph.</p><p>Second paragraph.</p>'
+    asyncio.run(TC.translate_english_content([article]))
+    assert len(calls) == 2

@@ -224,8 +224,9 @@
       </div>
     </div>
   </div>
+  <details style="padding: 12px; max-height: 35vh; overflow: auto"><summary>用鍵盤瀏覽圖譜實體</summary><div id="node-accessible-list"></div></details>
   <main>
-    <div id="cy"></div>
+    <div id="cy" aria-label="新聞實體關係圖"></div>
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close" id="sidebar-close" aria-label="關閉">✕</button>
       <span class="sidebar-label" id="sidebar-label"></span>
@@ -368,6 +369,18 @@
           e.style("display", visible ? "element" : "none");
           if (visible) visibleEdges += 1;
         });
+      });
+      const accessible = document.getElementById("node-accessible-list");
+      accessible.replaceChildren();
+      ranked.forEach(({ node }) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = `${node.data("label")}（${nodeRecentCount(node)} 篇）`;
+        button.addEventListener("click", () => {
+          showNodeDetail(node);
+          document.getElementById("sidebar-close").focus();
+        });
+        accessible.appendChild(button);
       });
       updateSubtitle(visibleNodes.size, visibleEdges);
       requestAnimationFrame(() => {
@@ -537,6 +550,12 @@
       requestAnimationFrame(() => cy?.resize());
     });
 
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && document.getElementById("sidebar").classList.contains("show")) {
+        document.getElementById("sidebar-close").click();
+        document.querySelector("#node-accessible-list button")?.focus();
+      }
+    });
     load();
   </script>
 </body>

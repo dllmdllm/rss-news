@@ -450,7 +450,7 @@ def _build_tvb_content(html: str) -> str | None:
     (near-empty text, no images). The article now lives in Nuxt's SSR state
     cache under a "article-detail-{id}-tc" key; `content`/`content_hk` is
     already fully-formed HTML with inline <img> in reading position, so this
-    parser is mostly just: find that key, lightly wrap it, done.
+    parser finds that key and sanitizes publisher markup before wrapping it.
     """
     m = re.search(
         r'<script[^>]*\bid="__NUXT_DATA__"[^>]*>(.+?)</script>',
@@ -489,7 +489,8 @@ def _build_tvb_content(html: str) -> str | None:
     if cover_url and cover_url not in body_html:
         parts.append(f'<img src="{_html_escape(cover_url, quote=True)}">')
     parts.append(body_html)
-    return "<html><body>" + "".join(parts) + "</body></html>"
+    safe_body = sanitize_rss_html("".join(parts), "https://news.tvb.com/")
+    return "<html><body>" + safe_body + "</body></html>"
 
 
 _NOWSNEWS_JUNK_STRINGS = (
@@ -1147,12 +1148,15 @@ def content_quality(content: str, *, source: str, fallback: str) -> dict:
 
 
 def _split_fallback_text(text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", text or "").strip()
+    text = (text or "").replace("\\n", "\n").strip()
     if not text:
         return []
-    if text.count("・") >= 2:
-        return ["・" + item.strip(" ・") for item in text.split("・") if item.strip(" ・")]
-
+    # A name interpunct is not a list marker; only whitespace/newline
+    # establishes a boundary. Compact ambiguous strings stay intact.
+    if text.startswith("・"):
+        parts = re.split(r"\s+(?=・)", text)
+        return [re.sub(r"\s+", " ", part).strip() for part in parts if part.strip()]
+    text = re.sub(r"\s+", " ", text)
     sentences = [s.strip() for s in re.split(r"(?<=[。！？；])\s*", text) if s.strip()]
     return sentences or [text]
 
@@ -1263,22 +1267,12 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
         charset = resp.charset or "utf-8"
         return raw.decode(charset, errors="replace")
 
-    try:
-        async with session.get(
-            url,
-            timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
-            headers=_extra_headers_for_url(url) or None,
-        ) as resp:
-            return await _read(resp)
-    except aiohttp.ClientSSLError as exc:
-        print(f"[WARN] scrape TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
-        async with session.get(
-            url,
-            timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
-            ssl=False,
-            headers=_extra_headers_for_url(url) or None,
-        ) as resp:
-            return await _read(resp)
+    async with session.get(
+        url,
+        timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
+        headers=_extra_headers_for_url(url) or None,
+    ) as resp:
+        return await _read(resp)
 
 
 def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | None, str | None]:
@@ -1404,6 +1398,10 @@ async def _scrape_one(
 
                 return article  # success, no retry needed
 
+            except aiohttp.ClientSSLError as exc:
+                article["scrape_error"] = f"TLS verification failed: {exc!r}"
+                _rss_fallback_content(article, fallback="rss-tls-error", allow_minimal=True)
+                return article
             except SourceAccessDenied as exc:
                 article["scrape_error"] = str(exc)
                 _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)

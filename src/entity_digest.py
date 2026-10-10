@@ -16,6 +16,7 @@ from src.hk_text import to_hk
 from src.analyse import _strip_fences
 from src.minimax_client import (
     MINIMAX_API_KEY,
+    MINIMAX_MODEL,
     post_messages,
     should_retry as _should_retry,
 )
@@ -27,7 +28,7 @@ ENTITY_TYPES         = ("people", "companies", "places")
 ENTITY_MAX_PER_TYPE  = 20
 ENTITY_CONCURRENCY   = 3
 ENTITY_MAX_ATTEMPTS  = 3
-ENTITY_VERSION       = "e1"
+ENTITY_VERSION       = "e2"
 
 # 別名合併表（2026-07-25）。同一個真實實體俾 AI 抽成幾個名，各自嘅 count
 # 被稀釋——「天文台」21 篇 +「香港天文台」13 篇，合埋 34 先係真相，拆開就
@@ -44,6 +45,9 @@ ENTITY_VERSION       = "e1"
 # 只需要處理「合併之後會影響排名」嗰啲：ENTITY_MIN_ARTICLES = 3 已經濾走
 # 長尾，count 1-2 嘅變體唔使理。
 ENTITY_ALIASES: dict[tuple[str, str], str] = {
+    ("companies", "Apple"): "蘋果",
+    ("companies", "Apple Inc."): "蘋果",
+    ("companies", "蘋果公司"): "蘋果",
     ("companies", "香港天文台"): "天文台",
     ("companies", "港鐵公司"): "港鐵",
     ("companies", "海關"): "香港海關",
@@ -82,9 +86,35 @@ ENTITY_SUMMARY_PROMPT = (
 )
 
 
-def _entity_sig(name: str, article_ids: list[str]) -> str:
-    payload = name + "|" + "|".join(sorted(article_ids))
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()[:10]
+def _entity_user_message(entity: dict, articles_map: dict) -> str:
+    snippets = []
+    for aid in entity["article_ids"][:8]:
+        article = articles_map.get(aid)
+        if not article:
+            continue
+        title = (article.get("title") or "").strip()
+        summary = (article.get("summary") or "").replace("\n", " ").strip()[:80]
+        snippets.append(f"・{title}：{summary}")
+    if not snippets:
+        return ""
+    type_label = {"people": "人物", "companies": "機構", "places": "地點"}.get(entity["type"], "")
+    return f"【{type_label}】{entity['name']}\n\n相關報導：\n" + "\n".join(snippets)
+
+
+def _entity_sig(entity: dict, articles_map: dict) -> str:
+    # Hash the exact model input plus membership/source provenance. Legacy
+    # membership-only signatures never qualify after a correction or upgrade.
+    payload = {
+        "version": ENTITY_VERSION, "prompt": ENTITY_SUMMARY_PROMPT,
+        "model": MINIMAX_MODEL, "type": entity["type"],
+        "name": entity["name"], "user_text": _entity_user_message(entity, articles_map),
+        "members": [{"id": aid, "source": (articles_map.get(aid) or {}).get("source"),
+                     "date": (articles_map.get(aid) or {}).get("date"),
+                     "url": (articles_map.get(aid) or {}).get("url")}
+                    for aid in entity["article_ids"]],
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _load_cache() -> dict:
@@ -170,20 +200,9 @@ async def _summarise_entity(
     articles_map: dict,
     sem: asyncio.Semaphore,
 ) -> str | None:
-    aids     = entity["article_ids"][:8]
-    snippets = []
-    for aid in aids:
-        a = articles_map.get(aid)
-        if not a:
-            continue
-        title   = (a.get("title") or "").strip()
-        summary = (a.get("summary") or "").replace("\n", " ").strip()[:80]
-        snippets.append(f"・{title}：{summary}")
-    if not snippets:
+    user_msg = _entity_user_message(entity, articles_map)
+    if not user_msg:
         return None
-
-    type_label = {"people": "人物", "companies": "機構", "places": "地點"}.get(entity["type"], "")
-    user_msg   = f"【{type_label}】{entity['name']}\n\n相關報導：\n" + "\n".join(snippets)
 
     async with sem:
         total_waited = 0.0
@@ -226,9 +245,6 @@ async def generate_entity_digests(articles: list) -> None:
     entities = aggregate_entities(articles)
     cached        = _load_cache()
     if not entities:
-        if cached.get("entities"):
-            print("[entities] 0 qualifying entities this run — keeping existing cache")
-            return
         print("[entities] No qualifying entities")
         _write_output([], articles)
         return
@@ -238,7 +254,7 @@ async def generate_entity_digests(articles: list) -> None:
     pending = []
     result  = []
     for e in entities:
-        sig      = _entity_sig(e["name"], e["article_ids"])
+        sig      = _entity_sig(e, articles_map)
         cached_e = cached_by_name.get((e["type"], e["name"]))
         if (
             isinstance(cached_e, dict)

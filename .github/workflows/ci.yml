@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tools/**'
       - 'tests/**'
+      - 'worker/**'
       - 'docs/js/**'
       - 'docs/css/**'
       - 'docs/*.html'
@@ -54,6 +55,8 @@ jobs:
         # Code gates use controlled fixtures. The independently generated news
         # snapshot is checked below and in the production update workflow.
         run: python -m pytest tests --ignore=tests/test_data_quality.py -q -rs
+      - name: Check push worker regressions
+        run: node worker/tests/security.mjs
       - name: Check published data snapshot (advisory)
         id: published_data
         continue-on-error: true

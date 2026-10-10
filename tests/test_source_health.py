@@ -166,3 +166,18 @@ def test_cancelled_delivery_keeps_transition_pending(tmp_path, monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(SH.check_source_health(_stats(A=0), now=NOW))
     assert SH._load_state() == initial
+
+
+def test_retained_history_does_not_mask_fresh_parse_failure():
+    stats = {'法庭線': {'fresh_count': 0, 'count': 0, 'effective_count': 12, 'error': 'empty feed'}}
+    state, _ = SH.evaluate_sources(stats, now=NOW)
+    later = NOW + timedelta(hours=SH.ZERO_ALERT_AFTER_HOURS)
+    state, events = SH.evaluate_sources(stats, now=later, state=state)
+    assert [e['kind'] for e in events] == ['dead']
+
+
+def test_304_is_successful_observation_not_an_empty_parse():
+    stats = {'法庭線': {'fresh_count': 0, 'effective_count': 12, 'not_modified': True, 'error': None}}
+    state, events = SH.evaluate_sources(stats, now=NOW)
+    assert state['sources'] == {}
+    assert events == []

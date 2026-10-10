@@ -481,11 +481,9 @@ async def _read_feed_with_tls_fallback(
     cond_headers: dict,
     *, request_timeout=15,
 ) -> tuple[int, bytes, dict]:
-    try:
-        return await _read_feed(session, url, cond_headers, request_timeout=request_timeout)
-    except aiohttp.ClientSSLError as exc:
-        print(f"[WARN] feed TLS verification failed for {url[:60]}: {exc!r}; retrying without verification")
-        return await _read_feed(session, url, cond_headers, ssl=False, request_timeout=request_timeout)
+    # Never downgrade certificate validation: caller records the failure and
+    # the build retains last-good source articles.
+    return await _read_feed(session, url, cond_headers, request_timeout=request_timeout)
 
 
 async def _fetch_hk01(
@@ -854,20 +852,6 @@ async def _fetch_oncc(
                 return [], f"HTTP {resp.status}", False
             raw = await resp.read()
             charset = resp.charset or "utf-8"
-    except aiohttp.ClientSSLError:
-        try:
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=15),
-                ssl=False,
-            ) as resp:
-                if resp.status >= 400:
-                    return [], f"HTTP {resp.status}", False
-                raw = await resp.read()
-                charset = resp.charset or "utf-8"
-        except Exception as exc:
-            print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
-            return [], repr(exc), False
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return [], repr(exc), False
@@ -1092,6 +1076,9 @@ async def fetch_all() -> tuple[list, dict]:
         source_stats[feed_info["name"]] = {
             "category":     feed_info["category"],
             "count":        len(batch),
+            "fresh_count":  len(batch),
+            "feed_url":     feed_info["url"],
+            "fetch_status": "failed" if error else ("not_modified" if not_modified else "success"),
             "error":        error,
             "not_modified": not_modified,
         }

@@ -120,14 +120,63 @@ async function kvKey(endpoint) {
   return u8ToB64(new Uint8Array(buf)).slice(0, 32);
 }
 
+// Only browser push services may receive outbound authenticated requests.
+// Exact/provider suffix checks deliberately exclude arbitrary HTTPS endpoints.
+function validEndpoint(endpoint) {
+  try {
+    if (typeof endpoint !== "string" || endpoint.length > 2048) return false;
+    const u = new URL(endpoint);
+    return u.protocol === "https:" && !u.username && !u.password &&
+      (!u.port || u.port === "443") && !u.hash && (
+        u.hostname === "fcm.googleapis.com" ||
+        u.hostname === "updates.push.services.mozilla.com" ||
+        u.hostname === "web.push.apple.com" ||
+        u.hostname.endsWith(".notify.windows.com")
+      ) && u.pathname.length > 1;
+  } catch { return false; }
+}
+
+function validSubscription(sub) {
+  if (!validEndpoint(sub?.endpoint)) return false;
+  try {
+    const p = sub?.keys?.p256dh, a = sub?.keys?.auth;
+    if (typeof p !== "string" || typeof a !== "string" ||
+        !/^[A-Za-z0-9_-]{87}$/.test(p) || !/^[A-Za-z0-9_-]{22}$/.test(a)) return false;
+    return b64ToU8(p).length === 65 && b64ToU8(p)[0] === 4 && b64ToU8(a).length === 16;
+  } catch { return false; }
+}
+
+const MAX_SUBSCRIPTIONS = 1000;
+const MAX_REQUEST_BYTES = 8192;
+async function requestTooLarge(request) {
+  if (Number(request.headers.get("Content-Length") || 0) > MAX_REQUEST_BYTES) return true;
+  const reader = request.clone().body?.getReader();
+  if (!reader) return false;
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return false;
+      bytes += value.byteLength;
+      if (bytes > MAX_REQUEST_BYTES) {
+        // Do not await cancellation of a tee while its other branch is unread.
+        reader.cancel().catch(() => {});
+        return true;
+      }
+    }
+  } finally { reader.releaseLock(); }
+}
+
 /* ── Send one push ─────────────────────────────────────────────────── */
 
 async function sendOne(sub, payload, env) {
+  if (!validSubscription(sub)) throw new Error("Invalid stored subscription");
   const auth = await vapidHeader(sub.endpoint, env.VAPID_PRIVATE_KEY, env.VAPID_PUBLIC_KEY, env.VAPID_SUBJECT);
   const body = await encryptPayload(sub.keys, payload);
 
   const res = await fetch(sub.endpoint, {
     method:  "POST",
+    redirect: "error",
     headers: {
       Authorization:     auth,
       "Content-Type":     "application/octet-stream",
@@ -160,6 +209,10 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
 
     const { pathname } = new URL(request.url);
+    if (request.method === "POST") {
+      if (await requestTooLarge(request))
+        return new Response("Request too large", { status: 413, headers: CORS });
+    }
 
     // ── GET /vapid-public-key
     if (pathname === "/vapid-public-key" && request.method === "GET") {
@@ -172,9 +225,18 @@ export default {
     if (pathname === "/subscribe" && request.method === "POST") {
       try {
         const sub = await request.json();
-        if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth)
+        if (!validSubscription(sub))
           return new Response("Invalid subscription", { status: 400, headers: CORS });
-        await env.SUBSCRIPTIONS.put(await kvKey(sub.endpoint), JSON.stringify(sub));
+        const key = await kvKey(sub.endpoint);
+        // KV is eventually consistent: this is bounded admission, not an atomic
+        // quota. A strict distributed quota requires deployment infrastructure.
+        if (!await env.SUBSCRIPTIONS.get(key)) {
+          const page = await env.SUBSCRIPTIONS.list({ limit: MAX_SUBSCRIPTIONS });
+          if (page.keys.length >= MAX_SUBSCRIPTIONS || !page.list_complete)
+            return new Response("Subscription capacity reached", { status: 429, headers: CORS });
+        }
+        await env.SUBSCRIPTIONS.put(key, JSON.stringify({ endpoint: sub.endpoint, keys: sub.keys }),
+          { expirationTtl: 90 * 86400 });
         return new Response("ok", { headers: CORS });
       } catch (e) {
         return new Response(String(e), { status: 500, headers: CORS });
@@ -185,6 +247,7 @@ export default {
     if (pathname === "/unsubscribe" && request.method === "POST") {
       try {
         const { endpoint } = await request.json();
+        if (!validEndpoint(endpoint)) return new Response("Invalid endpoint", { status: 400, headers: CORS });
         await env.SUBSCRIPTIONS.delete(await kvKey(endpoint));
         return new Response("ok", { headers: CORS });
       } catch (e) {
@@ -194,7 +257,7 @@ export default {
 
     // ── POST /notify  (protected)
     if (pathname === "/notify" && request.method === "POST") {
-      if (request.headers.get("Authorization") !== `Bearer ${env.NOTIFY_SECRET}`)
+      if (!env.NOTIFY_SECRET || request.headers.get("Authorization") !== `Bearer ${env.NOTIFY_SECRET}`)
         return new Response("Unauthorized", { status: 401 });
 
       try {
@@ -207,7 +270,7 @@ export default {
           const page = await env.SUBSCRIPTIONS.list({ cursor, limit: 100 });
           cursor = page.cursor;
           const results = await Promise.allSettled(
-            page.keys.map(async ({ name }) => {
+            page.keys.slice(0, MAX_SUBSCRIPTIONS - sent - failed).map(async ({ name }) => {
               const raw = await env.SUBSCRIPTIONS.get(name);
               if (!raw) return;
               await sendOne(JSON.parse(raw), payload, env);
@@ -215,7 +278,7 @@ export default {
           );
           sent   += results.filter(r => r.status === "fulfilled").length;
           failed += results.filter(r => r.status === "rejected").length;
-        } while (cursor);
+        } while (cursor && sent + failed < MAX_SUBSCRIPTIONS);
 
         return new Response(JSON.stringify({ sent, failed }), {
           headers: { "Content-Type": "application/json", ...CORS },

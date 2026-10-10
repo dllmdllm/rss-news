@@ -119,3 +119,43 @@ def test_graph_builder_uses_same_canonicalisation():
     # graph.json 同 entities.json 嘅實體名對唔上。
     source = (Path(__file__).resolve().parents[1] / "build.py").read_text(encoding="utf-8")
     assert "canonical_entity(etype, raw)" in source, "graph builder 要用返同一套 canonicalisation"
+
+
+def test_apple_aliases_are_exact_and_company_scoped(monkeypatch):
+    assert ED.canonical_entity('companies', 'Apple') == '蘋果'
+    assert ED.canonical_entity('companies', '蘋果公司') == '蘋果'
+    assert ED.canonical_entity('companies', 'Apple Daily') == 'Apple Daily'
+    assert ED.canonical_entity('companies', '蘋果日報') == '蘋果日報'
+    assert ED.canonical_entity('places', 'Apple') == 'Apple'
+    monkeypatch.setattr(ED, 'ENTITY_MIN_ARTICLES', 2)
+    rows = [_article(id='a', entities={'companies': ['Apple', '蘋果']}), _article(id='b', entities={'companies': ['蘋果公司']})]
+    assert ED.aggregate_entities(rows) == [{'type': 'companies', 'name': '蘋果', 'count': 2, 'article_ids': ['a', 'b']}]
+
+
+def test_entity_signature_tracks_input_and_prompt(monkeypatch):
+    entity = {'type': 'companies', 'name': '蘋果', 'article_ids': ['a']}
+    article = {'id': 'a', 'title': 'Original', 'summary': 'Summary', 'source': 'Publisher', 'date': '2026-10-10', 'url': 'https://example.com/a'}
+    original = ED._entity_sig(entity, {'a': article})
+    for field in ('title', 'summary', 'source', 'date', 'url'):
+        assert ED._entity_sig(entity, {'a': {**article, field: 'Corrected'}}) != original
+    monkeypatch.setattr(ED, 'ENTITY_SUMMARY_PROMPT', ED.ENTITY_SUMMARY_PROMPT + ' amended')
+    assert ED._entity_sig(entity, {'a': article}) != original
+
+
+def test_entity_correction_invalidates_cached_summary_without_ai(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    monkeypatch.setattr(ED, 'OUTPUT_PATH', tmp_path / 'entities.json')
+    monkeypatch.setattr(ED, 'MINIMAX_API_KEY', '')
+    monkeypatch.setattr(ED, 'ENTITY_MIN_ARTICLES', 1)
+    article = _article(title='Original', summary='Old summary', entities={'companies': ['Apple']})
+    entity = ED.aggregate_entities([article])[0]
+    entity.update(summary='Old cached conclusion', version=ED.ENTITY_VERSION,
+                  sig=ED._entity_sig(entity, {article['id']: article}))
+    ED.OUTPUT_PATH.write_text(json.dumps({'entities': [entity]}))
+    asyncio.run(ED.generate_entity_digests([{**article, 'summary': 'Corrected facts'}]))
+    output = json.loads(ED.OUTPUT_PATH.read_text())
+    assert output['entities'][0]['summary'] == ''
+    assert output['entities'][0]['sig'] != entity['sig']
+    asyncio.run(ED.generate_entity_digests([]))
+    assert json.loads(ED.OUTPUT_PATH.read_text())['entities'] == []
