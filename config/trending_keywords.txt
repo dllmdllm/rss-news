@@ -1,4 +1,6 @@
-# synced 2026-10-10T18:16:57.921856+08:00
+# synced 2026-10-10T18:36:59.722034+08:00
+epl
+f1 sprint
 international student
 桌球
 香港公務員事務
@@ -7,5 +9,3 @@ international student
 智能電視
 郵政
 李修賢
-馮素波
-死有對證
