@@ -75,9 +75,14 @@ def evaluate_sources(source_stats: dict, *, now: datetime | None = None, state: 
     events: list[dict] = []
 
     for name, stats in (source_stats or {}).items():
-        count = (stats or {}).get("effective_count")
-        if count is None:
-            count = (stats or {}).get("count", 0)
+        stats = stats or {}
+        # Retained history is availability, not proof this feed parsed today.
+        count = stats.get("fresh_count", stats.get("count", stats.get("effective_count", 0)))
+        if stats.get("error"):
+            count = 0
+        elif stats.get("not_modified"):
+            # A validated 304 is a successful observation, even with no batch.
+            count = max(count or 0, 1)
         entry = dict(tracked.get(name) or {})
 
         if count and count > 0:

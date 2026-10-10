@@ -829,3 +829,33 @@ and whitespace before bullet markers separate items; interpuncts within names
 (e.g. 湯姆・科頓) remain intact in cards, article summaries, digests and TTS.
 A compact string without any whitespace is ambiguous and stays together rather
 than treating every name interpunct as a new item.
+
+### Source evidence and cache freshness (2026-10 review)
+
+Analysis input hashes include the actual supplied title/text, publication date,
+source/URL and prompt/model version. Corrected input cannot reuse an ID-only
+cache or restore an old summary after a failed refresh. Panel and entity digests
+also hash their actual formatted inputs and provenance; failed refreshes remove
+obsolete digests. Legacy entries without provenance are refreshed normally.
+
+Upcoming events require a verbatim source quote and original date expression.
+Relative dates are anchored to publication in Asia/Hong_Kong. Approximate dates
+and conflicting dates remain uncertain, visible outside calendar exports.
+Only explicit equivalent event titles merge; bus routes do not merge with the
+opening of a border crossing. Calendar end dates are exclusive UTC date arithmetic.
+
+Contradiction labels require linked article IDs, verified title/body quotations
+and deterministically incompatible facts. AI summaries are not source evidence;
+identical dates and compatible percentage bounds are rejected. Unverified tension
+does not appear in the contradictions block. Reader and TVB HTML both use markup
+and protocol allowlists. TLS verification failures never retry insecurely.
+
+Feed health reports fresh observations independently of retained article history,
+including feed identity/URL. Validated HTTP 304 is a successful observation.
+Guardian and update failure notifications acknowledge delivery only after Telegram
+returns ok; failed delivery stays pending for retry. Tests mock notifications.
+
+The push worker accepts known HTTPS browser push providers only, validates stored
+subscriptions again before sending, rejects redirects and bounds request size,
+admission and fanout. KV admission quotas are best effort under concurrent writes;
+strict distributed rate limits require separately approved infrastructure.

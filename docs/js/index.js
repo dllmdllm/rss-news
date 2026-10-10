@@ -576,8 +576,15 @@
         <span>${esc(row.outlet)}${row.feeds > 1 ? `<span class="side-health-sub">${row.feeds} 個版面</span>` : ""}</span>
         <span>${row.count} 篇</span>
       </div>`).join("");
-    const zero = Object.values(state.sources || {}).filter((s) => Number(s.effective_count ?? s.count ?? 0) === 0).length;
-    $("sourceHealth").textContent = zero ? `${zero} 個來源暫時空` : "來源正常";
+    const troubled = Object.entries(state.sources || {}).filter(([, info]) =>
+      info.error || info.fetch_status === "failed" ||
+      (info.fetch_status !== "not_modified" && !info.not_modified && Number(info.fresh_count ?? info.count ?? 0) === 0));
+    $("sideSourceHealth").innerHTML += troubled.map(([name, info]) => {
+      const retained = Number(info.effective_count || 0);
+      const link = /^https?:\/\//i.test(info.feed_url || "") ? `<a href="${esc(safeUrl(info.feed_url))}">RSS</a>` : "";
+      return `<div class="side-health-row" role="status"><span>${esc(name)}：${info.error || info.fetch_status === "failed" ? "最新抓取失敗" : "最新抓取 0 篇"}${retained ? `；保留 ${retained} 篇舊資料` : ""} ${link}</span></div>`;
+    }).join("");
+    $("sourceHealth").textContent = troubled.length ? `${troubled.length} 個 feed 需要檢查` : "來源正常";
   }
 
   function ensureFuse() {
@@ -713,7 +720,7 @@
     title.textContent = `搜尋結果 · ${results.length} 篇`;
     host.innerHTML = results.length
       ? results.slice(0, 20).map((a) => searchResultItem(a, query)).join("")
-      : `<div class="empty-result">冇結果 — 試吓上面嘅熱門話題或標籤</div>`;
+      : `<div class="empty-result" role="status">搵唔到「${esc(query)}」。試吓縮短關鍵字、用其他寫法，或揀熱門話題／標籤。</div>`;
   }
 
   function renderSearchStage() {
@@ -1232,6 +1239,7 @@
   const TTS_CHUNK_MAX = 160;
   let briefChunks = [];
   let briefSpeaking = false;
+  let briefGeneration = 0;
 
   function splitForTts(text) {
     const out = [];
@@ -1268,25 +1276,36 @@
   }
 
   function stopBriefTts() {
+    briefGeneration++;
     briefChunks = [];
     briefSpeaking = false;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     resetBriefTtsBtn();
   }
 
-  function speakNextChunk(voice) {
+  function speakNextChunk(voice, token = briefGeneration) {
+    if (token !== briefGeneration || !briefSpeaking) return;
     if (!briefChunks.length) { stopBriefTts(); return; }
     const utterance = new SpeechSynthesisUtterance(briefChunks.shift());
     if (voice) utterance.voice = voice;
     utterance.lang = voice?.lang || "zh-HK";
     utterance.rate = 1.05;
-    utterance.onend = () => { if (briefSpeaking) speakNextChunk(voice); };
-    utterance.onerror = () => stopBriefTts();
+    utterance.onend = () => { if (briefSpeaking && token === briefGeneration) speakNextChunk(voice, token); };
+    utterance.onerror = () => {
+      if (token !== briefGeneration) return;
+      stopBriefTts();
+      const btn = $("briefTts");
+      if (btn) btn.textContent = "朗讀失敗，請再試";
+    };
     window.speechSynthesis.speak(utterance);
   }
 
   function toggleBriefTts(brief) {
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window) || !window.SpeechSynthesisUtterance) {
+      const btn = $("briefTts");
+      if (btn) { btn.disabled = true; btn.textContent = "呢個瀏覽器未支援朗讀"; }
+      return;
+    }
     if (briefSpeaking || window.speechSynthesis.speaking) { stopBriefTts(); return; }
 
     const text = [brief.title, brief.text, ...(brief.highlights || []).map((h) => h.point)]
@@ -1314,38 +1333,35 @@
 
   // ── AI 工作台分析元素（方案 C）：各報矛盾位 + 未來事件 ──
   // 兩份都係 build-time 現成數據（panel_digests / upcoming），零新增成本。
+  function claimEvidence(row, side) {
+    const quote = row["quote_" + side];
+    const id = row["article_id_" + side];
+    const url = id ? "article.html?id=" + encodeURIComponent(id) : (/^https?:\/\//i.test(row["url_" + side] || "") ? safeUrl(row["url_" + side]) : "");
+    return `${quote ? `<blockquote>${esc(quote)}</blockquote>` : ""}${url ? `<a href="${esc(url)}">查看來源報道</a>` : ""}`;
+  }
+
   function renderContradictions(panelMap) {
     const host = $("contraList");
     const block = $("contraBlock");
     if (!host || !block || !panelMap) return;
-    // `contradictions` 只有大約 3/7 個 topic 有（要有可核實嘅事實矛盾先出），
-    // 但 `tension`（分歧／缺口）7/7 都有，而且一直生成咗就掉咗（2026-07-25
-    // review 發現）。兩樣一齊出，呢格就由「成日空白」變成長期有嘢睇。
+    // Only evidence-backed pairs from the current backend schema are shown.
     const rows = [];
     for (const entry of Object.values(panelMap)) {
       const digest = entry && entry.digest;
       if (!digest) continue;
       const topic = digest.headline || "";
       for (const c of (digest.contradictions || [])) {
-        if (c && c.claim_a && c.claim_b) rows.push({ kind: "contra", topic, ...c });
+        if (c && c.claim_a && c.claim_b && c.quote_a && c.quote_b && c.article_id_a && c.article_id_b) rows.push({ topic, ...c });
         if (rows.length >= 5) break;
-      }
-      if (rows.length < 5 && digest.tension) {
-        rows.push({ kind: "tension", topic, tension: digest.tension });
       }
       if (rows.length >= 5) break;
     }
     if (!rows.length) return;
     block.hidden = false;
-    host.innerHTML = rows.map((r) => r.kind === "tension"
-      ? `<div class="contra-item">
+    host.innerHTML = rows.map((r) => `<div class="contra-item">
            <span class="contra-topic">${esc(r.topic)}</span>
-           <span class="contra-tension">${esc(r.tension)}</span>
-         </div>`
-      : `<div class="contra-item">
-           <span class="contra-topic">${esc(r.topic)}</span>
-           <span class="src">${esc(r.source_a || "")}</span>：${esc(r.claim_a)}<br>
-           <span class="src">${esc(r.source_b || "")}</span>：${esc(r.claim_b)}
+           <span class="src">${esc(r.source_a || "")}</span>：${esc(r.claim_a)}${claimEvidence(r, "a")}<br>
+           <span class="src">${esc(r.source_b || "")}</span>：${esc(r.claim_b)}${claimEvidence(r, "b")}
          </div>`).join("");
   }
 
@@ -1419,16 +1435,21 @@
     const events = data.events
       .filter((e) => e && e.date && e.title && e.date >= today)
       .slice(0, 5);
-    if (!events.length) return;
+    const uncertain = (data.uncertain_events || []).filter(e => e && e.title).slice(0, 3);
+    if (!events.length && !uncertain.length) return;
     block.hidden = false;
     host.innerHTML = events.map((e) => {
       const d = e.date.split("-");
       const article = (e.articles || [])[0];
-      const inner = `<span class="date">${Number(d[1])}/${Number(d[2])}</span><span>${esc(e.title)}</span>`;
+      const inner = `<span class="date">${Number(d[1])}/${Number(d[2])}</span><span>${esc(e.title)}${article?.evidence ? `<blockquote>${esc(article.evidence)}</blockquote>` : ""}</span>`;
       return article && article.id
         ? `<a class="upcoming-item" href="article.html?id=${encodeURIComponent(article.id)}">${inner}</a>`
         : `<div class="upcoming-item">${inner}</div>`;
-    }).join("");
+    }).join("") + uncertain.map(e => {
+      const article = (e.articles || [])[0];
+      const inner = `<span class="date">日期未定</span><span>${esc(e.title)} — ${esc(e.date_label || "有待確認")}</span>`;
+      return article?.id ? `<a class="upcoming-item" href="article.html?id=${encodeURIComponent(article.id)}">${inner}</a>` : `<div class="upcoming-item">${inner}</div>`;
+    }).join("") + '<p>日期及今日／明日以香港時間為準</p>';
   }
 
   const ENTITY_TYPE_ICON = { people: "👤", companies: "🏢", places: "📍" };
@@ -1460,26 +1481,46 @@
   }
 
   async function loadAiInsights() {
-    try {
-      const [panelRes, upRes, entRes] = await Promise.all([
-        fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
-        fetch("data/upcoming.json", { cache: "no-cache" }).catch(() => null),
-        fetch("data/entities.json", { cache: "no-cache" }).catch(() => null),
-      ]);
-      if (entRes && entRes.ok) renderEntities(await entRes.json());
-      if (panelRes && panelRes.ok) {
-        const panelMap = await panelRes.json();
-        renderContradictions(panelMap);
-        renderTimeline(panelMap);
+    const jobs = [
+      ["panel_digests.json", ["contraBlock", "timelineBlock"], data => { renderContradictions(data); renderTimeline(data); }],
+      ["upcoming.json", ["upcomingBlock"], renderUpcoming],
+      ["entities.json", ["entityBlock"], renderEntities],
+    ];
+    await Promise.all(jobs.map(async ([file, ids, render]) => {
+      const blocks = ids.map(id => $(id)).filter(Boolean);
+      const statuses = blocks.map(block => {
+        block.hidden = false;
+        const status = document.createElement("p");
+        status.setAttribute("role", "status");
+        status.textContent = "載入分析中…";
+        block.appendChild(status);
+        return status;
+      });
+      try {
+        const res = await fetch("data/" + file, { cache: "no-cache" });
+        if (!res || !res.ok) throw new Error("HTTP " + (res?.status || "network"));
+        const data = await res.json();
+        if (!data || typeof data !== "object" || Array.isArray(data) ||
+            (file === "upcoming.json" && !Array.isArray(data.events)) ||
+            (file === "entities.json" && !Array.isArray(data.entities))) throw new Error("Invalid analysis data");
+        render(data);
+        statuses.forEach((status, i) => {
+          const host = blocks[i].querySelector("div");
+          if (host?.textContent.trim()) status.remove();
+          else status.textContent = "暫時未有分析資料";
+        });
+      } catch (_) {
+        statuses.forEach(status => { status.textContent = "分析載入失敗，請重新載入再試"; });
       }
-      if (upRes && upRes.ok) renderUpcoming(await upRes.json());
-    } catch (_) {}
+    }));
   }
 
   async function load() {
     bindEvents();
     const data = await fetchArticleData();
-    state.articles = data.articles || [];
+    const articles = data.articles || [];
+    const articleIds = new Set(articles.map(article => article.id));
+    state.articles = articles.filter(article => !article.duplicate_of || !articleIds.has(article.duplicate_of));
     state.topics = data.trending_topics || [];
     state.sources = data.sources || {};
     state.fuse = null;

@@ -97,7 +97,7 @@
   <div class="topbar">
     <a href="index.html" class="back" title="返回">←</a>
     <div class="topbar-title">
-      <h1>📅 預告</h1>
+      <h1>📅 預告</h1><div class="sub">日期以香港時間為準</div>
       <div class="sub" id="subtitle">載入中…</div>
     </div>
     <button class="ics-all-btn" id="ics-all" disabled>下載全部 .ics</button>
@@ -111,11 +111,12 @@
   <script>
     setupThemeMode();
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Relative labels follow Hong Kong calendar days, wherever the reader is.
+    const hktToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const today = new Date(hktToday + "T00:00:00Z");
 
     function relativeLabel(dateStr) {
-      const d = new Date(dateStr + "T00:00:00");
+      const d = new Date(dateStr + "T00:00:00Z");
       const diffDays = Math.round((d - today) / 86400000);
       if (diffDays === 0) return "今日";
       if (diffDays === 1) return "明日";
@@ -125,7 +126,7 @@
     }
 
     function bucketLabel(dateStr) {
-      const d = new Date(dateStr + "T00:00:00");
+      const d = new Date(dateStr + "T00:00:00Z");
       const diffDays = Math.round((d - today) / 86400000);
       if (diffDays <= 1) return "本週";
       if (diffDays <= 13) return "未來兩週";
@@ -134,11 +135,11 @@
     }
 
     function fmtDate(dateStr) {
-      const d = new Date(dateStr + "T00:00:00");
+      const d = new Date(dateStr + "T00:00:00Z");
       return {
-        day: d.getDate(),
-        month: (d.getMonth() + 1) + " 月",
-        weekday: ["日", "一", "二", "三", "四", "五", "六"][d.getDay()],
+        day: d.getUTCDate(),
+        month: (d.getUTCMonth() + 1) + " 月",
+        weekday: ["日", "一", "二", "三", "四", "五", "六"][d.getUTCDay()],
       };
     }
 
@@ -159,7 +160,7 @@
 
     function buildVEvent(ev) {
       const dt = ev.date.replace(/-/g, "");
-      const d = new Date(ev.date + "T00:00:00");
+      const d = new Date(ev.date + "T00:00:00Z");
       const dtEnd = new Date(d.getTime() + 86400000)
         .toISOString().slice(0, 10).replace(/-/g, "");
       const uid = "ev-" + dt + "-" + Math.abs(ev.title.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)) + "@news-pulse";
@@ -201,23 +202,24 @@
         const res = await fetch("data/upcoming.json?" + Date.now());
         const data = await res.json();
         const events = (data.events || []).filter(ev => {
-          const d = new Date(ev.date + "T00:00:00");
+          const d = new Date(ev.date + "T00:00:00Z");
           return d >= today;
         });
 
+        const uncertain = (data.uncertain_events || []).filter(ev => ev && ev.title);
         const sub = document.getElementById("subtitle");
         sub.textContent = events.length
           ? events.length + " 個未來活動 · 過去 " + (data.lookahead_days || 90) + " 日內"
-          : "未有未來活動數據";
+          : (uncertain.length ? uncertain.length + " 個事件日期有待確認" : "未有未來活動數據");
 
         const root = document.getElementById("content");
-        if (!events.length) {
+        if (!events.length && !uncertain.length) {
           root.innerHTML = '<div class="empty">尚未提取到未來事件。<br>稍後新分析嘅文章會在這裡出現。</div>';
           return;
         }
 
         const allBtn = document.getElementById("ics-all");
-        allBtn.disabled = false;
+        allBtn.disabled = !events.length;
         allBtn.addEventListener("click", () => {
           downloadICS("news-pulse-upcoming.ics", buildICS(events));
         });
@@ -249,6 +251,7 @@
                   (rel ? '<div class="ev-relative">' + rel + '</div>' : '') +
                   '<div class="ev-title">' + escapeHtml(ev.title) + '</div>' +
                   '<div class="ev-articles">' + arts + '</div>' +
+                  (ev.articles || []).filter(a => a.evidence).map(a => '<blockquote>' + escapeHtml(a.evidence) + '</blockquote>').join('') +
                 '</div>' +
                 '<button class="ics-btn" data-date="' + escapeHtml(ev.date) +
                   '" data-title="' + escapeHtml(ev.title) +
@@ -260,7 +263,13 @@
           return '<div class="section-label">' + label + '</div>' + rows;
         }).join("");
 
-        root.innerHTML = html;
+        const uncertainHtml = uncertain.length ? '<div class="section-label">日期未確定（不加入日曆）</div>' + uncertain.map(ev =>
+          '<div class="event"><div class="ev-body" style="grid-column: 1 / -1"><div class="ev-title">' + escapeHtml(ev.title) +
+          '</div><div class="ev-relative">' + escapeHtml(ev.date_label || '日期有待確認') + '</div>' +
+          (ev.articles || []).map(article => '<p>' + escapeHtml(article.evidence || '') +
+            ' <a href="article.html?id=' + encodeURIComponent(article.id) + '">查看來源報道</a></p>').join('') +
+          '</div></div>').join('') : '';
+        root.innerHTML = html + uncertainHtml;
 
         root.querySelectorAll(".ics-btn").forEach(btn => {
           btn.addEventListener("click", () => {

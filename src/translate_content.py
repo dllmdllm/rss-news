@@ -182,6 +182,7 @@ async def _translate_article(
     cache[article["id"]] = {
         "content": article["content"],
         "source_hash": _source_hash(texts),
+        "translated_hash": _source_hash([t.get_text(" ", strip=True) for t in extract_paragraphs(article["content"])[1]]),
         "version": TRANSLATE_VERSION,
     }
     # Incremental flush so a mid-run timeout (build.py wraps this whole call
@@ -217,7 +218,10 @@ async def translate_english_content(articles: list) -> None:
         if (
             cached
             and cached.get("version") == TRANSLATE_VERSION
-            and cached.get("source_hash") == _source_hash(texts)
+            and (cached.get("source_hash") == _source_hash(texts)
+                 or cached.get("translated_hash") == _source_hash(texts)
+                 or (a.get("content_retention") and
+                     _source_hash([t.get_text(" ", strip=True) for t in extract_paragraphs(cached.get("content", ""))[1]]) == _source_hash(texts)))
         ):
             # Reuse translated text, not stale HTML that may predate repaired
             # RSS images. Keep the current sanitized media and document order.

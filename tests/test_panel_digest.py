@@ -128,3 +128,131 @@ def test_normalise_digest_caps_angles_at_four():
         "tension": "",
     })
     assert len(out["angles"]) == 4
+
+
+def _evidenced_pair(a, b):
+    members = [dict(id='a', source='甲', url='https://example.org/a', title=a),
+               dict(id='b', source='乙', url='https://example.org/b', title=b)]
+    pair = dict(claim_a=a, claim_b=b, quote_a=a, quote_b=b,
+                source_a='甲', source_b='乙', article_id_a='a', article_id_b='b', type='數字')
+    return pair, members
+
+
+def test_identical_dates_and_early_year_are_not_contradictions():
+    from src.panel_digest import _validated_contradiction
+    for claim in ['預定10月27日發售', '預定2027年初推出']:
+        pair, members = _evidenced_pair(claim, claim)
+        assert _validated_contradiction(pair, members) is None
+
+
+def test_compatible_percentage_bounds_are_not_contradictions():
+    from src.panel_digest import _validated_contradiction
+    pair, members = _evidenced_pair('價格上升至少15%', '價格上升15–20%')
+    assert _validated_contradiction(pair, members) is None
+
+
+def test_disjoint_same_context_percentages_preserve_verified_evidence():
+    from src.panel_digest import _validated_contradiction
+    pair, members = _evidenced_pair('價格上升15%', '價格上升20%')
+    pair['url_a'] = 'https://attacker.invalid/'
+    evidence = _validated_contradiction(pair, members)
+    assert evidence['url_a'] == 'https://example.org/a'
+    assert evidence['quote_a'] == '價格上升15%'
+
+
+def test_unsupported_or_wrong_source_contradiction_is_rejected():
+    from src.panel_digest import _validated_contradiction
+    for field, value in [('quote_a', '假的原文15%'), ('source_a', '錯誤來源'),
+                         ('article_id_a', 'missing'), ('claim_a', '價格上升50%')]:
+        pair, members = _evidenced_pair('價格上升15%', '價格上升20%')
+        pair[field] = value
+        assert _validated_contradiction(pair, members) is None
+
+
+def test_different_numeric_contexts_do_not_prove_contradiction():
+    from src.panel_digest import _validated_contradiction
+    pair, members = _evidenced_pair('價格上升15%', '銷量上升20%')
+    assert _validated_contradiction(pair, members) is None
+
+
+def test_content_signature_changes_on_relevant_input_and_ignores_scores():
+    base = dict(id='a', title='Title', summary='Summary', content='<p>Body</p>', date='2026-10-01',
+                source='Publisher', url='https://example.org/a', score=9)
+    original = _signature('c', [base])
+    for key in ['title', 'summary', 'content', 'source', 'url']:
+        assert _signature('c', [{**base, key: base[key] + ' correction'}]) != original
+    assert _signature('c', [{**base, 'date': '2026-10-02'}]) != original
+    assert _signature('c', [{**base, 'score': 10}]) == original
+
+
+def test_approximate_estimates_and_dates_do_not_prove_contradiction():
+    from src.panel_digest import _provably_conflicting
+    assert not _provably_conflicting('裁員約15%', '裁員約20%')
+    assert not _provably_conflicting('預計10月12日啟用', '預計10月13日啟用')
+
+
+def test_failed_digest_refresh_removes_obsolete_artifact(monkeypatch):
+    import asyncio
+    import src.panel_digest as panel
+    members = [_art('a', 'c', 9), _art('b', 'c', 8)]
+    stale = {'c': {'signature': 'old', 'version': panel.DIGEST_VERSION, 'digest': {'headline': 'old'}}}
+    saved = []
+    monkeypatch.setattr(panel, 'MINIMAX_API_KEY', 'offline-test-key')
+    monkeypatch.setattr(panel, 'load_cache', lambda: stale)
+    monkeypatch.setattr(panel, 'save_cache', lambda value: saved.append(value))
+    async def failed(*args):
+        return None
+    monkeypatch.setattr(panel, '_digest_one', failed)
+    assert asyncio.run(panel.generate_panel_digests(members)) == {}
+    assert saved == [{}]
+
+
+
+def test_summary_is_not_source_evidence():
+    from src.panel_digest import _validated_contradiction
+    pair, members = _evidenced_pair('價格上升15%', '價格上升20%')
+    for member in members:
+        member['summary'] = member['title']
+        member['title'] = '市場報道'
+        member['content'] = '<p>只係討論市場</p>'
+    assert _validated_contradiction(pair, members) is None
+
+
+def test_html_body_is_source_evidence_and_content_change_invalidates_signature():
+    from src.panel_digest import _validated_contradiction
+    pair, members = _evidenced_pair('價格上升15%', '價格上升20%')
+    for member in members:
+        member['content'] = '<p>' + member['title'] + '</p>'
+        member['title'] = '市場報道'
+    assert _validated_contradiction(pair, members) is not None
+    initial = _signature('c', members)
+    members[0]['content'] = '<p>價格上升25%</p>'
+    assert _signature('c', members) != initial
+    assert _validated_contradiction(pair, members) is None
+
+
+def test_rss_body_change_invalidates_digest_signature():
+    article = dict(id='a', title='市場報道', rss_content='<p>價格上升15%</p>')
+    assert _signature('c', [article]) != _signature('c', [{**article, 'rss_content': '<p>價格上升25%</p>'}])
+
+
+def test_offline_build_prunes_obsolete_digest_without_calls(monkeypatch):
+    import asyncio
+    import src.panel_digest as panel
+    members = [_art('a', 'c', 9), _art('b', 'c', 8)]
+    saved = []
+    monkeypatch.setattr(panel, 'MINIMAX_API_KEY', '')
+    monkeypatch.setattr(panel, 'load_cache', lambda: {'c': {'signature': 'old', 'version': panel.DIGEST_VERSION, 'digest': {'headline': 'stale'}}})
+    monkeypatch.setattr(panel, 'save_cache', lambda value: saved.append(value))
+    assert asyncio.run(panel.generate_panel_digests(members)) == {}
+    assert saved == [{}]
+
+
+def test_no_qualifying_clusters_clears_digest_artifact(monkeypatch):
+    import asyncio
+    import src.panel_digest as panel
+    saved = []
+    monkeypatch.setattr(panel, 'MINIMAX_API_KEY', 'offline-test-key')
+    monkeypatch.setattr(panel, 'save_cache', lambda value: saved.append(value))
+    assert asyncio.run(panel.generate_panel_digests([_art('a', 'solo', 9)])) == {}
+    assert saved == [{}]

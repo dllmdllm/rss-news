@@ -245,6 +245,8 @@ jobs:
           $heartbeatFile = "C:\actions-runner\rss_news_heartbeat_state.txt"
           $statusFile    = "C:\actions-runner\rss_news_build_status.txt"
           Set-Content -Path $statusFile -Value "ok"
+          Set-Content -Path "$statusFile.observed" -Value "ok"
+          Remove-Item -Path "$statusFile.pending" -ErrorAction SilentlyContinue
           $today = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
           $lastSent = if (Test-Path $heartbeatFile) { (Get-Content $heartbeatFile -Raw).Trim() } else { "" }
           if ($lastSent -eq $today) {
@@ -281,12 +283,15 @@ jobs:
           # the exact opposite failure mode: spamming every run instead of
           # just the first).
           $statusFile = "C:\actions-runner\rss_news_build_status.txt"
+          # statusFile records acknowledged delivery; observation and pending
+          # delivery remain separate so a failed Telegram request can retry.
+          Set-Content -Path "$statusFile.observed" -Value "failure"
           $prevStatus = if (Test-Path $statusFile) { (Get-Content $statusFile -Raw).Trim() } else { "" }
           if ($prevStatus -eq "failure") {
             Write-Host "notify skipped: previous run already failed"
             exit 0
           }
-          Set-Content -Path $statusFile -Value "failure"
+          Set-Content -Path "$statusFile.pending" -Value "failure"
           $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           # Emoji via code point, not a literal: the runner materialises step
           # scripts as BOM-less UTF-8, which PowerShell 5.1 reads as ANSI —
@@ -298,11 +303,14 @@ jobs:
             text    = $text
           } | ConvertTo-Json -Compress
           try {
-            Invoke-RestMethod `
+            $response = Invoke-RestMethod `
               -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
               -Method Post `
               -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
-              -ContentType 'application/json; charset=utf-8' | Out-Null
+              -ContentType 'application/json; charset=utf-8'
+            if ($response.ok -ne $true) { throw "Telegram did not acknowledge delivery" }
+            Set-Content -Path $statusFile -Value "failure"
+            Remove-Item -Path "$statusFile.pending" -ErrorAction SilentlyContinue
             Write-Host "telegram notify sent"
           } catch {
             Write-Host "telegram notify failed: $_"

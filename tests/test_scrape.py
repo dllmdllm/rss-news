@@ -63,7 +63,7 @@ def test_rss_fallback_content_uses_rss_and_thumbnail():
 
 
 def test_rss_fallback_content_splits_bullet_text_into_paragraphs():
-    article = _article(rss_content="・第一點・第二點・第三點")
+    article = _article(rss_content="・第一點 ・第二點 ・第三點")
 
     content = scrape._rss_fallback_content(article, fallback="rss-empty")
 
@@ -840,3 +840,42 @@ def test_unsafe_only_rss_yields_readable_minimal_content():
     assert '暫時未能' in result
     assert article['thumbnail'] is None
     assert article['content_quality']['fallback'] == 'minimal'
+
+
+def test_fallback_bullets_preserve_name_interpuncts():
+    from src.scrape import _split_fallback_text
+    assert _split_fallback_text('・湯姆・科頓發言 ・另一重點') == ['・湯姆・科頓發言', '・另一重點']
+    assert _split_fallback_text('・湯姆・科頓發言') == ['・湯姆・科頓發言']
+    assert _split_fallback_text('・第一點\\n・第二點') == ['・第一點', '・第二點']
+
+
+def test_scrape_tls_failure_does_not_downgrade(monkeypatch):
+    import asyncio
+    import aiohttp
+    from src import scrape
+    class Session:
+        def __init__(self): self.calls = []
+        def get(self, url, **kwargs):
+            self.calls.append(kwargs)
+            raise aiohttp.ClientSSLError(None, OSError('certificate rejected'))
+    session = Session()
+    article = {'id': 'tls', 'url': 'https://example.com/news', 'source': 'Test', 'title': 'Title', 'rss_content': '<p>Last RSS text</p>'}
+    asyncio.run(scrape._scrape_one(session, article, asyncio.Semaphore(1)))
+    assert len(session.calls) == 1
+    assert all(call.get('ssl') is not False for call in session.calls)
+    assert 'TLS verification failed' in article['scrape_error']
+    assert 'Last RSS text' in article['content']
+
+
+def test_tvb_payload_uses_allowlisted_markup_and_protocols():
+    html = _tvb_article_html({
+        'content': '<p onclick="unused()">正常<strong>內文</strong><a href="java&#10;script:unused()">連結</a></p><iframe src="https://example.com/embed"></iframe><img src="https://example.com/photo.jpg" onerror="unused()">',
+        'cover': [{'url': 'javascript:unused()'}],
+    })
+    content = scrape._build_tvb_content(html)
+    assert '<strong>內文</strong>' in content
+    assert 'photo.jpg' in content
+    assert 'onclick' not in content and 'onerror' not in content
+    assert 'javascript:' not in content and 'java\nscript:' not in content
+    assert '<iframe' not in content
+    assert '連結' in content

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import aiohttp
 from bs4 import BeautifulSoup
+from src.event_dates import EVENT_DATE_VERSION, validate_event
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -43,12 +44,14 @@ SYSTEM_PROMPT = (
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
     '"key_sentences":["原文逐字摘錄最關鍵嘅 3 至 5 句句子（必須完全一致，唔好改寫，每句 10-80 字）"],'
-    '"upcoming_events":[{"date":"YYYY-MM-DD（文中提及嘅未來日期）","title":"短描述，唔超過20字"}]（最多 2 個；若無未來事件就回傳空陣列 []）}'
+    '"upcoming_events":[{"date":"YYYY-MM-DD或null","date_expression":"原文日期字眼",'
+    '"evidence":"逐字摘錄包括日期同事件嘅原文句子","title":"短描述，唔超過20字"}]'
+    '（最多2個；日期相對輸入嘅出版日期，以香港時間計算；月底、年初等唔可以猜某一日，date用null；無就[]）}'
 )
 
 # Derive version from the prompt hash so the cache auto-invalidates whenever
 # SYSTEM_PROMPT changes — no manual bump needed.
-ANALYSIS_VERSION = "p-" + hashlib.md5(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:8]
+ANALYSIS_VERSION = "p-" + hashlib.sha256((SYSTEM_PROMPT + MINIMAX_MODEL + EVENT_DATE_VERSION).encode("utf-8")).hexdigest()[:12]
 
 _BAD_SUMMARY_PHRASES = (
     "單一字串",
@@ -107,9 +110,8 @@ def _normalise_summary(raw) -> str:
         return text
     # No newlines: only split on ・ when it's clearly a bullet list (starts
     # with ・) — avoids breaking interdot names like 奧巴馬・侯賽因 in prose.
-    if text.startswith("・") and text.count("・") >= 2:
-        parts = [p.strip() for p in text.split("・") if p.strip()]
-        return "\n".join("・" + p for p in parts)
+    if text.startswith("・"):
+        return re.sub(r"\s+・", "\n・", text)
     return text
 
 
@@ -213,9 +215,14 @@ def _normalise_upcoming_events(raw) -> list[dict]:
             continue
         date = str(item.get("date") or "").strip()
         title = re.sub(r"\s+", " ", str(item.get("title") or "")).strip()
-        if not _DATE_RE.match(date) or not title:
+        evidence = str(item.get("evidence") or "").strip()
+        expression = str(item.get("date_expression") or "").strip()
+        if not title or (not _DATE_RE.match(date) and not (evidence and expression)):
             continue
-        out.append({"date": date, "title": title[:30]})
+        record = {"date": date if _DATE_RE.match(date) else None, "title": title[:30]}
+        if evidence and expression:
+            record.update(evidence=evidence[:500], date_expression=expression[:80])
+        out.append(record)
         if len(out) >= 2:
             break
     return out
@@ -332,9 +339,11 @@ def _parse_batch(raw: str, expected: int) -> list[dict | None] | None:
     return None
 
 
-def _needs_full_analysis(cached: dict) -> bool:
+def _needs_full_analysis(cached: dict, article: dict | None = None) -> bool:
     """Return True if cached entry is stale/malformed and should be re-analysed."""
-    if cached.get("score") is None:
+    if not isinstance(cached, dict) or cached.get("score") is None:
+        return True
+    if article is not None and cached.get("input_hash") != analysis_input_hash(article):
         return True
     # Auto-invalidate when the prompt hash embedded in the cache entry no
     # longer matches the current ANALYSIS_VERSION hash.
@@ -358,6 +367,25 @@ def _article_text(a: dict) -> str:
     if a.get("rss_content"):
         return _extract_text(a["rss_content"])
     return a.get("title", "")
+
+
+def analysis_input_hash(article: dict) -> str:
+    payload = {"title": article.get("title", ""), "text": _article_text(article),
+               "published": article.get("date", ""), "source": article.get("source", ""),
+               "url": article.get("url", ""), "version": ANALYSIS_VERSION}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _format_article(article: dict, idx: int) -> str:
+    return (f"### 第 {idx} 篇\n來源：{article.get('source', '')}\n"
+            f"出版日期：{article.get('date', '')}（相對日期用香港時間）\n"
+            f"標題：{article.get('title', '')}\n內容：{_article_text(article)}")
+
+
+def _validated_events(article, events):
+    return [result for event in events or []
+            if (result := validate_event(event, title=article.get("title", ""),
+                                         text=_article_text(article), published=article.get("date")))]
 
 
 async def _post_messages(
@@ -392,6 +420,10 @@ async def _apply_results(
     asyncio is single-threaded so the mutations below are atomic w.r.t.
     other coroutines; the lock only serializes the sync disk write."""
     for a, p in zip(batch, parsed):
+        p = dict(p, input_hash=analysis_input_hash(a))
+        p["upcoming_events"] = _validated_events(a, p.get("upcoming_events"))
+        a["analysis_input_hash"] = p["input_hash"]
+        a["analysis_version"] = ANALYSIS_VERSION
         a["summary"]   = p["summary"]
         a["score"]     = p["score"]
         a["tags"]      = p["tags"]
@@ -424,7 +456,7 @@ async def _analyse_one(
     text  = _article_text(article)
     if not text.strip():
         return
-    user_content = f"分析以下 1 篇新聞，返回長度 = 1 嘅 JSON 陣列：\n\n### 第 1 篇\n標題：{title}\n內容：{text}"
+    user_content = "分析以下 1 篇新聞，返回長度 = 1 嘅 JSON 陣列：\n\n" + _format_article(article, 1)
     async with sem:
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
@@ -481,7 +513,7 @@ async def _analyse_batch(
 
     parts = []
     for i, a in enumerate(batch, 1):
-        parts.append(f"### 第 {i} 篇\n標題：{a.get('title', '')}\n內容：{_article_text(a)}")
+        parts.append(_format_article(a, i))
     user_content = (
         f"分析以下 {len(batch)} 篇新聞，返回長度 = {len(batch)} 嘅 JSON 陣列：\n\n"
         + "\n\n".join(parts)
@@ -578,12 +610,16 @@ def _ensure_analysis_defaults(articles: list) -> None:
             a["event_type"] = ""
         a["entities"] = _normalise_entities(a.get("entities"))
         a["key_sentences"] = _normalise_key_sentences(a.get("key_sentences"))
-        a["upcoming_events"] = _normalise_upcoming_events(a.get("upcoming_events"))
+        a["upcoming_events"] = _validated_events(a, a.get("upcoming_events"))
 
 
 async def analyse_all(articles: list) -> list:
     if not MINIMAX_API_KEY:
         print("[analyse] Skipped — set MINIMAX_API_KEY")
+        for article in articles:
+            if article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
+                for field in ("summary", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+                    article.pop(field, None)
         _ensure_analysis_defaults(articles)
         return articles
 
@@ -593,8 +629,10 @@ async def analyse_all(articles: list) -> list:
     pending: list = []
     for a in articles:
         aid = a["id"]
-        if aid in cache and not _needs_full_analysis(cache[aid]):
+        if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
+            a["analysis_input_hash"] = c["input_hash"]
+            a["analysis_version"] = ANALYSIS_VERSION
             a["summary"]   = c.get("summary", "")
             a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
@@ -604,8 +642,12 @@ async def analyse_all(articles: list) -> list:
             a["event_type"] = c.get("event_type", "")
             a["entities"]   = _normalise_entities(c.get("entities"))
             a["key_sentences"]   = _normalise_key_sentences(c.get("key_sentences"))
-            a["upcoming_events"] = _normalise_upcoming_events(c.get("upcoming_events"))
+            a["upcoming_events"] = _validated_events(a, c.get("upcoming_events"))
         else:
+            cache.pop(aid, None)
+            # A failed refresh must not restore analysis of a corrected input.
+            for field in ("summary", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+                a.pop(field, None)
             pending.append(a)
 
     cached_count = len(articles) - len(pending)

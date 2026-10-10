@@ -496,3 +496,20 @@ def test_rss_media_migration_fetches_once_then_restores_conditionals(monkeypatch
     assert 'If-None-Match' not in seen[0]
     assert seen[1]['If-None-Match'] == 'new'
     assert cache[info['url']]['rss_html_version'] == RSS_HTML_VERSION
+
+
+def test_feed_tls_failure_never_retries_insecurely():
+    import asyncio
+    import aiohttp
+    import pytest
+    from src import fetch
+    class Session:
+        def __init__(self): self.calls = []
+        def get(self, url, **kwargs):
+            self.calls.append(kwargs)
+            raise aiohttp.ClientSSLError(None, OSError('certificate rejected'))
+    session = Session()
+    with pytest.raises(aiohttp.ClientSSLError):
+        asyncio.run(fetch._read_feed_with_tls_fallback(session, 'https://example.com/rss', {}))
+    assert len(session.calls) == 1
+    assert session.calls[0]['ssl'] is True

@@ -1,0 +1,40 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
+const source = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
+const { default: worker } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const keys = { p256dh: Buffer.concat([Buffer.from([4]), Buffer.alloc(64)]).toString('base64url'), auth: Buffer.alloc(16).toString('base64url') };
+let writes = 0, deletes = 0;
+let full = false;
+const env = { SUBSCRIPTIONS: { get: async () => null, put: async () => writes++, delete: async () => deletes++, list: async () => ({keys: full ? Array.from({length:1000},(_,i)=>({name:String(i)})) : [], list_complete:true}) } };
+async function post(path, body, headers={}) {return worker.fetch(new Request('https://worker.example'+path,{method:'POST',body:JSON.stringify(body),headers}), env)}
+for (const endpoint of ['http://fcm.googleapis.com/a','https://localhost/a','https://127.0.0.1/a','https://fcm.googleapis.com.evil.example/a','https://user@fcm.googleapis.com/a','https://fcm.googleapis.com:444/a','https://example.com/a']) {
+ assert.equal((await post('/subscribe',{endpoint,keys})).status,400);
+}
+assert.equal(writes,0);
+assert.equal((await post('/subscribe',{endpoint:'https://fcm.googleapis.com/fcm/send/fixture',keys})).status,200);
+assert.equal(writes,1);
+assert.equal((await post('/subscribe',{endpoint:'https://web.push.apple.com/fixture',keys:{auth:'bad',p256dh:'bad'}})).status,400);
+full = true;
+assert.equal((await post('/subscribe',{endpoint:'https://updates.push.services.mozilla.com/wpush/v2/fixture',keys})).status,429);
+assert.equal(writes,1);
+assert.equal((await post('/unsubscribe',{endpoint:'https://localhost/a'})).status,400);
+assert.equal(deletes,0);
+assert.equal((await post('/notify',{}, {Authorization:'Bearer undefined'})).status,401);
+assert.equal((await post('/subscribe',{padding:'x'.repeat(9000)})).status,413);
+console.log('push worker security: passed (endpoint, key, capacity, size, missing-secret checks)');
+let outbound = 0;
+globalThis.fetch = async () => { outbound++; throw new Error('unexpected outbound'); };
+env.NOTIFY_SECRET = 'mock';
+env.SUBSCRIPTIONS.list = async () => ({keys:[{name:'legacy-invalid'}],list_complete:true});
+env.SUBSCRIPTIONS.get = async () => JSON.stringify({endpoint:'https://localhost/a',keys});
+const notification = await post('/notify',{title:'fixture'},{Authorization:'Bearer mock'});
+assert.deepEqual(await notification.json(), {sent:0,failed:1});
+assert.equal(outbound,0);
+console.log('legacy stored endpoint rejection: passed, no outbound request');
+env.SUBSCRIPTIONS.list = async () => ({keys:Array.from({length:1100},(_,i)=>({name:String(i)})),cursor:'next',list_complete:false});
+const bounded = await post('/notify',{}, {Authorization:'Bearer mock'});
+assert.deepEqual(await bounded.json(), {sent:0,failed:1000});
+assert.equal(outbound,0);
+console.log('notify strict fanout cap: passed');

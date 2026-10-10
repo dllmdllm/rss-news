@@ -434,6 +434,10 @@ def test_build_upcoming_merges_same_event_across_sources():
         {"id": "a2", "title": "T2", "source": "RTHK",
          "upcoming_events": [{"date": "2026-05-01", "title": "勞動節活動"}]},
     ]
+    for article in arts:
+        article["date"] = "2026-04-27T00:00:00Z"
+        article["content"] = "<p>勞動節活動2026-05-01</p>"
+        article["upcoming_events"][0].update(date_expression="2026-05-01", evidence="勞動節活動2026-05-01")
     out = build.build_upcoming(arts, today=today)
     assert len(out["events"]) == 1
     assert {a["id"] for a in out["events"][0]["articles"]} == {"a1", "a2"}
@@ -449,6 +453,10 @@ def test_build_upcoming_filters_past_and_too_distant():
              {"date": "2026-05-15", "title": "合理範圍"},
          ]},
     ]
+    for article in arts:
+        article["content"] = "<p>" + " ".join(event["title"] + event["date"] for event in article["upcoming_events"]) + "</p>"
+        for event in article["upcoming_events"]:
+            event.update(date_expression=event["date"], evidence=event["title"] + event["date"])
     out = build.build_upcoming(arts, today=today)
     assert [e["title"] for e in out["events"]] == ["合理範圍"]
 
@@ -466,6 +474,53 @@ def test_build_upcoming_skips_duplicates_and_invalid_dates():
     ]
     out = build.build_upcoming(arts, today=today)
     assert out["events"] == []
+
+
+def test_build_upcoming_corrects_monday_and_merges_narrow_equivalent_titles():
+    arts = []
+    for aid, title in (("7aa89c0490ff", "新皇崗口岸早上6時半正式通關"), ("other", "皇崗口岸正式開通")):
+        arts.append(dict(id=aid, title="皇崗口岸下周一開通", source=aid,
+                         date="2026-10-09T13:39:00Z", content="<p>皇崗口岸將於下周一開通</p>",
+                         upcoming_events=[dict(date="2026-10-13", title=title, date_expression="下周一", evidence="皇崗口岸將於下周一開通")]))
+    result = build.build_upcoming(arts, today=datetime(2026, 10, 10).date())
+    assert len(result["events"]) == 1
+    assert result["events"][0]["date"] == "2026-10-12"
+    assert len(result["events"][0]["articles"]) == 2
+
+
+def test_build_upcoming_conflict_and_month_end_stay_out_of_exact_calendar():
+    arts = []
+    for aid, expression, title in (("a", "2026-10-12", "新皇崗口岸正式開通"),
+                                   ("b", "2026-10-13", "皇崗口岸啟用"),
+                                   ("c", "月底", "報告公布")):
+        quote = title + expression
+        arts.append(dict(id=aid, title=quote, source=aid, date="2026-10-09T00:00:00Z",
+                         upcoming_events=[dict(date="2026-10-31", title=title, date_expression=expression, evidence=quote)]))
+    result = build.build_upcoming(arts, today=datetime(2026, 10, 10).date())
+    assert result["events"] == []
+    assert len(result["uncertain_events"]) == 2
+    assert all(event["date"] is None for event in result["uncertain_events"])
+    assert result["timezone"] == "Asia/Hong_Kong"
+
+
+def test_save_index_preserves_duplicate_provenance(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(build, "CONTENT_DIR", tmp_path / "data/content")
+    articles = [_article("canonical", "<p>same body</p>"), _article("duplicate", "<p>same body</p>")]
+    articles[1]["duplicate_of"] = "canonical"
+    articles[0]["duplicate_count"] = 2
+    build.save_json(articles, {})
+    saved = json.loads((tmp_path / "data/articles_index.json").read_text())["articles"]
+    assert saved[1]["duplicate_of"] == "canonical"
+    assert saved[0]["duplicate_count"] == 2
+
+
+def test_corrected_input_does_not_restore_obsolete_summary():
+    article = _article("same", "<p>corrected body</p>")
+    article["summary"] = ""
+    old = dict(article, summary="・old", analysis_version=build.ANALYSIS_VERSION,
+               analysis_input_hash=build.analysis_input_hash(dict(article, title="old title")))
+    assert not build._apply_fallback_summaries([article], [old])[0].get("summary")
 
 
 def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
@@ -775,3 +830,32 @@ def test_unchanged_verified_carryover_keeps_sidecar_time(tmp_path, monkeypatch):
     assert result['unchanged'] == 1
     assert path.read_bytes() == before
     assert 'content_retention' not in article
+
+
+def test_build_upcoming_keeps_conflict_when_one_candidate_becomes_past():
+    articles = []
+    for aid, day in [('a', '2026-10-12'), ('b', '2026-10-13')]:
+        quote = '皇崗口岸啟用' + day
+        articles.append(dict(id=aid, title=quote, source=aid, date='2026-10-09',
+                             upcoming_events=[dict(title='皇崗口岸啟用', date_expression=day, evidence=quote)]))
+    result = build.build_upcoming(articles, today=datetime(2026, 10, 13).date())
+    assert result['events'] == []
+    assert result['uncertain_events'][0]['candidate_dates'] == ['2026-10-12', '2026-10-13']
+    assert len(result['uncertain_events'][0]['articles']) == 2
+    assert build.build_upcoming(articles, today=datetime(2026, 10, 14).date())['uncertain_events'] == []
+
+
+def test_build_upcoming_preserves_distinct_recurring_occurrences():
+    articles = []
+    for aid, day in [('a', '2026-10-12'), ('b', '2026-10-19')]:
+        quote = '周會' + day + '舉行'
+        articles.append(dict(id=aid, cluster_id='weekly', title=quote, source=aid, date='2026-10-09',
+                             upcoming_events=[dict(title='周會', date_expression=day, evidence=quote)]))
+    result = build.build_upcoming(articles, today=datetime(2026, 10, 10).date())
+    assert [event['date'] for event in result['events']] == ['2026-10-12', '2026-10-19']
+    assert result['uncertain_events'] == []
+    single = dict(articles[0], title='周會消息',
+                  content='<p>周會2026-10-12舉行。周會2026-10-19舉行。</p>',
+                  upcoming_events=articles[0]['upcoming_events'] + articles[1]['upcoming_events'])
+    result = build.build_upcoming([single], today=datetime(2026, 10, 10).date())
+    assert [event['date'] for event in result['events']] == ['2026-10-12', '2026-10-19']

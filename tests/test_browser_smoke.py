@@ -191,3 +191,52 @@ def test_retained_full_content_and_interpunct_summary(browser, news_data, width)
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
         assert not errors
         context.close()
+
+
+def test_reader_allowlist_blocks_control_character_url_protocol(browser, news_data):
+    with _static_server() as base_url:
+        page = browser.new_page(service_workers='block')
+        _route_data(page, news_data)
+        page.route('**/data/content/**', lambda route: route.fulfill(json={
+            'version':1, 'content':'<p>Safe <strong>text</strong><a href="java\nscript:void(0)">invalid URL</a><a href="https://example.com/valid">source</a></p><img src="data:text/html,benign" onerror="void(0)"><svg><a href="https://example.com">foreign</a></svg>'}))
+        page.goto(base_url + '/article.html?id=a0')
+        page.locator('#content strong').wait_for()
+        assert page.locator('#content a').first.get_attribute('href') is None
+        assert page.locator('#content a').nth(1).get_attribute('href') == 'https://example.com/valid'
+        assert page.locator('#content img[src^="data:"]').count() == 0
+        assert page.locator('#content [onerror], #content svg').count() == 0
+        page.close()
+
+
+@pytest.mark.parametrize('failed', [True, False])
+def test_ai_insights_empty_and_failure_are_distinct(browser, news_data, failed):
+    with _static_server() as base_url:
+        page = browser.new_page(service_workers='block')
+        _route_data(page, news_data)
+        for filename, data in [('panel_digests.json', {}), ('upcoming.json', {'events':[]}), ('entities.json', {'entities':[]})]:
+            page.route('**/data/' + filename, lambda route, *, data=data: route.fulfill(status=503, body='') if failed else route.fulfill(json=data))
+        page.goto(base_url + '/index.html')
+        expected = '分析載入失敗，請重新載入再試' if failed else '暫時未有分析資料'
+        page.wait_for_function('(expected) => document.querySelector("#upcomingBlock").textContent.includes(expected)', arg=expected)
+        assert expected in page.locator('#upcomingBlock').inner_text()
+        page.close()
+
+
+def test_graph_entities_are_keyboard_accessible(browser, news_data):
+    with _static_server() as base_url:
+        page = browser.new_page(service_workers='block')
+        _route_data(page, news_data)
+        page.route('**/data/graph.json?*', lambda route: route.fulfill(json={
+            'nodes':[{'id':'person-1','label':'測試人物','type':'people','count':1,'articles':['a0']}],
+            'edges':[], 'window_days':7}))
+        page.goto(base_url + '/graph.html')
+        page.locator('summary').filter(has_text='用鍵盤瀏覽圖譜實體').click()
+        node = page.locator('#node-accessible-list button').first
+        node.wait_for()
+        node.focus()
+        page.keyboard.press('Enter')
+        assert page.locator('#sidebar-name').inner_text() == '測試人物'
+        assert page.locator('#sidebar-close').evaluate('(el) => el === document.activeElement')
+        page.keyboard.press('Escape')
+        assert not page.locator('#sidebar').is_visible()
+        page.close()
