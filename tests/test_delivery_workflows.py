@@ -4,12 +4,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _guardian(tmp_path, *, stale, response, initial=None):
-    workflow = (ROOT / '.github/workflows/guardian.yml').read_text()
+    workflow = (ROOT / '.github/workflows/guardian.yml').read_text(encoding="utf-8")
     script = workflow.split('        run: |\n', 1)[1].split('\n      - name:', 1)[0]
     script = '\n'.join(line[10:] for line in script.splitlines())
     bindir = tmp_path / 'bin'
@@ -31,9 +32,10 @@ def _guardian(tmp_path, *, stale, response, initial=None):
         (tmp_path / 'state.json').write_text(json.dumps(initial))
     env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'], TG_TOKEN='mock', TG_CHAT='mock', GITHUB_REPOSITORY='mock/repo', STALE_MIN='75', WEDGE_MIN='40', REALERT_SEC='21600')
     subprocess.run(['bash', '-c', script], cwd=tmp_path, env=env, check=True, capture_output=True)
-    return json.loads((tmp_path / 'state.json').read_text())
+    return json.loads((tmp_path / 'state.json').read_text(encoding="utf-8"))
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Guardian runs on Ubuntu; POSIX shell mocks are exercised by hosted CI")
 def test_guardian_failed_alert_retries_until_acknowledged(tmp_path):
     failed = _guardian(tmp_path, stale=True, response='{"ok":false}')
     assert failed == dict(status='stale', delivered_status='ok', pending_delivery=True, last_alert=0)
@@ -43,6 +45,7 @@ def test_guardian_failed_alert_retries_until_acknowledged(tmp_path):
     assert not success['pending_delivery']
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Guardian runs on Ubuntu; POSIX shell mocks are exercised by hosted CI")
 def test_guardian_failed_recovery_retries(tmp_path):
     initial = dict(status='stale', delivered_status='stale', last_alert=123)
     failed = _guardian(tmp_path, stale=False, response='{"ok":false}', initial=initial)
@@ -54,6 +57,6 @@ def test_guardian_failed_recovery_retries(tmp_path):
 
 def test_update_failure_state_written_only_after_api_ack():
     # PowerShell is unavailable in the offline Linux fixture environment.
-    source = (ROOT / '.github/workflows/update.yml').read_text().split('- name: Notify Telegram on failure', 1)[1]
+    source = (ROOT / '.github/workflows/update.yml').read_text(encoding="utf-8").split('- name: Notify Telegram on failure', 1)[1]
     assert source.index('$response = Invoke-RestMethod') < source.index('if ($response.ok -ne $true)') < source.index('Set-Content -Path $statusFile -Value "failure"')
     assert source.count('Set-Content -Path $statusFile -Value "failure"') == 1
