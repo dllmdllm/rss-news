@@ -83,7 +83,11 @@ def expected_snapshot(repo, revision):
     ))[:5]
     paths = dict.fromkeys(CORE_PATHS + tuple("data/content/" + aid + ".json" for aid in selected))
     # One bounded archive command avoids an unbounded sequence of slow Git reads.
-    raw = subprocess.check_output(_git(repo) + ["archive", "--format=zip", revision] +
+    # git archive applies the executor's autocrlf/eol settings. Pages receives
+    # canonical repository bytes, so disable only this invocation's conversion;
+    # never change the runner's persisted Git configuration or normalize HTTP.
+    raw = subprocess.check_output(_git(repo) + ["-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                                  "archive", "--format=zip", revision] +
                                   ["docs/" + path for path in paths],
                                   timeout=20, stderr=subprocess.DEVNULL)
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:

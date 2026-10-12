@@ -46,6 +46,8 @@ flowchart LR
   Git reads (20 seconds each). A denial, unsafe destination or TLS failure stops
   polling. Reports contain revision, hashes and public source-health metadata;
   they contain no response bodies or provider credentials.
+  Expected hashes use canonical commit bytes, with line-ending conversion
+  disabled for the archive invocation only; runner Git settings remain intact.
 - Write an Actions summary and a per-run verification artifact retained for three
   days. A daily success heartbeat follows verification. Existing transition-only
   failure notification and guardian reminders retain their existing recipients.
