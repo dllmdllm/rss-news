@@ -8,6 +8,7 @@ from pathlib import Path
 import aiohttp
 from bs4 import BeautifulSoup
 from src.event_dates import EVENT_DATE_VERSION, validate_event
+from src.article_evidence import validate_summary_evidence, body_text, normalise_text
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -44,6 +45,8 @@ SYSTEM_PROMPT = (
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
     '"key_sentences":["原文逐字摘錄最關鍵嘅 3 至 5 句句子（必須完全一致，唔好改寫，每句 10-80 字）"],'
+    '"summary_evidence":[{"point":"照抄 summary 其中一點文字（唔帶・）","quote":"支持呢一點嘅內文逐字原句，10至120字"}]'
+    '（可選；每點只配真正直接支持嘅原文，冇證據留空；唔可以按 key_sentences 位置配對或引用摘要本身）,'
     '"upcoming_events":[{"date":"YYYY-MM-DD或null","date_expression":"原文日期字眼",'
     '"evidence":"逐字摘錄包括日期同事件嘅原文句子","title":"短描述，唔超過20字"}]'
     '（最多2個；日期相對輸入嘅出版日期，以香港時間計算；月底、年初等唔可以猜某一日，date用null；無就[]）}'
@@ -91,8 +94,8 @@ _MAX_PROMPT_CHARS = 2000
 
 
 def _extract_text(html_content: str) -> str:
-    soup = BeautifulSoup(html_content, "html.parser")
-    return soup.get_text(separator=" ", strip=True)[:_MAX_PROMPT_CHARS]
+    # Inline tags do not insert spaces into the displayed sentence.
+    return normalise_text(body_text(html_content))[:_MAX_PROMPT_CHARS]
 
 
 def _normalise_summary(raw) -> str:
@@ -268,6 +271,7 @@ def _normalise_parsed(data: dict) -> dict | None:
             "event_type": str(data.get("event_type", "")).strip()[:12],
             "entities":  _normalise_entities(data.get("entities")),
             "key_sentences":   _normalise_key_sentences(data.get("key_sentences")),
+            "summary_evidence": data.get("summary_evidence") if isinstance(data.get("summary_evidence"), list) else [],
             "upcoming_events": _normalise_upcoming_events(data.get("upcoming_events")),
             "version":   ANALYSIS_VERSION,
         }
@@ -422,9 +426,11 @@ async def _apply_results(
     for a, p in zip(batch, parsed):
         p = dict(p, input_hash=analysis_input_hash(a))
         p["upcoming_events"] = _validated_events(a, p.get("upcoming_events"))
+        p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
         a["summary"]   = p["summary"]
+        a["summary_evidence"] = p["summary_evidence"]
         a["score"]     = p["score"]
         a["tags"]      = p["tags"]
         a["sentiment"] = p["sentiment"]
@@ -461,7 +467,7 @@ async def _analyse_one(
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
             try:
-                raw, err, status = await _post_messages(session, user_content, max_tokens=700, timeout=30)
+                raw, err, status = await _post_messages(session, user_content, max_tokens=1200, timeout=30)
                 if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
@@ -518,10 +524,10 @@ async def _analyse_batch(
         f"分析以下 {len(batch)} 篇新聞，返回長度 = {len(batch)} 嘅 JSON 陣列：\n\n"
         + "\n\n".join(parts)
     )
-    # Per-article output is ~300-450 tokens once key_sentences + upcoming_events
-    # are included; budget generously and let the server cap to the model ceiling.
+    # Evidence quotes add output beyond the legacy summary/key-sentence schema.
+    # Keep a bounded budget large enough not to truncate verified support arrays.
     # Timeout scales with batch size.
-    max_tokens = min(5000, 500 * len(batch) + 200)
+    max_tokens = min(6500, 1100 * len(batch) + 300)
     timeout    = 30 + 10 * len(batch)
 
     batch_ok = False
@@ -611,6 +617,8 @@ def _ensure_analysis_defaults(articles: list) -> None:
         a["entities"] = _normalise_entities(a.get("entities"))
         a["key_sentences"] = _normalise_key_sentences(a.get("key_sentences"))
         a["upcoming_events"] = _validated_events(a, a.get("upcoming_events"))
+        a["summary_evidence"] = validate_summary_evidence(a, a.get("summary_evidence"))
+        a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
 
 
 async def analyse_all(articles: list) -> list:
@@ -618,7 +626,7 @@ async def analyse_all(articles: list) -> list:
         print("[analyse] Skipped — set MINIMAX_API_KEY")
         for article in articles:
             if article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
-                for field in ("summary", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+                for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
                     article.pop(field, None)
         _ensure_analysis_defaults(articles)
         return articles
@@ -634,6 +642,7 @@ async def analyse_all(articles: list) -> list:
             a["analysis_input_hash"] = c["input_hash"]
             a["analysis_version"] = ANALYSIS_VERSION
             a["summary"]   = c.get("summary", "")
+            a["summary_evidence"] = validate_summary_evidence(a, c.get("summary_evidence"))
             a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
@@ -646,7 +655,7 @@ async def analyse_all(articles: list) -> list:
         else:
             cache.pop(aid, None)
             # A failed refresh must not restore analysis of a corrected input.
-            for field in ("summary", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+            for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
                 a.pop(field, None)
             pending.append(a)
 

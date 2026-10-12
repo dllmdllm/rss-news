@@ -39,6 +39,8 @@
     category: "全部",
     source: "",
     topic: "",
+    readingStatus: "all",
+    panels: {},
     sentiment: "",   // 今日輿情格撳落去篩（negative / neutral / positive）
     entity: "",      // 今日焦點撳落去篩，格式 "type:name"
     entityIndex: null,  // Map("type:name" -> entity object，攞 article_ids 用
@@ -215,6 +217,7 @@
           : article.topic === state.topic;
         if (!inTopic) return false;
       }
+      if (state.readingStatus !== "all" && window.RssReaderState && !window.RssReaderState.filter([article], state.readingStatus).length) return false;
       if (state.category !== "全部" && article.category !== state.category) return false;
       if (state.source && article.source !== state.source) return false;
       if (state.sentiment && article.sentiment !== state.sentiment) return false;
@@ -289,8 +292,10 @@
           </div>
           <h1>${esc(lead.title || "")}</h1>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
+          ${window.RssEventReading?.provenance(lead) || ""}
+          <span>${window.RssReaderState?.articleState(lead.id)?.read ? "已讀" : "未讀"}</span>
         </div>
-      </a>`;
+      </a><button type="button" class="save-later" data-save-later="${esc(lead.id)}" aria-pressed="${!!window.RssReaderState?.articleState(lead.id)?.saved}">${window.RssReaderState?.articleState(lead.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>`;
   }
 
   function briefItem(article, label) {
@@ -328,7 +333,7 @@
   function card(article) {
     // lazy：infinite scroll 每批 append 30 張卡，即刻載晒啲圖好傷流動數據
     const image = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="" loading="lazy" decoding="async">` : "";
-    return `<a class="card ${categoryClass(article.category)}" href="${articleUrl(article)}">
+    return `<div class="reading-card"><a class="card ${categoryClass(article.category)}" href="${articleUrl(article)}">
       <div class="thumb">${image}</div>
       <div>
         <div class="meta">
@@ -337,11 +342,13 @@
           <span>${esc(timeLabel(article))}</span>
           ${priorityBadge(article)}
           ${clickbaitBadge(article)}
+          <span>${window.RssReaderState?.articleState(article.id)?.read ? "已讀" : "未讀"}${window.RssReaderState?.articleState(article.id)?.saved ? " · 稍後閱讀" : ""}</span>
         </div>
         <h3>${esc(article.title || "")}</h3>
         ${cardSummaryBlock(article)}
+        ${window.RssEventReading?.provenance(article) || ""}
       </div>
-    </a>`;
+    </a><button type="button" class="save-later" data-save-later="${esc(article.id)}" aria-pressed="${!!window.RssReaderState?.articleState(article.id)?.saved}">${window.RssReaderState?.articleState(article.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button></div>`;
   }
 
   const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
@@ -377,7 +384,7 @@
   // right. Without this, a tall brief sticks out below the lead while the
   // category grid ends short, leaving the brief column visually orphaned.
   function fillCategoriesToMatchBrief() {
-    if (state.topic || state.category !== "全部" || state.source) return;
+    if (state.topic || state.category !== "全部" || state.source || state.sentiment || state.entity || state.readingStatus !== "all") return;
     if (window.matchMedia && !window.matchMedia("(min-width: 901px)").matches) return;
     const brief = document.querySelector(".brief");
     const feed = $("feed");
@@ -469,7 +476,7 @@
     // 加 isMobile() gate，唔係 desktop layout 會被殘留嘅 mobile.view 影響
     // （mobile.view 預設 "home"，冇 gate 嘅話 desktop 永遠行平鋪）。
     const mobileFlat = isMobile() && state.mobile.view === "home";
-    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment && !state.entity) {
+    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment && !state.entity && state.readingStatus === "all") {
       feed.classList.remove("feed-grid");
       disconnectFeedObserver();
       renderCategorySections();
@@ -507,7 +514,8 @@
   const OUTLET_PREFIXES = ["RTHK", "明報", "東網", "HK01", "Now", "HuffPost"];
 
   function outletOf(sourceName) {
-    const name = String(sourceName || "");
+    const name = String(sourceName || "").trim();
+    if (/^(星島頭條|星島 即時中國|星島 即時國際)$/.test(name)) return "星島頭條";
     for (const prefix of OUTLET_PREFIXES) {
       if (name.startsWith(prefix + " ")) return prefix;
     }
@@ -533,7 +541,7 @@
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
     // keeps showing global picks the user has filtered away.
-    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment || state.entity;
+    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment || state.entity || state.readingStatus !== "all";
     const pool = filterActive ? (filteredList || filteredArticles()) : state.articles;
     // Score each article once; reuse for sorting, min/max, and badge rendering.
     const scored = pool.map((article) => ({ article, score: criticalScore(article) }));
@@ -582,7 +590,7 @@
     $("sideSourceHealth").innerHTML += troubled.map(([name, info]) => {
       const retained = Number(info.effective_count || 0);
       const link = /^https?:\/\//i.test(info.feed_url || "") ? `<a href="${esc(safeUrl(info.feed_url))}">RSS</a>` : "";
-      return `<div class="side-health-row" role="status"><span>${esc(name)}：${info.error || info.fetch_status === "failed" ? "最新抓取失敗" : "最新抓取 0 篇"}${retained ? `；保留 ${retained} 篇舊資料` : ""} ${link}</span></div>`;
+      return `<div class="side-health-row" role="status"><span>${esc(name)}：${info.error || info.fetch_status === "failed" ? "最新抓取失敗" : "最新抓取 0 篇"}${retained ? `；保留 ${retained} 篇舊資料` : ""} ${link}${window.RssEventReading?.healthObservation(info) || ""}</span></div>`;
     }).join("");
     $("sourceHealth").textContent = troubled.length ? `${troubled.length} 個 feed 需要檢查` : "來源正常";
   }
@@ -717,6 +725,7 @@
         return haystack.includes(lower);
       });
     }
+    if (window.RssReaderState) results = window.RssReaderState.filter(results, state.readingStatus);
     title.textContent = `搜尋結果 · ${results.length} 篇`;
     host.innerHTML = results.length
       ? results.slice(0, 20).map((a) => searchResultItem(a, query)).join("")
@@ -743,6 +752,7 @@
     renderMood(state.articles);
     renderDailyBrief();
     renderFeed(list);
+    if ($("eventReadingList")) $("eventReadingList").innerHTML = window.RssEventReading?.render(state.topics, list, state.panels) || "";
     renderMobileSideHealth();
     // 來源 chips 靠 state.sources——initial load 時 updateMobileSubUi 行先過
     // data fetch，一定要喺 renderAll 度再 render 一次先會填到內容。
@@ -1001,6 +1011,9 @@
   }
 
   function bindEvents() {
+    $("readingStatus")?.addEventListener("change", event => { state.readingStatus = event.target.value; renderAll(); });
+    window.addEventListener("rss-reader-state", event => { if (event.detail?.statusChanged !== false) renderAll(); });
+    document.addEventListener("click", event => { const button = event.target.closest("[data-save-later]"); if (!button || !window.RssReaderState) return; const id = button.dataset.saveLater; window.RssReaderState.saveLater(id, !window.RssReaderState.articleState(id).saved); });
     applyFontSize(storageGet("rss_font_size") || storageGet("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
       const sourceButton = event.target.closest("button[data-source]");
@@ -1344,6 +1357,8 @@
     const host = $("contraList");
     const block = $("contraBlock");
     if (!host || !block || !panelMap) return;
+    block.hidden = true;
+    host.innerHTML = "";
     // Only evidence-backed pairs from the current backend schema are shown.
     const rows = [];
     for (const entry of Object.values(panelMap)) {
@@ -1351,7 +1366,11 @@
       if (!digest) continue;
       const topic = digest.headline || "";
       for (const c of (digest.contradictions || [])) {
-        if (c && c.claim_a && c.claim_b && c.quote_a && c.quote_b && c.article_id_a && c.article_id_b) rows.push({ topic, ...c });
+        if (c && c.claim_a && c.claim_b && c.quote_a && c.quote_b && c.article_id_a && c.article_id_b &&
+          ["a", "b"].every(side => {
+            const article = state.articles.find(a => a.id === c["article_id_" + side]);
+            return article && c["verified_" + side] === true && /^[a-f0-9]{64}$/.test(c["content_hash_" + side] || "") && c["content_hash_" + side] === article.content_hash;
+          })) rows.push({ topic, ...c });
         if (rows.length >= 5) break;
       }
       if (rows.length >= 5) break;
@@ -1482,7 +1501,7 @@
 
   async function loadAiInsights() {
     const jobs = [
-      ["panel_digests.json", ["contraBlock", "timelineBlock"], data => { renderContradictions(data); renderTimeline(data); }],
+      ["panel_digests.json", ["contraBlock", "timelineBlock"], data => { state.panels = data; renderContradictions(data); renderTimeline(data); if ($("eventReadingList")) $("eventReadingList").innerHTML = window.RssEventReading?.render(state.topics, filteredArticles(), data) || ""; }],
       ["upcoming.json", ["upcomingBlock"], renderUpcoming],
       ["entities.json", ["entityBlock"], renderEntities],
     ];

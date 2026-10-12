@@ -186,7 +186,16 @@ def test_retained_full_content_and_interpunct_summary(browser, news_data, width)
         assert '2026-10-01T12:00:00+00:00' in page.locator('#contentNotice').inner_text()
         assert '來源限制存取' in page.locator('#contentNotice').inner_text()
         assert 'Last verified complete body.' in page.locator('#content').inner_text()
-        assert page.locator('#summaryBox li').all_text_contents() == points
+        # Evidence annotations are separate from the original five points;
+        # absent support must not fabricate positional key-sentence links.
+        actual = page.locator('#summaryBox li').evaluate_all("""items => items.map(item => {
+          const clone = item.cloneNode(true);
+          clone.querySelectorAll('.summary-source-link,.summary-source-status').forEach(node => node.remove());
+          return clone.textContent;
+        })""")
+        assert actual == points
+        assert page.locator('#summaryBox .summary-source-status').count() == 5
+        assert page.locator('#summaryBox .summary-source-link').count() == 0
         page.wait_for_function('document.querySelector("#content img").naturalWidth > 0')
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
         assert not errors

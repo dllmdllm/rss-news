@@ -3,7 +3,7 @@
 //   - HTML / docs data JSON : network-first (fall back to cache when offline)
 //   - images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v279";
+const CACHE   = "rss-news-v280";
 const SHELL   = [
   "./",
   "./index.html",
@@ -14,6 +14,9 @@ const SHELL   = [
   "./js/index.js",
   "./js/article.js",
   "./js/article-reading.js",
+  "./js/reader-state.js",
+  "./js/event-reading.js",
+  "./js/article-evidence.js",
 ];
 
 self.addEventListener("install", event => {

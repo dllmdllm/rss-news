@@ -1081,6 +1081,8 @@ async def fetch_all() -> tuple[list, dict]:
             "category":     feed_info["category"],
             "count":        len(batch),
             "fresh_count":  len(batch),
+            "observed_at": datetime.now(timezone.utc).isoformat() if not error else None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
             "feed_url":     feed_info["url"],
             "fetch_status": "failed" if error else ("not_modified" if not_modified else "success"),
             "error":        error,
@@ -1090,6 +1092,10 @@ async def fetch_all() -> tuple[list, dict]:
             failed_sources += 1
         if not_modified:
             not_modified_count += 1
+        observed_at = source_stats[feed_info["name"]]["observed_at"]
+        for article in batch:
+            article["published_at"] = article.get("date")
+            article["fetched_at"] = observed_at
         articles.extend(batch)
 
     # Drop cache entries for feeds no longer in RSS_FEEDS so the file

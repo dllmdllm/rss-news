@@ -66,4 +66,4 @@ jobs:
         run: |
           echo "::warning::Published data validation failed. See the advisory step; code checks do not repair or overwrite generated news."
           echo "### Published data needs attention" >> "$GITHUB_STEP_SUMMARY"
-          echo "Existing generated news failed validation. See the published-data step. Production update.yml still runs these tests as a failing gate after publication." >> "$GITHUB_STEP_SUMMARY"
+          echo "Existing generated news failed validation. See the published-data step. Production update.yml runs offline regressions and strict generated-data validation before publication." >> "$GITHUB_STEP_SUMMARY"

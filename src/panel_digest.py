@@ -15,6 +15,7 @@ from pathlib import Path
 import aiohttp
 
 from src.analyse import _article_text, _strip_fences
+from src.article_evidence import verified_quote, normalise_text, valid_timestamp, source_outlet, timestamp_order
 from src.minimax_client import (
     MINIMAX_API_KEY,
     MINIMAX_MODEL,
@@ -57,15 +58,26 @@ PANEL_PROMPT = (
     "]（若報導日期橫跨兩日或以上就列出事件發展時間軸，最多 6 個；單日或日期不明就空陣列 []）}"
 )
 
-DIGEST_VERSION = "d-" + hashlib.sha256(("evidence-v3|" + MINIMAX_MODEL + "|" + PANEL_PROMPT).encode("utf-8")).hexdigest()[:12]
+LEGACY_DIGEST_VERSION = "d-" + hashlib.sha256(("evidence-v3|" + MINIMAX_MODEL + "|" + PANEL_PROMPT).encode("utf-8")).hexdigest()[:12]
+PANEL_PROMPT += (
+    '\n另可附 "shared_facts", "new_developments", "differing_accounts" 三個陣列，'
+    '每项 {"text":"逐字引用原文一個完整陳述，不要改寫",'
+    '"evidence":[{"article_id":"輸入文章ID","quote":"支持該陳述嘅逐字內文"}]}。'
+    'shared_facts 要至少兩個不同媒體嘅直接引用支持。'
+    'new_developments 只放原文明言新增、公布或其後發展嘅陳述，'
+    '唔可單靠報道日期較新就猜有新發展，冇原文就[]。'
+    'differing_accounts 要逐篇歸屬，唔好將報道角度差異叫作矛盾。'
+    '所有quote必須來自內文，不可引用摘要；唔肯定就留空。'
+)
+DIGEST_VERSION = "d-" + hashlib.sha256(("evidence-v4|" + MINIMAX_MODEL + "|" + PANEL_PROMPT).encode("utf-8")).hexdigest()[:12]
 
 
-def _signature(cluster_id: str, members: list) -> str:
+def _signature(cluster_id: str, members: list, *, version: str | None = None) -> str:
     """Hash the actual model input, including source provenance and model version."""
     ordered = sorted(members, key=lambda m: str(m.get("id", "")) if isinstance(m, dict) else str(m))
     parts = [_format_member(m, i + 1) if isinstance(m, dict) else str(m)
              for i, m in enumerate(ordered)]
-    payload = json.dumps([cluster_id, DIGEST_VERSION, MINIMAX_MODEL, parts], ensure_ascii=False)
+    payload = json.dumps([cluster_id, version or DIGEST_VERSION, MINIMAX_MODEL, parts], ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -263,8 +275,66 @@ def _normalise_digest(data, members: list[dict] | None = None) -> dict | None:
         "tension":        tension,
         "contradictions": contradictions,
         "timeline":       timeline,
+        **_grounded_comparison(data, members or []),
         "version":        DIGEST_VERSION,
     }
+
+
+def _grounded_comparison(data: dict, members: list[dict]) -> dict:
+    by_id = {str(member.get("id")): member for member in members}
+    result = {}
+    for field in ("shared_facts", "new_developments", "differing_accounts"):
+        accepted = []
+        raw = data.get(field)
+        for item in raw[:6] if isinstance(raw, list) else []:
+            if not isinstance(item, dict):
+                continue
+            text = normalise_text(item.get("text"))
+            evidence = []
+            seen = set()
+            for support in item.get("evidence", [])[:8] if isinstance(item.get("evidence"), list) else []:
+                if not isinstance(support, dict):
+                    continue
+                aid = str(support.get("article_id") or "")
+                member = by_id.get(aid)
+                quote = verified_quote(support.get("quote"), member or {})
+                # Only text actually present in the supplied body can ground
+                # comparison. Never turn a title/AI summary into source proof.
+                if (not member or not quote or aid in seen
+                        or normalise_text(quote) not in normalise_text(_article_text(member)[:3000])):
+                    continue
+                evidence.append({"article_id": aid, "quote": quote,
+                                 "source": member.get("source", ""), "url": member.get("url", ""),
+                                 "published_at": valid_timestamp(member.get("date")),
+                                 "verified": True,
+                                 "content_hash": hashlib.sha256(member["content"].encode("utf-8")).hexdigest()})
+                seen.add(aid)
+            # The displayed comparison statement is itself a verbatim source
+            # claim; quote validation alone cannot prove a model paraphrase.
+            if not text or not evidence or not any(text == support["quote"] for support in evidence):
+                continue
+            evidence = [support for support in evidence if text in support["quote"]]
+            if field == "shared_facts" and len({source_outlet(support["source"]) for support in evidence if support["source"]}) < 2:
+                continue
+            if field == "new_developments" and not re.search(r"新增|最新|公布|宣布|其後|隨後|更新|announced|updated|new development", text, re.I):
+                continue
+            accepted.append({"text": text, "evidence": evidence})
+        if field == "new_developments":
+            accepted.sort(key=lambda item: min(timestamp_order(support["published_at"]) for support in item["evidence"]))
+        result[field] = accepted
+    result["comparison_available"] = any(result.values())
+    return result
+
+
+def _legacy_available(entry: dict, cid: str, members: list) -> bool:
+    return (isinstance(entry, dict) and entry.get("version") == LEGACY_DIGEST_VERSION
+            and entry.get("signature") == _signature(cid, members, version=LEGACY_DIGEST_VERSION)
+            and isinstance(entry.get("digest"), dict))
+
+
+def _legacy_without_comparison(digest: dict) -> dict:
+    return {**digest, "shared_facts": [], "new_developments": [],
+            "differing_accounts": [], "comparison_available": False}
 
 
 def _parse_digest(raw: str, members: list[dict] | None = None) -> dict | None:
@@ -299,7 +369,7 @@ async def _digest_one(
                     session,
                     system=PANEL_PROMPT,
                     user_text=user,
-                    max_tokens=1100,
+                    max_tokens=2200,
                     timeout=45,
                     thinking={"type": "disabled"},
                 )
@@ -350,6 +420,13 @@ async def generate_panel_digests(articles: list) -> dict:
                  if isinstance(entry, dict) and entry.get("signature") == signatures.get(cid)
                  and cid in signatures and entry.get("version") == DIGEST_VERSION
                  and isinstance(entry.get("digest"), dict)}
+        for cid, members in qualifying:
+            entry = existing.get(cid)
+            if _legacy_available(entry, cid, members):
+                valid[cid] = {**entry, "digest": _legacy_without_comparison(entry["digest"])}
+            elif cid in valid:
+                valid[cid] = {**valid[cid], "digest": {**valid[cid]["digest"],
+                    **_grounded_comparison(valid[cid]["digest"], members)}}
         if valid != existing:
             save_cache(valid)
         print("[digest] Skipped — set MINIMAX_API_KEY")
@@ -363,6 +440,7 @@ async def generate_panel_digests(articles: list) -> dict:
     cache = load_cache()
     output: dict = {}
     pending: list[tuple[str, list[dict], str]] = []
+    legacy_fallbacks = {}
 
     # Reuse cached digests when the cluster's membership signature is unchanged.
     for cid, members in qualifying:
@@ -374,8 +452,11 @@ async def generate_panel_digests(articles: list) -> dict:
             and cached.get("version") == DIGEST_VERSION
             and isinstance(cached.get("digest"), dict)
         ):
-            output[cid] = cached["digest"]
+            output[cid] = {**cached["digest"], **_grounded_comparison(cached["digest"], members)}
+            cache[cid] = {**cached, "digest": output[cid]}
         else:
+            if _legacy_available(cached, cid, members):
+                legacy_fallbacks[cid] = {**cached, "digest": _legacy_without_comparison(cached["digest"])}
             cache.pop(cid, None)  # Failed refresh must not republish obsolete evidence.
             pending.append((cid, members, sig))
 
@@ -398,6 +479,9 @@ async def generate_panel_digests(articles: list) -> dict:
         for cid, _members, sig in pending:
             digest = new_results.get(cid)
             if not digest:
+                if cid in legacy_fallbacks:
+                    cache[cid] = legacy_fallbacks[cid]
+                    output[cid] = cache[cid]["digest"]
                 continue
             output[cid] = digest
             cache[cid] = {

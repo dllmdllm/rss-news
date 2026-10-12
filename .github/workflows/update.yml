@@ -81,6 +81,22 @@ jobs:
           if (-not $ok) { Write-Error 'minimax tcp:443 unreachable'; exit 1 }
           Write-Host 'pre-flight OK'
 
+      - name: Retain prior public site
+        # Only tracked docs are archived; no env, credentials or local reader
+        # state. Retain uncertain legacy bytes without pretending they are good.
+        run: python tools/site_snapshot.py snapshot --out "$env:RUNNER_TEMP\rss-news-prior.zip" --allow-unvalidated
+
+      - name: Run offline code regressions
+        # Browser fixtures are mandatory in hosted Code checks. This Windows
+        # publisher uses installed Python/Node and never calls paid providers.
+        run: python -m pytest tests --ignore=tests/test_data_quality.py --ignore=tests/test_browser_smoke.py --ignore=tests/test_reader_mobile.py --ignore=tests/test_event_browser.py --ignore=tests/test_evidence_browser.py -q -rs
+        env:
+          MINIMAX_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+          WORKER_URL: ''
+          NOTIFY_SECRET: ''
+
       - name: Fetch RSS, scrape & analyse
         # Retry once on a *fast* failure. lxml's C extension segfaults the
         # interpreter mid-scrape at a low but steady rate (0xC0000005 in
@@ -111,6 +127,18 @@ jobs:
           TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
 
+      - name: Validate generated site before publication
+        # Keep the previous publication on any failed integrity/evidence gate.
+        # This is deliberately before staging/committing/pushing generated data.
+        run: |
+          python tools/validate_publication.py docs --require-current
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tests/test_data_quality.py -q
+        env:
+          MINIMAX_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+
       - name: Commit & push if changed
         # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
         # picks up WSL bash first from PATH, which can't handle Windows
@@ -138,7 +166,7 @@ jobs:
           # Stage ONLY the generated artefacts. Used both for the initial
           # commit and after every resync below.
           stage_outputs() {
-            git add docs/data/articles.json docs/data/articles_index.json docs/data/analyses.json docs/data/feed.xml docs/data/feed_http_cache.json docs/data/content docs/data/graph.json docs/data/upcoming.json docs/data/panel_digests.json docs/data/embeddings.bin docs/data/embeddings_meta.json docs/data/similar.json docs/data/entities.json docs/data/build_status.json
+            git add docs/data/articles.json docs/data/articles_index.json docs/data/analyses.json docs/data/feed.xml docs/data/feed_http_cache.json docs/data/content docs/data/graph.json docs/data/upcoming.json docs/data/panel_digests.json docs/data/embeddings.bin docs/data/embeddings_meta.json docs/data/similar.json docs/data/entities.json docs/data/build_status.json || return 1
             git add docs/data/breaking_alerts.json 2>/dev/null || true
             # daily_brief.json 唔 stage 嘅話會永遠 untracked：下個 checkout 清走佢，
             # 日期 gate 失效，每 20 分鐘重新生成兼重發 Telegram。
@@ -162,7 +190,8 @@ jobs:
             git add docs/data/source_health.json 2>/dev/null || true
           }
 
-          stage_outputs
+          stage_outputs || { echo "generated data staging failed"; exit 1; }
+          tested_source=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0
@@ -185,6 +214,7 @@ jobs:
               sleep 3
               continue
             fi
+            python tools/site_snapshot.py check-source --tested "$tested_source" --current origin/main || exit 1
             # MIXED reset, not soft: index becomes the latest origin/main tree,
             # then we re-stage only docs/data from the working tree. A soft
             # reset kept the whole OLD checkout tree in the index, so if a code
@@ -194,7 +224,7 @@ jobs:
             # observed 2026-06-10). With mixed + re-add, concurrent non-data
             # commits pass through untouched and ours still wins for data.
             git reset --mixed origin/main
-            stage_outputs
+            stage_outputs || { echo "generated data staging failed"; exit 1; }
             if git diff --cached --quiet; then
               echo "no changes after resync"; exit 0
             fi
@@ -209,14 +239,15 @@ jobs:
           echo "push failed after 3 attempts — see output above"
           exit 1
 
-      - name: Run tests
-        # AFTER the push, deliberately. Tests guard code regressions, not the
-        # data; when they ran before the push a single broken unit test held
-        # every article hostage (2026-05-31: test_key_sentences_caps_at_two
-        # failed 73 consecutive runs — 20h frozen site while build.py was
-        # producing good data the whole time). A failure here still fails the
-        # run and fires the Telegram notify, but the articles already shipped.
-        run: python -m pytest tests -q -rs
+      - name: Retain recovery artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-news-recovery-${{ github.run_id }}
+          path: ${{ runner.temp }}/rss-news-prior.zip
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: warn
 
       - name: Daily heartbeat
         # Silence is ambiguous: "no failure notify" can mean "all green" OR

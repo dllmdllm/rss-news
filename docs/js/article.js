@@ -256,6 +256,7 @@
   }
 
   function bindToolbar() {
+    const preferences = window.RssReaderState || {preference: storageGet, setPreference: storageSet};
     const buttons = [$("fontSmall"), $("fontNormal"), $("fontLarge")];
     // rss_font_size 係同 index.html 共用嘅偏好（small / normal / large）；
     // rss_home_font_size 係舊 key。冇儲過就維持本頁預設「大」。
@@ -273,19 +274,24 @@
       });
       return next;
     }
-    applyFontSize(storageGet(FONT_KEY) || storageGet("rss_home_font_size") || "large");
+    applyFontSize(preferences.preference(FONT_KEY) || preferences.preference("rss_home_font_size") || "large");
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
         const size = Object.keys(FONT_BUTTON_ID).find((key) => FONT_BUTTON_ID[key] === button.id);
         const applied = applyFontSize(size);
-        try { localStorage.setItem(FONT_KEY, applied); } catch (_) {}
+        preferences.setPreference(FONT_KEY, applied);
       });
     });
+    const textOnly = preferences.preference("rss_text_only") === "1";
+    document.body.classList.toggle("text-only", textOnly);
+    $("textOnly").setAttribute("aria-pressed", String(textOnly));
+    $("textOnly").classList.toggle("active", textOnly);
     $("textOnly").addEventListener("click", () => {
       document.body.classList.toggle("text-only");
       const active = document.body.classList.contains("text-only");
       $("textOnly").classList.toggle("active", active);
       $("textOnly").setAttribute("aria-pressed", String(active));
+      preferences.setPreference("rss_text_only", active ? "1" : "0");
     });
     const aiToggle = $("aiToggle");
     if (aiToggle) {
@@ -294,11 +300,11 @@
         aiToggle.classList.toggle("active", !collapsed);
         aiToggle.setAttribute("aria-expanded", String(!collapsed));
       };
-      applyAiState(storageGet("article.aiCollapsed") === "1");
+      applyAiState(preferences.preference("article.aiCollapsed") === "1");
       aiToggle.addEventListener("click", () => {
         const collapsed = !document.body.classList.contains("ai-collapsed");
         applyAiState(collapsed);
-        storageSet("article.aiCollapsed", collapsed ? "1" : "0");
+        preferences.setPreference("article.aiCollapsed", collapsed ? "1" : "0");
       });
     }
   }
@@ -410,6 +416,7 @@
     // 冇關鍵句就唔好留個空框喺 AI 摘要同正文之間。
     $("keyFacts").hidden = !factItems.length;
     $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, similarMap).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
+    window.RssArticleEvidence?.init(article);
   }
 
   load().catch((err) => {

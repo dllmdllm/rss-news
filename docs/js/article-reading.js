@@ -50,28 +50,78 @@
     const root = document.getElementById('content');
     const highlight = document.getElementById('highlightToggle');
     const count = highlightKeySentences(root, article.key_sentences);
+    const reader = window.RssReaderState;
+    const saved = reader.articleState(article.id);
+    const saveLater = document.getElementById('readerSaveLater');
+    const read = document.getElementById('readerRead');
+    const resume = document.getElementById('readerResume');
+    const localStatus = document.getElementById('readerLocalStatus');
+    function localUi() {
+      const state = reader.articleState(article.id);
+      saveLater.setAttribute('aria-pressed', String(state.saved));
+      saveLater.textContent = state.saved ? '已加入稍後閱讀' : '稍後閱讀';
+      read.setAttribute('aria-pressed', String(state.read));
+      read.textContent = state.read ? '標記未讀' : '標記已讀';
+      localStatus.textContent = reader.isPersistent() ? '記錄只保留在此裝置' : '儲存被封鎖，記錄只保留在本次頁面';
+    }
+    saveLater.addEventListener('click', () => { reader.saveLater(article.id, !reader.articleState(article.id).saved); localUi(); });
+    read.addEventListener('click', () => { reader.markRead(article.id, !reader.articleState(article.id).read); localUi(); });
+    resume.hidden = saved.position <= 0.01;
+    resume.textContent = `繼續上次位置（${Math.round(saved.position * 100)}%）`;
+    let moved = false, scrollTimer;
+    function savePosition() {
+      if (!moved) return;
+      const top = root.getBoundingClientRect().top + window.scrollY;
+      const span = Math.max(1, root.scrollHeight - window.innerHeight);
+      reader.set(article.id, {position: (window.scrollY - top) / span});
+      localUi();
+    }
+    resume.addEventListener('click', () => {
+      moved = true;
+      const top = root.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({top: top + saved.position * Math.max(1, root.scrollHeight - window.innerHeight), behavior: 'auto'});
+      resume.hidden = true;
+    });
+    window.addEventListener('scroll', () => {
+      moved = true;
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(savePosition, 250);
+    }, {passive: true});
+    window.addEventListener('pagehide', savePosition);
+    localUi();
+    root.classList.toggle('hide-key-sentences', reader.preference('rss_highlight', '1') === '0');
+    highlight.setAttribute('aria-pressed', String(!root.classList.contains('hide-key-sentences')));
     highlight.hidden = !count;
     highlight.addEventListener('click', () => {
       const enabled = root.classList.toggle('hide-key-sentences');
       highlight.setAttribute('aria-pressed', String(!enabled));
+      reader.setPreference('rss_highlight', enabled ? '0' : '1');
     });
     const play = document.getElementById('articleTts');
     const pause = document.getElementById('articleTtsPause');
     const mode = document.getElementById('articleTtsMode');
     const rate = document.getElementById('articleTtsRate');
     const status = document.getElementById('articleTtsStatus');
+    const previous = document.getElementById('articleTtsPrevious');
+    const following = document.getElementById('articleTtsNext');
+    const seek = document.getElementById('articleTtsSeek');
+    const progress = document.getElementById('articleTtsProgress');
+    mode.value = reader.preference('rss_tts_mode', saved.tts.mode);
+    rate.value = reader.preference('rss_tts_rate', '1');
+    if (!['full', 'summary'].includes(mode.value)) mode.value = 'full';
+    if (!['0.85', '1', '1.2', '1.5'].includes(rate.value)) rate.value = '1';
     const synth = window.speechSynthesis;
     if (!synth || !window.SpeechSynthesisUtterance) {
       play.disabled = true;
+      previous.disabled = following.disabled = seek.disabled = true;
       status.textContent = '呢個瀏覽器未支援朗讀';
       return;
     }
-    let chunks = [], active = false, paused = false, generation = 0, utterance = null, browserDefault = false;
+    let chunks = [], index = saved.tts.mode === mode.value ? saved.tts.index : 0, active = false, paused = false, generation = 0, utterance = null, browserDefault = false, completed = false;
     function stop(message = '') {
       generation++;
       active = false;
       paused = false;
-      chunks = [];
       utterance = null;
       synth.cancel();
       play.textContent = '🔊 朗讀';
@@ -82,8 +132,8 @@
     }
     function next(token) {
       if (!active || token !== generation) return;
-      if (!chunks.length) { stop('朗讀完畢'); return; }
-      const text = chunks.shift();
+      if (index >= chunks.length) { completed = true; index = chunks.length - 1; updateQueue(); stop('朗讀完畢'); return; }
+      const text = chunks[index];
       const voices = synth.getVoices();
       const voice = voices.find(v => /zh[-_]HK|yue|Cantonese|粵/i.test(v.lang + ' ' + v.name))
         || voices.find(v => /^zh/i.test(v.lang));
@@ -97,7 +147,7 @@
         utterance.rate = Number(rate.value);
         status.dataset.voice = useDefault ? 'browser-default' : (voice?.name || 'zh-HK (browser selection)');
         const current = utterance;
-        utterance.onend = () => { if (utterance === current) next(token); };
+        utterance.onend = () => { if (utterance === current && token === generation) { index++; if (index < chunks.length) updateQueue(); next(token); } };
         utterance.onerror = event => {
           if (token !== generation || utterance !== current) return;
           const error = event?.error || '';
@@ -118,15 +168,27 @@
       }
       speak(browserDefault);
     }
-    play.addEventListener('click', () => {
-      if (active) { stop(); return; }
+    function updateQueue() {
+      index = Math.max(0, Math.min(index, Math.max(0, chunks.length - 1)));
+      seek.max = String(Math.max(0, chunks.length - 1));
+      seek.value = String(index);
+      seek.disabled = !chunks.length;
+      previous.disabled = !chunks.length || index === 0;
+      following.disabled = !chunks.length || index >= chunks.length - 1;
+      progress.textContent = `${chunks.length ? index + 1 : 0} / ${chunks.length} 段`;
+      reader.set(article.id, {tts: {mode: mode.value, index: completed ? 0 : index}});
+    }
+    function prepareQueue() {
       const text = mode.value === 'summary'
         ? String(article.summary || '').replace(/\\n/g, '\n').replace(/(?:^|\n)\s*[・•●]\s*/g, '')
         : root.innerText;
-      if (!text.trim()) { status.textContent = '暫時未有可朗讀內容'; return; }
-      // Short chunks avoid long-utterance stalls on mobile. Start synchronously
-      // inside the click handler so iOS preserves the user gesture.
-      chunks = ([article.title || '', text].join('。')).match(/[\s\S]{1,180}/g) || [];
+      chunks = text.trim() ? ([article.title || '', text].join('。')).match(/[\s\S]{1,180}/g) || [] : [];
+      updateQueue();
+    }
+    function start() {
+      if (!chunks.length) { status.textContent = '暫時未有可朗讀內容'; return; }
+      if (completed) { index = 0; completed = false; }
+      updateQueue();
       active = true;
       paused = false;
       play.textContent = '⏹ 停止';
@@ -136,6 +198,23 @@
       browserDefault = false;
       delete status.dataset.error;
       next(++generation);
+    }
+    function move(nextIndex) {
+      const playing = active && !paused;
+      stop();
+      completed = false;
+      index = nextIndex;
+      updateQueue();
+      // A click/change is a new user gesture. Paused/stopped queues remain silent.
+      if (playing) start();
+    }
+    previous.addEventListener('click', () => move(index - 1));
+    following.addEventListener('click', () => move(index + 1));
+    seek.addEventListener('change', () => move(Number(seek.value)));
+    prepareQueue();
+    play.addEventListener('click', () => {
+      if (active) { stop(); return; }
+      start();
     });
     pause.addEventListener('click', () => {
       if (!active) return;
@@ -144,8 +223,8 @@
       pause.textContent = paused ? '繼續' : '暫停';
       status.textContent = paused ? '已暫停' : '朗讀中';
     });
-    mode.addEventListener('change', () => stop());
-    rate.addEventListener('change', () => stop());
+    mode.addEventListener('change', () => { stop(); completed = false; index = 0; reader.setPreference('rss_tts_mode', mode.value); prepareQueue(); });
+    rate.addEventListener('change', () => { stop(); reader.setPreference('rss_tts_rate', rate.value); });
     window.addEventListener('pagehide', () => stop());
   }
   window.RssArticleReading = { init, highlightKeySentences };
