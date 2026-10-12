@@ -303,7 +303,7 @@ def test_production_index_projection_renders_mood(browser, news_data, width):
     # Exercise the actual build projection rather than returning full article rows
     # for both endpoints, which previously concealed dropped sentiment fields.
     import ast
-    source = (ROOT / 'build.py').read_text()
+    source = (ROOT / 'build.py').read_text(encoding="utf-8")
     module = ast.parse(source)
     projection = next(node.value for node in ast.walk(module)
                       if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'index_payload' for t in node.targets))

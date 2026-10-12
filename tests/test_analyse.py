@@ -82,7 +82,7 @@ def test_failed_corrected_input_refresh_evicts_old_analysis(tmp_path, monkeypatc
         return None
     monkeypatch.setattr(analyse, "_analyse_batch", failed)
     asyncio.run(analyse.analyse_all([article]))
-    assert json.loads(path.read_text()) == {}
+    assert json.loads(path.read_text(encoding="utf-8")) == {}
     assert article["summary"] == "" and article["upcoming_events"] == []
 
 

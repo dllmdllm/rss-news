@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(script):
-    source = (ROOT / 'docs/js/reader-state.js').read_text()
+    source = (ROOT / 'docs/js/reader-state.js').read_text(encoding="utf-8")
     result = subprocess.run([_require_node(), '-e', '''
       const vm=require('node:vm'); const assert=require('node:assert/strict');
       const source=''' + json.dumps(source) + ''';

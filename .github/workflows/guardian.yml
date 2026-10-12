@@ -98,10 +98,15 @@ jobs:
           if [ "$age_min" -ge "$STALE_MIN" ]; then
             status="stale"
             echo "stale -> re-dispatching update.yml"
-            gh workflow run update.yml -R "$GITHUB_REPOSITORY" || true
+            if gh workflow run update.yml -R "$GITHUB_REPOSITORY"; then
+              dispatch_note="Guardian 已補 dispatch"
+            else
+              dispatch_note="Guardian 補 dispatch 失敗"
+              echo "::warning::update dispatch failed"
+            fi
             if [ "$delivered_status" != "stale" ] || [ $(( now - last_alert )) -ge "$REALERT_SEC" ]; then
               pending_delivery=true
-              if tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。Guardian 已自動補 dispatch；如持續，檢查 runner：Get-Service actions.runner.*"; then
+              if tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。${dispatch_note}；如持續，檢查 runner：Get-Service actions.runner.*"; then
                 last_alert=$now
                 delivered_status="stale"
                 pending_delivery=false

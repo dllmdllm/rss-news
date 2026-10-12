@@ -19,7 +19,7 @@ def js_function(page, name):
 
 
 def node_eval(source):
-    result = subprocess.run(['node', '-e', source], capture_output=True, text=True, check=True)
+    result = subprocess.run(['node', '-e', source], capture_output=True, text=True, encoding='utf-8', check=True)
     return json.loads(result.stdout)
 
 

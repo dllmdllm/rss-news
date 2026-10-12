@@ -31,14 +31,14 @@ def snapshot(tmp_path):
 
 def mutate(docs, filename, callback):
     path = docs/'data'/filename
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     callback(data)
     save(path, data)
 
 
 def test_valid_current_partial_content_and_unknown_times_are_accepted(snapshot):
     validate_site(snapshot, require_current=True)
-    record = json.loads((snapshot/'data/content/a_1.json').read_text())
+    record = json.loads((snapshot/'data/content/a_1.json').read_text(encoding="utf-8"))
     assert record['fetched_at'] is None and record['content_updated_at'] is None
 
 
@@ -232,7 +232,7 @@ def attest_panel(docs, panels):
                     path = docs/'data/content'/f'{aid}.json'
                     if path.exists():
                         evidence['verified'] = True
-                        evidence['content_hash'] = hashlib.sha256(json.loads(path.read_text())['content'].encode('utf-8')).hexdigest()
+                        evidence['content_hash'] = hashlib.sha256(json.loads(path.read_text(encoding="utf-8"))['content'].encode('utf-8')).hexdigest()
 
 
 def test_panel_hash_and_verified_flag_bind_support_to_current_body(snapshot):

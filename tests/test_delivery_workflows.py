@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _guardian(tmp_path, *, stale, response, initial=None):
+def _guardian(tmp_path, *, stale, response, initial=None, dispatch_ok=True):
     workflow = (ROOT / '.github/workflows/guardian.yml').read_text(encoding="utf-8")
     script = workflow.split('        run: |\n', 1)[1].split('\n      - name:', 1)[0]
     script = '\n'.join(line[10:] for line in script.splitlines())
@@ -18,19 +18,19 @@ def _guardian(tmp_path, *, stale, response, initial=None):
     # Guardian runs on Ubuntu with GNU date. Mock its clock as well as its
     # network tools so delivery transitions also run deterministically on macOS.
     last_commit = '2026-10-10T10:00:00Z' if stale else '2026-10-10T11:59:00Z'
-    (bindir / 'gh').write_text('#!/bin/bash\nif [ "$1" = api ]; then printf "%s\\n" "' + last_commit + '"; fi\n')
+    (bindir / 'gh').write_text('#!/bin/bash\nif [ "$1" = api ]; then printf "%s\\n" "' + last_commit + '"; else [ "$DISPATCH_OK" = 1 ]; fi\n')
     (bindir / 'date').write_text('#!' + sys.executable + '\n'
         'import sys\nfrom datetime import datetime, timezone\n'
         'args = sys.argv[1:]\n'
         'value = args[args.index("-d") + 1] if "-d" in args else "2026-10-10T12:00:00Z"\n'
         'dt = datetime.fromtimestamp(int(value[1:]), timezone.utc) if value.startswith("@") else datetime.fromisoformat(value.replace("Z", "+00:00"))\n'
         'print(int(dt.timestamp()) if args[-1] == "+%s" else dt.strftime(args[-1][1:]))\n')
-    (bindir / 'curl').write_text('#!/bin/bash\nprintf \'%s\' \' ' + response + '\'\n')
+    (bindir / 'curl').write_text('#!/bin/bash\nprintf \'%s\\n\' "$@" > "$MOCK_CURL_ARGS"\nprintf \'%s\' \' ' + response + '\'\n')
     for item in bindir.iterdir():
         item.chmod(0o755)
     if initial is not None:
         (tmp_path / 'state.json').write_text(json.dumps(initial))
-    env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'], TG_TOKEN='mock', TG_CHAT='mock', GITHUB_REPOSITORY='mock/repo', STALE_MIN='75', WEDGE_MIN='40', REALERT_SEC='21600')
+    env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'], TG_TOKEN='mock', TG_CHAT='mock', GITHUB_REPOSITORY='mock/repo', STALE_MIN='75', WEDGE_MIN='40', REALERT_SEC='21600', DISPATCH_OK='1' if dispatch_ok else '0', MOCK_CURL_ARGS=str(tmp_path/'curl-args.txt'))
     subprocess.run(['bash', '-c', script], cwd=tmp_path, env=env, check=True, capture_output=True)
     return json.loads((tmp_path / 'state.json').read_text(encoding="utf-8"))
 
@@ -60,3 +60,17 @@ def test_update_failure_state_written_only_after_api_ack():
     source = (ROOT / '.github/workflows/update.yml').read_text(encoding="utf-8").split('- name: Notify Telegram on failure', 1)[1]
     assert source.index('$response = Invoke-RestMethod') < source.index('if ($response.ok -ne $true)') < source.index('Set-Content -Path $statusFile -Value "failure"')
     assert source.count('Set-Content -Path $statusFile -Value "failure"') == 1
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Hosted POSIX shell mocks')
+def test_guardian_dispatch_failure_does_not_claim_success(tmp_path):
+    _guardian(tmp_path, stale=True, response='{"ok":true}', dispatch_ok=False)
+    alert = (tmp_path / 'curl-args.txt').read_text(encoding='utf-8')
+    assert '補 dispatch 失敗' in alert
+    assert '已補 dispatch' not in alert
+
+
+def test_heartbeat_acknowledgement_precedes_sent_state():
+    source = (ROOT / '.github/workflows/update.yml').read_text(encoding='utf-8')
+    heartbeat = source.split('- name: Daily heartbeat',1)[1].split('- name:',1)[0]
+    assert heartbeat.index('$response = Invoke-RestMethod') < heartbeat.index('$response.ok -ne $true') < heartbeat.index('Set-Content -Path $heartbeatFile')

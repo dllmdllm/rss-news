@@ -458,15 +458,16 @@ PS 5.1 對 string body 硬編碼 ISO-8859-1（charset 聲明冇用，❌ 曾變 
 
 ### GitHub Actions push 策略
 
-每次 retry 都先重新 fetch/rebase，避免 concurrent push 導致 rejected：
+Generated data push follows `update.yml`: fetch current main, compare the
+source/assets with the tested SHA, then restack only the explicit generated
+paths using a checked mixed reset. Source changes abort and require a new
+normally tested build. A Git error aborts; retries are bounded and never forced.
+Never use `rebase -X ours` as a generic repair: it can choose the wrong source
+revision. Recovery archives and reviewer evidence are retained before publication.
 
-```bash
-git fetch origin main
-git rebase origin/main -X ours
-git push origin HEAD:main
-```
-
-`-X ours` 只在 rebase 衝突時保留本次新生成的 `docs/data/` 內容，不是 force push。
+Trust is limited to the resolved RSS checkout per Git command. No wildcard,
+permanent trust, ownership, credential or branch-protection change is authorized
+by routine publication. See `GIT-RUNBOOK.md` for operator checks and rollback.
 
 ### 圖片 hotlink 保護
 

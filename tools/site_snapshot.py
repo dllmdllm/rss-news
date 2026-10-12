@@ -25,7 +25,7 @@ def _git(repo):
     # Trust only this explicitly selected checkout for this read-only process.
     # Windows service runners may not own the checkout; never persist config.
     repo = Path(repo).resolve()
-    return ['git', '-c', 'safe.directory=' + repo.as_posix(), '-C', str(repo)]
+    return ['git', '-c', 'safe.directory=', '-c', 'safe.directory=' + repo.as_posix(), '-C', str(repo)]
 
 
 def _files(archive):
@@ -34,9 +34,11 @@ def _files(archive):
     if len(infos) > 10000:
         raise ValueError('too many snapshot entries')
     for info in infos:
-        name = info.filename
+        # ZipInfo may normalise backslashes on Windows or truncate a NUL.
+        # Validate the original archive name before using its interpreted path.
+        name = info.orig_filename
         path = PurePosixPath(name)
-        if ('\\' in name or ':' in name or path.is_absolute() or '..' in path.parts
+        if ('\\' in name or '\x00' in name or ':' in name or path.is_absolute() or '..' in path.parts
                 or (name != MANIFEST and (not path.parts or path.parts[0] != 'docs'))
                 or stat.S_ISLNK(info.external_attr >> 16)):
             raise ValueError('unsafe snapshot entry')
