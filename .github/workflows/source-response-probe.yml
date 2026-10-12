@@ -1,0 +1,33 @@
+name: Windows source response probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-source-response-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 3
+    env:
+      MINIMAX_API_KEY: ''
+      TELEGRAM_BOT_TOKEN: ''
+      TELEGRAM_CHAT_ID: ''
+      WORKER_URL: ''
+      NOTIFY_SECRET: ''
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Two guarded public source reads
+        shell: powershell
+        run: '& "C:\Program Files\Python313\python.exe" tools/source_response_probe.py --out "$env:RUNNER_TEMP\rss-source-response-probe.json"'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rss-source-response-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/rss-source-response-probe.json
+          retention-days: 3
+          if-no-files-found: error
