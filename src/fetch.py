@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import unquote, urljoin
-from src.public_http import public_connector, public_get, read_public_body
+from src.public_http import public_connector, public_get, public_url, read_public_body
 
 import aiohttp
 import feedparser
@@ -862,6 +862,125 @@ async def _fetch_oncc(
     return articles, None, False
 
 
+def _wordpress_item_limit(feed_info: dict) -> int:
+    return max(1, min(int(feed_info.get("max_items", MAX_ITEMS_PER_FEED)), 40))
+
+
+def _parse_wordpress_posts(posts, feed_info: dict, cutoff: datetime) -> list[dict]:
+    """Public view-context posts, never private/password-protected content.
+
+    WordPress date_gmt is the publication timestamp in GMT, even without an
+    explicit suffix. Do not substitute modified time, a day-only date or now.
+    """
+    if not isinstance(posts, list):
+        raise ValueError("public posts response is not a posts list")
+    if len(posts) > 40:
+        raise ValueError("public posts response exceeds bounded page size")
+    host = public_url(feed_info["url"]).host
+    allowed_hosts = {host.removeprefix("www."), "www." + host.removeprefix("www.")}
+    articles, seen = [], set()
+    valid_records = 0
+    max_items = _wordpress_item_limit(feed_info)
+    latest_allowed = datetime.now(timezone.utc) + timedelta(minutes=5)
+    for post in posts:
+        if not isinstance(post, dict) or post.get("status") != "publish":
+            continue
+        content = post.get("content")
+        excerpt = post.get("excerpt")
+        blocks = [value for value in (content, excerpt) if isinstance(value, dict)]
+        if any(value.get("protected") is True for value in blocks):
+            # Deliberately ignore a protected public record; never request a
+            # password, edit context or another route for its body.
+            valid_records += 1
+            continue
+        if not blocks or any(value.get("protected") is not False for value in blocks):
+            continue
+        raw_date = post.get("date_gmt")
+        if not isinstance(raw_date, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", raw_date):
+            continue
+        try:
+            published = _as_utc(datetime.fromisoformat(raw_date.replace("Z", "+00:00")))
+            raw_url = post.get("link")
+            if not isinstance(raw_url, str):
+                continue
+            url = public_url(raw_url)
+        except (TypeError, ValueError):
+            continue
+        # Preserve historical canonical IDs without letting fragment variants
+        # create extra articles. WordPress canonical post links have no fragment.
+        if "#" in raw_url or url.host not in allowed_hosts or url.path in {"", "/", "/feed/"} or url.path.startswith(("/wp-admin", "/wp-json", "/wp-login")):
+            continue
+        title_block = post.get("title")
+        if not isinstance(title_block, dict) or not isinstance(title_block.get("rendered"), str):
+            continue
+        title_soup = BeautifulSoup(title_block["rendered"], "html.parser")
+        for hidden in title_soup.select("script,style,template,noscript"):
+            hidden.decompose()
+        title = title_soup.get_text(" ", strip=True)
+        if not title:
+            continue
+        valid_records += 1
+        if published < cutoff or published > latest_allowed:
+            continue
+        if raw_url in seen:
+            continue
+        seen.add(raw_url)
+        # The existing scraper sanitises this publisher-provided fallback and
+        # marks partial extraction honestly. Never present an excerpt as full.
+        body = next((value["rendered"] for value in blocks
+                     if isinstance(value.get("rendered"), str) and value["rendered"].strip()), None)
+        thumbnail = None
+        embedded = post.get("_embedded")
+        media = embedded.get("wp:featuredmedia", []) if isinstance(embedded, dict) else []
+        if isinstance(media, list):
+            for image in media:
+                if isinstance(image, dict) and image.get("media_type") == "image":
+                    thumbnail = safe_http_url(image.get("source_url"), raw_url)
+                    if thumbnail:
+                        break
+        thumbnail = thumbnail or first_rss_image(body or "", raw_url)
+        articles.append({
+            "id": _make_id(raw_url), "title": title, "url": raw_url,
+            "date": published.isoformat(), "source": feed_info["name"],
+            "category": _map_category_for_url(raw_url, feed_info),
+            "content": None, "thumbnail": thumbnail, "rss_content": body,
+        })
+    if posts and not valid_records:
+        raise ValueError("public posts index contains no valid published metadata")
+    return sorted(articles, key=lambda row: row["date"], reverse=True)[:max_items]
+
+
+async def _fetch_wordpress_public(session, feed_info: dict, cutoff: datetime):
+    """One ordinary public request; no client rotation or denial fallback."""
+    try:
+        max_items = _wordpress_item_limit(feed_info)
+        endpoint = public_url(feed_info["api_url"])
+        if (endpoint.host != public_url(feed_info["url"]).host
+                or endpoint.path != "/wp-json/wp/v2/posts"
+                or endpoint.query_string or "#" in feed_info["api_url"]):
+            raise ValueError("public posts API does not match configured publisher")
+        endpoint = endpoint.update_query({
+            "page": "1", "per_page": str(max_items), "status": "publish", "context": "view",
+            "orderby": "date", "order": "desc", "_embed": "wp:featuredmedia",
+            "_fields": "id,link,date_gmt,status,title,content,excerpt,_links,_embedded",
+        })
+        async with public_get(session, str(endpoint),
+                headers={**feed_info.get("headers", {}), "Accept": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=max(1.0, min(
+                    float(feed_info.get("request_timeout", 15)), 15.0)))) as response:
+            if response.status >= 400:
+                return [], f"HTTP {response.status} (public posts index)", False
+            raw = await read_public_body(response)
+        try:
+            posts = json.loads(raw)
+        except (ValueError, UnicodeError):
+            return [], "public posts index returned non-JSON response (challenge or error page)", False
+        return _parse_wordpress_posts(posts, feed_info, cutoff), None, False
+    except Exception as exc:
+        # Error class/context only; never dump a publisher body or credentials.
+        return [], f"public posts index: {type(exc).__name__}: {exc}", False
+
+
 async def _fetch_one(
     session:    aiohttp.ClientSession,
     feed_info:  dict,
@@ -871,6 +990,8 @@ async def _fetch_one(
     """Return (articles, error_message, not_modified).
     not_modified=True means the upstream returned HTTP 304 and we should
     reuse previously-built articles for this source."""
+    if feed_info.get("fetcher") == "wordpress_public":
+        return await _fetch_wordpress_public(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "hk01":
         return await _fetch_hk01(session, feed_info, cutoff)
     if feed_info.get("fetcher") == "am730":
@@ -1088,6 +1209,13 @@ async def fetch_all() -> tuple[list, dict]:
             "error":        error,
             "not_modified": not_modified,
         }
+        if feed_info.get("fetcher") == "wordpress_public":
+            source_stats[feed_info["name"]].update({
+                "collection_method": "wordpress-public-posts",
+                "collection_url": feed_info["api_url"],
+                "collection_scope": "latest-public-posts",
+                "collection_limit": _wordpress_item_limit(feed_info),
+            })
         if error:
             failed_sources += 1
         if not_modified:
