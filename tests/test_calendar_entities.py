@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def js_function(page, name):
-    source = (ROOT / 'docs' / page).read_text()
+    source = (ROOT / 'docs' / page).read_text(encoding="utf-8")
     start = source.index('    function ' + name + '(')
     end = source.find('\n    function ', start + 1)
     if end < 0:
@@ -38,7 +38,7 @@ def test_calendar_uses_real_month_and_future_window_caption():
                        js_function('upcoming.html', 'bucketLabel') +
                        "console.log(JSON.stringify(['2026-10-30','2026-11-01','2026-11-09'].map(bucketLabel)));")
     assert result == ['本月', '之後', '之後']
-    page = (ROOT / 'docs/upcoming.html').read_text()
+    page = (ROOT / 'docs/upcoming.html').read_text(encoding="utf-8")
     assert '個未來活動 · 未來 ' in page
     assert '個未來活動 · 過去 ' not in page
 

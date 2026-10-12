@@ -118,7 +118,7 @@ def test_saved_brief_retries_delivery_without_regeneration(monkeypatch, tmp_path
     assert DB._load_existing()['telegram_delivered_at'] == fixed.isoformat()
     asyncio.run(DB.generate_daily_brief([]))
     assert len(calls) == 2 and calls[0] == calls[1]
-    assert json.loads(DB.OUTPUT_PATH.read_text())['text'] == '保存正文。'
+    assert json.loads(DB.OUTPUT_PATH.read_text(encoding="utf-8"))['text'] == '保存正文。'
 
 
 def test_delivery_exception_keeps_saved_brief_pending(monkeypatch, tmp_path):
