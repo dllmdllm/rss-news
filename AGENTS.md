@@ -211,6 +211,12 @@ GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `bui
   仍見 DESIGN-HISTORY，但唔可以用佢作理由繞過新 gate。
 - `tools/site_snapshot.py` 只 archive tracked `docs`，記錄 SHA/checksums/validation；
   前一版 artifact 保留 3 日。未驗證舊版會明示，唔冒稱 last-good。
+- 推送後 `tools/verify_publication.py` 用實際 commit SHA 比對公開 Pages bytes：
+  index 先吻合，再檢查核心 reader assets、metadata 及最多 5 個正文樣本。
+  最多 6 次 / 90 秒 polling（另有最多兩個 20 秒 Git read）；HTTP denial / TLS /
+  私有 redirect 即停，未吻合報 unverified。verification 唔重跑 paid build、
+  dispatch 或 rollback；每 run report 保留 3 日，heartbeat 只喺驗證過先發。
+  完整例行 loop 同恢復界線見 [OPERATIONS-LOOP.md](OPERATIONS-LOOP.md)。
 - 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
   （**只喺由綠轉紅嗰下發一次**，連炒唔會洗版；持續斷更嘅提醒由 guardian 負責）
 

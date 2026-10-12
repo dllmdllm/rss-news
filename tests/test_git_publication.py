@@ -28,16 +28,25 @@ if name=='python':sys.exit(1 if os.environ['FAIL']=='source' else 0)
 while args and args[0]=='-c':args=args[2:]
 cmd=args[0]
 fail=os.environ['FAIL']
-if cmd=='rev-parse':print('a'*40 if args[-1]=='HEAD' else os.environ['SELECTED'])
-if cmd=='diff':sys.exit(128 if fail=='diff' else 1)
+if cmd=='rev-parse':
+    state=Path(os.environ['HEAD_STATE'])
+    print((state.read_text(encoding='utf-8') if state.exists() else 'a'*40) if args[-1]=='HEAD' else os.environ['SELECTED'])
+if cmd=='diff':
+    count=sum('diff' in json.loads(line)[1] for line in Path(os.environ['CALLS']).read_text(encoding='utf-8').splitlines())
+    sys.exit(128 if fail=='diff' else 0 if fail=='no-change' or (fail=='resync-no-change' and count>1) else 1)
 if cmd=='reset' and fail=='reset':sys.exit(128)
+if cmd=='reset':Path(os.environ['HEAD_STATE']).write_text('d'*40,encoding='utf-8')
+if cmd=='commit':
+    count=sum('commit' in json.loads(line)[1] for line in Path(os.environ['CALLS']).read_text(encoding='utf-8').splitlines())
+    Path(os.environ['HEAD_STATE']).write_text(('b' if count==1 else 'c')*40,encoding='utf-8')
 if cmd=='add' and fail=='stage':sys.exit(128)
 if cmd=='push' and fail=='push':sys.exit(1)
 '''
     for name in ['git','cygpath','python','sleep']:
         path = bindir / name
         path.write_text('#!' + sys.executable + '\n' + mock, encoding='utf-8'); path.chmod(0o755)
-    env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ['PATH'], CALLS=str(record), SELECTED=selected, FAIL=failure)
+    env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ['PATH'], CALLS=str(record), SELECTED=selected, FAIL=failure,
+               HEAD_STATE=str(tmp_path / 'head-state.txt'), GITHUB_OUTPUT=str(tmp_path / 'publication-output.txt'))
     result = subprocess.run(['bash','-c',script],cwd=tmp_path,env=env,capture_output=True,text=True)
     calls = [json.loads(line) for line in record.read_text(encoding='utf-8').splitlines()]
     return result, calls, selected
@@ -85,3 +94,15 @@ def test_publisher_push_retries_are_bounded_without_force(tmp_path):
     result,calls,_=_publisher(tmp_path,'push')
     assert result.returncode!=0
     assert _commands(calls).count('push')==3
+    assert not (tmp_path / 'publication-output.txt').exists()
+
+
+@pytest.mark.skipif(os.name=='nt', reason='Hosted POSIX shell mocks')
+@pytest.mark.parametrize('path',['','no-change','resync-no-change'])
+def test_successful_publisher_records_actual_revision_for_live_check(tmp_path,path):
+    result,calls,_ = _publisher(tmp_path,path)
+    assert result.returncode==0,result.stderr
+    final_head = {'': 'c', 'no-change': 'a', 'resync-no-change': 'd'}[path] * 40
+    assert (tmp_path / 'publication-output.txt').read_text(encoding='utf-8') == 'revision=' + final_head + '\n'
+    if path:
+        assert 'push' not in _commands(calls)
