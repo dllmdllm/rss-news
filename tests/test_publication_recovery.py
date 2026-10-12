@@ -66,8 +66,11 @@ def test_recovery_rejects_changed_bytes_before_writing(tmp_path):
 @pytest.mark.parametrize('name', ['../escape','docs/../../escape','docs\\escape','C:/escape'])
 def test_recovery_rejects_unsafe_archive_paths(name):
     raw = io.BytesIO()
-    with zipfile.ZipFile(raw, 'w') as archive: archive.writestr(name, 'unsafe')
-    raw.seek(0)
+    # Windows ZipInfo normalises its input. Patch both raw name records to
+    # simulate an untrusted archive produced on another operating system.
+    placeholder = 'x' * len(name)
+    with zipfile.ZipFile(raw, 'w') as archive: archive.writestr(placeholder, 'unsafe')
+    raw = io.BytesIO(raw.getvalue().replace(placeholder.encode('utf-8'), name.encode('utf-8')))
     with zipfile.ZipFile(raw) as archive, pytest.raises(ValueError, match='unsafe'):
         _files(archive)
 
@@ -145,5 +148,33 @@ def test_recovery_trusts_only_selected_checkout_without_persistent_config(tmp_pa
     assert (repo / '.git/config').read_bytes() == original
     from tools.site_snapshot import _git
     command = _git(repo)
-    assert command[2] == 'safe.directory=' + repo.resolve().as_posix()
-    assert command[2] != 'safe.directory=*'
+    assert command[2] == 'safe.directory='
+    assert command[4] == 'safe.directory=' + repo.resolve().as_posix()
+    assert 'safe.directory=*' not in command
+
+
+def test_command_trust_clears_inherited_wildcard_only_for_current_process(tmp_path, monkeypatch):
+    from tools.site_snapshot import _git
+    selected = _repo(tmp_path / 'selected')
+    other = _repo(tmp_path / 'other')
+    inherited = tmp_path / 'global-config'
+    inherited.write_text('[safe]\n\tdirectory = *\n', encoding='utf-8')
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', str(inherited))
+    monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
+    monkeypatch.setenv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1')
+    monkeypatch.delenv('GIT_CONFIG_COUNT', raising=False)
+    monkeypatch.delenv('GIT_CONFIG_PARAMETERS', raising=False)
+    assert subprocess.run(['git','-C',str(other),'rev-parse','HEAD'], capture_output=True).returncode == 0
+    denied = subprocess.run(_git(selected) + ['-C',str(other),'rev-parse','HEAD'], capture_output=True)
+    assert denied.returncode != 0 and b'dubious ownership' in denied.stderr
+    assert subprocess.run(_git(selected) + ['rev-parse','HEAD'], capture_output=True).returncode == 0
+    assert inherited.read_text(encoding='utf-8') == '[safe]\n\tdirectory = *\n'
+
+
+def test_archive_original_name_rejected_after_platform_normalisation():
+    info = zipfile.ZipInfo('docs/escape')
+    info.orig_filename = 'docs\\escape'
+    class Archive:
+        def infolist(self): return [info]
+    with pytest.raises(ValueError, match='unsafe'):
+        _files(Archive())

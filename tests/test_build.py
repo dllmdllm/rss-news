@@ -510,7 +510,7 @@ def test_save_index_preserves_duplicate_provenance(tmp_path, monkeypatch):
     articles[1]["duplicate_of"] = "canonical"
     articles[0]["duplicate_count"] = 2
     build.save_json(articles, {})
-    saved = json.loads((tmp_path / "data/articles_index.json").read_text())["articles"]
+    saved = json.loads((tmp_path / "data/articles_index.json").read_text(encoding="utf-8"))["articles"]
     assert saved[1]["duplicate_of"] == "canonical"
     assert saved[0]["duplicate_count"] == 2
 
@@ -764,8 +764,8 @@ def test_verified_body_survives_degraded_fetch(tmp_path, monkeypatch, fallback, 
     assert current['content_retention']['scraped_at'] == stamp
     assert current['content_retention']['latest_error'] == 'HTTP 403'
     build._write_content_sidecars([current])
-    assert json.loads(path.read_text())['scraped_at'] == stamp
-    assert json.loads(path.read_text())['content'] == full
+    assert json.loads(path.read_text(encoding="utf-8"))['scraped_at'] == stamp
+    assert json.loads(path.read_text(encoding="utf-8"))['content'] == full
 
 
 @pytest.mark.parametrize('old_fallback,new_fallback,same_url,expected', [
@@ -807,7 +807,7 @@ def test_retained_thumbnail_dedup_keeps_original_retrieval_time(tmp_path, monkey
     current = _article('hero', '<p>RSS summary</p>')
     current['content_quality'] = {'fallback': 'rss-blocked'}
     build._write_content_sidecars([current])
-    saved = json.loads(path.read_text())
+    saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved['scraped_at'] == record['scraped_at']
     assert 'inline.jpg' in saved['content'] and 'hero.jpg' not in saved['content']
     assert current['thumbnail'] == old['thumbnail']

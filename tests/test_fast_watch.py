@@ -664,4 +664,4 @@ def test_fetch_crossing_midnight_does_not_send(monkeypatch, tmp_path):
     monkeypatch.setattr(FW, '_fetch_watched', fetch)
     monkeypatch.setattr(FW, '_send_telegram', fail_send)
     asyncio.run(FW.main())
-    assert 'a1' not in json.loads(FW.STATE_PATH.read_text())['seen']
+    assert 'a1' not in json.loads(FW.STATE_PATH.read_text(encoding="utf-8"))['seen']

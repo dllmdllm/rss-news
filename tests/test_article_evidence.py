@@ -105,9 +105,9 @@ def test_save_json_provenance_reaches_full_slim_and_sidecar(tmp_path, monkeypatc
     monkeypatch.setattr(build, "DOCS_DIR", tmp_path)
     current = article(fetched_at="2026-10-12T02:00:00Z", content_quality={"fallback": "rss-blocked"}, scrape_error="HTTP 403")
     build.save_json([current], {"甲報": {"count": 1}})
-    full = json.loads((build.DATA_DIR / "articles.json").read_text())
-    slim = json.loads((build.DATA_DIR / "articles_index.json").read_text())
-    sidecar = json.loads((build.CONTENT_DIR / "a.json").read_text())
+    full = json.loads((build.DATA_DIR / "articles.json").read_text(encoding="utf-8"))
+    slim = json.loads((build.DATA_DIR / "articles_index.json").read_text(encoding="utf-8"))
+    sidecar = json.loads((build.CONTENT_DIR / "a.json").read_text(encoding="utf-8"))
     assert full['schema_version'] == slim['schema_version'] == 2
     for record in [full['articles'][0], slim['articles'][0], sidecar]:
         assert record['evidence_status'] == 'partial'
@@ -116,7 +116,7 @@ def test_save_json_provenance_reaches_full_slim_and_sidecar(tmp_path, monkeypatc
     first = sidecar['content_updated_at']
     current['fetched_at'] = '2026-10-12T03:00:00Z'
     build.save_json([current], {"甲報": {"count": 1}})
-    assert json.loads((build.CONTENT_DIR / 'a.json').read_text())['content_updated_at'] == first
+    assert json.loads((build.CONTENT_DIR / 'a.json').read_text(encoding="utf-8"))['content_updated_at'] == first
 
 
 def comparison_members():

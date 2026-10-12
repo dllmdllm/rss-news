@@ -154,8 +154,8 @@ def test_entity_correction_invalidates_cached_summary_without_ai(monkeypatch, tm
                   sig=ED._entity_sig(entity, {article['id']: article}))
     ED.OUTPUT_PATH.write_text(json.dumps({'entities': [entity]}))
     asyncio.run(ED.generate_entity_digests([{**article, 'summary': 'Corrected facts'}]))
-    output = json.loads(ED.OUTPUT_PATH.read_text())
+    output = json.loads(ED.OUTPUT_PATH.read_text(encoding="utf-8"))
     assert output['entities'][0]['summary'] == ''
     assert output['entities'][0]['sig'] != entity['sig']
     asyncio.run(ED.generate_entity_digests([]))
-    assert json.loads(ED.OUTPUT_PATH.read_text())['entities'] == []
+    assert json.loads(ED.OUTPUT_PATH.read_text(encoding="utf-8"))['entities'] == []
