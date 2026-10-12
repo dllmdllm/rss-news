@@ -31,7 +31,9 @@ branch protection, permissions, other repositories, or user-data changes.
 - Expected steps: preflight → retained tracked public site → offline code tests
   → normal fetch/analysis → strict current-schema/evidence validation and data
   tests → explicit generated-file staging → bounded non-force push → recovery
-  artifact. A gate failure prevents generated-data publication.
+  artifact. A gate failure prevents generated-data publication. After push,
+  verify the actual revision's public Pages bytes before acknowledging success;
+  retain the per-run verification report. See `OPERATIONS-LOOP.md`.
 - Git recovery and publisher commands trust only the resolved current checkout
   for each invocation. No `safe.directory=*`, permanent config or ownership
   change. Archive only tracked public `docs`; exclude secrets/untracked files.
@@ -51,6 +53,15 @@ then compare deployed assets and generated schema/evidence. Check mobile/desktop
 reader, storage-denied/offline behavior, no reload autoplay and current-body
 source links. Record whether positive evidence is actually present; do not
 invent it. Physical Cantonese audio needs an actual device check.
+
+The existing update job now records the actual pushed/no-change SHA and checks
+the public index, core reader assets, metadata and up to five body sidecars.
+Its report proves only those selected files; strict prepublication validation
+still checks the whole generated snapshot. The check polls at most six times
+within 90 seconds and never repeats paid analysis, sends messages, dispatches a
+job or rolls back. Failure after push means "publication unverified", not
+"nothing was published". Inspect the failed stage/report and let the existing
+schedule retry ordinary collection; source code changes require reviewed approval.
 
 ## Failure and recovery
 
