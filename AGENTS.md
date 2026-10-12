@@ -148,6 +148,13 @@ Yahoo 科技（`fetcher: yahoo`，2026-07-25 頂替 Engadget 中文）
 ### 網媒
 法庭線、The Collective HK、香港法庭新聞
 
+法庭線 / The Collective HK 使用官方首頁宣告嘅 public WordPress posts API
+（`fetcher: wordpress_public`）：只讀 `context=view` / `status=publish`，要求
+`protected:false`，單次最多 40 篇、15 秒。保留原 RSS URL 作來源記錄，另寫
+`collection_method` / `collection_url` / `collection_scope` / `collection_limit`
+標明實際收集途徑。拒絕／challenge／TLS error 仍係失敗，唔換身份或路徑重試；
+只採用確切 `date_gmt` 同 canonical post link，保留既有 ID、去重及部分內容標示。
+
 ### 外媒（2026-07-30 新增）
 HuffPost 新聞 / 娛樂 / 生活（`us-news` / `entertainment` / `life` section feed）。
 

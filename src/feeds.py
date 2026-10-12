@@ -72,8 +72,13 @@ RSS_FEEDS = [
     {"name": "9to5Mac",           "url": "https://9to5mac.com/feed/",                                             "category": "科技"},
     {"name": "New MobileLife",    "url": "https://www.newmobilelife.com/feed/",                                   "category": "科技"},
     # 網媒
-    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/",                                         "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True},
-    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/",                                     "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True},
+    # Both publishers advertise public WordPress REST discovery on their
+    # homepage. Use its view-context posts index rather than unstable XML
+    # responses on the Windows runner. Keep official RSS links for provenance.
+    {"name": "法庭線",             "url": "https://hkcourtnews.com/feed/", "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True,
+     "fetcher": "wordpress_public", "api_url": "https://hkcourtnews.com/wp-json/wp/v2/posts"},
+    {"name": "The Collective HK", "url": "https://thecollectivehk.com/feed/", "category": "網媒", "headers": RSS_CLIENT_HEADERS, "rss_media": True,
+     "fetcher": "wordpress_public", "api_url": "https://thecollectivehk.com/wp-json/wp/v2/posts"},
     {"name": "The Witness",       "url": "https://thewitnesshk.com/feed/",                                        "category": "網媒"},
     # HK01 — no RSS; uses public JSON feed API (web-data.api.hk01.com)
     {"name": "HK01 突發",          "url": "https://web-data.api.hk01.com/v2/feed/category/6",                      "category": "新聞", "fetcher": "hk01"},
