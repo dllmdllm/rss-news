@@ -1,4 +1,5 @@
-# synced 2026-10-12T09:37:18.426760+08:00
+# synced 2026-10-12T09:57:02.003361+08:00
+rthk
 hk01
 teams
 news
@@ -8,4 +9,3 @@ india vs west indies
 颱風
 羅蘭
 王敏慈
-意甲
