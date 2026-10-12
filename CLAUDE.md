@@ -193,9 +193,12 @@ python build.py
 GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `build.py`：
 - **job timeout：25 分鐘**（防止卡住無限等待；要預留網絡差嗰日 checkout 可以食 10 分鐘——2026-06-10 實測，16 分鐘上限令成朝零 push）
 - 若 `docs/data/` 有變更則自動 commit & push（最多 retry 3 次 fetch/resync/push）
-- **tests 喺 push 之後先跑**（2026-06-12 起）——test 係守 code regression，唔守 data；
-  之前 test 行先，2026-05-31 一個爛 test 扣起文章 20 小時（73 個 run 連 fail）。
-  Test fail 照樣令 run 轉紅＋通知，但文章已出咗街
+- **publication gates 喺 push 之前跑**（2026-10-12 用戶要求更新）：先跑 offline
+  code regression，再 build；generated JSON/sidecar/schema/來源引文驗證＋data tests
+  必須過先可以 commit/push。失敗保留上一版，唔再發布壞輸出；先前 freeze 案例
+  仍見 DESIGN-HISTORY，但唔可以用佢作理由繞過新 gate。
+- `tools/site_snapshot.py` 只 archive tracked `docs`，記錄 SHA/checksums/validation；
+  前一版 artifact 保留 3 日。未驗證舊版會明示，唔冒稱 last-good。
 - 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
   （**只喺由綠轉紅嗰下發一次**，連炒唔會洗版；持續斷更嘅提醒由 guardian 負責）
 
@@ -877,3 +880,19 @@ strict distributed rate limits require separately approved infrastructure.
   can normalize safely; ranges/conflicts stay uncertain and event merging remains
   conservative. Native TTS diagnostics report error/voice; unavailable voice gets
   one browser-default fallback, never a claim that device audio was verified.
+
+### Traceable reading and publication (2026-10-12)
+
+- `summary_evidence` maps a specific current summary point to a verbatim body
+  quote; missing support stays unavailable. Never pair points/quotes by position.
+  Panel shared facts/attributed accounts/developments retain actual article IDs,
+  quotes and source attribution; a topic association is not event identity.
+- Publication, fetch and content-update clocks are separate. Unchanged body hash
+  retains its content-update time; unknown legacy times remain unknown.
+- `reader-state.js` stores only bounded device-local state, never uploads it.
+  Denied storage degrades to session memory. Restore position/speech queue only
+  on user action; navigation/reload never starts audio. Physical device audio
+  still requires real validation.
+- Code regression and strict generated snapshot validation precede data push.
+  Recovery archives contain public tracked docs only and restore into an empty
+  review folder. See `ROLLBACK.md`; rollback/merge/deploy require approval.

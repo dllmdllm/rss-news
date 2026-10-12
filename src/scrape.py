@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from datetime import datetime, timezone
 from html import escape as _html_escape
 from urllib.parse import urljoin
 
@@ -1336,6 +1337,8 @@ async def _scrape_one(
         async with sem:
             try:
                 html = await _fetch_html(session, article["url"])
+                if html:
+                    article["fetched_at"] = datetime.now(timezone.utc).isoformat()
                 extra_headers = _extra_headers_for_url(article["url"])
 
                 if html and _is_blocked(html):

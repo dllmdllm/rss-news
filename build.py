@@ -53,6 +53,7 @@ from src.analyse import (
     _article_text,
 )
 from src.event_dates import event_identity, validate_event
+from src.article_evidence import update_provenance, validate_summary_evidence
 from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
@@ -364,6 +365,7 @@ def build_trending_topics(
 
         trending.append({
             "topic": display,
+            "cluster_id": next((row.get("cluster_id") for row in rows if row.get("cluster_id")), None),
             "count": len(rows),
             "sources": sources[:5],
             "source_count": len(sources),
@@ -608,6 +610,7 @@ def save_json(articles: list, source_stats: dict):
     ]
     meta_path = DATA_DIR / "articles.json"
     payload = {
+        "schema_version": 2,
         "updated":  datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
         "sources":  source_stats,
         "trending_topics": build_trending_topics(articles),
@@ -632,6 +635,7 @@ def save_json(articles: list, source_stats: dict):
     # articles.json against a stale copy from an older build).
     index_path = DATA_DIR / "articles_index.json"
     index_payload = {
+        "schema_version": 2,
         "updated": payload["updated"],
         "sources": source_stats,
         "trending_topics": payload["trending_topics"],
@@ -640,10 +644,15 @@ def save_json(articles: list, source_stats: dict):
              "date": a.get("date"), "category": a.get("category"),
              "thumbnail": a.get("thumbnail"), "summary": a.get("summary"),
              "score": a.get("score"), "tags": a.get("tags"), "sentiment": a.get("sentiment"),
-             "topic": a.get("topic"), "cluster_size": a.get("cluster_size"),
+             "topic": a.get("topic"), "cluster_size": a.get("cluster_size"), "cluster_id": a.get("cluster_id"),
              "event_type": a.get("event_type"),
              "duplicate_of": a.get("duplicate_of"), "duplicate_count": a.get("duplicate_count"),
-             "headline_fit": a.get("headline_fit")}
+             "headline_fit": a.get("headline_fit"),
+             "published_at": a.get("published_at"), "fetched_at": a.get("fetched_at"),
+             "content_updated_at": a.get("content_updated_at"), "content_hash": a.get("content_hash"),
+             "evidence_status": a.get("evidence_status"), "content_quality": a.get("content_quality"),
+             "scrape_error": a.get("scrape_error"), "content_retention": a.get("content_retention"),
+             "summary_evidence_status": a.get("summary_evidence_status", "unavailable")}
             for a in articles
         ],
     }
@@ -843,6 +852,9 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 fallback=fallback,
             )
         a["content_quality"] = quality
+        provenance = update_provenance(a, old_record, now=datetime.now(timezone.utc).isoformat())
+        a["summary_evidence"] = validate_summary_evidence(a, a.get("summary_evidence"))
+        a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
         # Skip rewriting identical files to keep git diffs minimal and
         # avoid pointless disk churn on every build.
         if cpath.exists():
@@ -855,6 +867,9 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 and old.get("version") == CONTENT_SCHEMA_VERSION
                 and old.get("content") == content
                 and old.get("quality", {}) == quality
+                and (all(old.get(key) == value for key, value in provenance.items())
+                     or (not old.get("content_hash") and not a.get("fetched_at")))
+                and old.get("scrape_error") == a.get("scrape_error")
             ):
                 unchanged += 1
                 continue
@@ -867,6 +882,9 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                                old_record.get("scraped_at") if old_record and old_record.get("content") == content
                                else datetime.now(timezone.utc).isoformat()),
                 "quality": quality,
+                **provenance,
+                "scrape_error": a.get("scrape_error"),
+                "content_retention": a.get("content_retention"),
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -986,6 +1004,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
             for field, normaliser in structured_normalisers.items():
                 if src.get(field) is not None:
                     a[field] = normaliser(src[field])
+            a["summary_evidence"] = validate_summary_evidence(a, src.get("summary_evidence"))
             restored += 1
     if restored:
         print(f"[build] Restored {restored} summaries from previous articles.json")
@@ -1031,6 +1050,9 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
                     a["content"] = record["content"]
                 else:
                     a["content"] = None
+            stats = source_stats.get(source) or {}
+            if stats.get("fetch_status") in {"success", "not_modified"}:
+                a["fetched_at"] = stats.get("observed_at") or a.get("fetched_at")
             articles.append(a)
             existing_ids.add(a["id"])
             added_by_source[source] += 1

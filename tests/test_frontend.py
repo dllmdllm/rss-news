@@ -1529,6 +1529,7 @@ def test_brief_tts_ignores_old_callbacks_and_exposes_failure():
 def test_feed_health_identifies_failed_feed_despite_retained_articles():
     source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
     script = '''
+      const window = {};
       const elements = new Map();
       const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
       const state = {category:'全部',articles:[],topics:[],sources:{
@@ -1571,11 +1572,12 @@ def test_contradiction_display_rejects_legacy_pairs_and_tension():
     constants = common[common.index('const _ESC'):common.index('function esc')]
     script = constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common,'safeUrl') + '''
       const elements = {contraBlock:{hidden:true},contraList:{innerHTML:''}};
+      const state = {articles:[{id:'a',content_hash:'a'.repeat(64)},{id:'b',content_hash:'b'.repeat(64)}]};
       const $ = id => elements[id];
     ''' + _extract_js_function(source,'claimEvidence') + '\n' + _extract_js_function(source,'renderContradictions') + '''
       renderContradictions({topic:{digest:{tension:'unverified',contradictions:[{claim_a:'legacy',claim_b:'legacy'}]}}});
       if (!elements.contraBlock.hidden || elements.contraList.innerHTML) throw Error('legacy data shown');
-      renderContradictions({topic:{digest:{contradictions:[{claim_a:'27日',claim_b:'28日',quote_a:'原文27日',quote_b:'原文28日',article_id_a:'a',article_id_b:'b'}]}}});
+      renderContradictions({topic:{digest:{contradictions:[{claim_a:'27日',claim_b:'28日',quote_a:'原文27日',quote_b:'原文28日',article_id_a:'a',article_id_b:'b',verified_a:true,verified_b:true,content_hash_a:'a'.repeat(64),content_hash_b:'b'.repeat(64)}]}}});
       if (elements.contraBlock.hidden || !elements.contraList.innerHTML.includes('原文27日') || !elements.contraList.innerHTML.includes('article.html?id=a')) throw Error('evidence missing');
     '''
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)

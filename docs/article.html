@@ -605,6 +605,9 @@
     .reading-controls label { font-size: 1rem; }
     .reading-controls select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
     .reading-controls .tool { min-height: 44px; font-size: 1rem; }
+    .reader-local { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 1rem 0; }
+    #readerLocalStatus { font-size: .9rem; }
+    #articleTtsSeek { max-width: 140px; }
     #articleTtsStatus { flex-basis: 100%; font-size: .95rem; }
     .key-sentence { color: inherit; background: rgba(255, 205, 75, .28); border-radius: 2px; }
     .hide-key-sentences .key-sentence { background: transparent; }
@@ -669,12 +672,22 @@
           <ul class="fact-list" id="facts"></ul>
         </section>
         <p class="content-notice" id="contentNotice" role="note" hidden></p>
+        <section class="reader-local" aria-label="裝置閱讀記錄">
+          <button class="tool" id="readerSaveLater" type="button" aria-pressed="false">稍後閱讀</button>
+          <button class="tool" id="readerRead" type="button" aria-pressed="false">標記已讀</button>
+          <button class="tool" id="readerResume" type="button" hidden>繼續上次位置</button>
+          <span id="readerLocalStatus" role="status">記錄只保留在此裝置</span>
+        </section>
         <section class="reading-controls" aria-label="朗讀及重點標示">
           <label>朗讀範圍 <select id="articleTtsMode"><option value="full">全文</option><option value="summary">摘要</option></select></label>
           <label>速度 <select id="articleTtsRate"><option value="0.85">0.85×</option><option value="1" selected>1×</option><option value="1.2">1.2×</option><option value="1.5">1.5×</option></select></label>
           <button class="tool" id="articleTts" type="button" aria-pressed="false">🔊 朗讀</button>
           <button class="tool" id="articleTtsPause" type="button" disabled>暫停</button>
           <button class="tool" id="highlightToggle" type="button" aria-pressed="true" hidden>標示重點</button>
+          <button class="tool" id="articleTtsPrevious" type="button">上一段</button>
+          <button class="tool" id="articleTtsNext" type="button">下一段</button>
+          <label>段落 <input id="articleTtsSeek" type="range" min="0" max="0" value="0" step="1"></label>
+          <span id="articleTtsProgress" aria-live="polite">0 / 0 段</span>
           <span id="articleTtsStatus" role="status" aria-live="polite"></span>
         </section>
         <section class="content" id="content"></section>
@@ -701,7 +714,9 @@
     </aside>
   </div>
   <script src="js/common.js?v=20260714-polish"></script>
+  <script src="js/reader-state.js?v=20261012-reader"></script>
   <script src="js/article-reading.js?v=20260905-reading"></script>
+  <script src="js/article-evidence.js?v=20261012-evidence"></script>
   <script src="js/article.js?v=20261001-rss-media"></script>
 </body>
 </html>

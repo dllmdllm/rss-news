@@ -1405,7 +1405,7 @@
       .mobile-tabs { display: grid; }
     }
   </style>
-</head>
+<style>.reading-card{min-width:0}.reading-card .card{height:auto}.save-later{font:inherit;margin:4px 0 12px;max-width:100%;padding:5px 10px;border-radius:6px;cursor:pointer}.reading-provenance{display:block;font-size:.75rem;line-height:1.5;color:var(--muted,#888);overflow-wrap:anywhere}.event-reading{margin:12px 0;padding:12px;border:1px solid var(--line,#666);border-radius:10px;overflow-wrap:anywhere}.event-reading summary{cursor:pointer;font-weight:600}.event-reading h4{margin:12px 0 6px}.event-reading ul{padding-left:20px}.event-reading blockquote{margin:6px 0;padding-left:8px;border-left:2px solid #888}.event-reading a{color:inherit;text-decoration:underline}.event-unavailable{font-size:.85rem;opacity:.8}#readingStatus{max-width:100%;font:inherit}</style></head>
 <body>
   <div class="app">
     <aside class="side">
@@ -1454,6 +1454,7 @@
       </aside>
 
       <div class="content-head">
+        <label for="readingStatus">閱讀狀態 <select id="readingStatus"><option value="all">全部</option><option value="unread">未讀</option><option value="read">已讀</option><option value="saved">稍後閱讀</option></select></label>
         <h2 id="feedTitle">重點新聞流</h2>
         <span id="resultCount"></span>
       </div>
@@ -1502,7 +1503,7 @@
       </section>
       <section class="ai-block">
         <h2>話題聚焦</h2>
-        <div class="topic-grid" id="topicGrid"></div>
+        <div class="topic-grid" id="topicGrid"></div><div id="eventReadingList" aria-label="多來源閱讀"></div>
       </section>
       <section class="ai-block" id="contraBlock" hidden>
         <h2>⚡ 各報講法有出入</h2>
@@ -1510,6 +1511,7 @@
       </section>
       <section class="ai-block" id="timelineBlock" hidden>
         <h2>📈 事件時間軸</h2>
+        <p class="meta">舊版 AI 時序未逐句核實；日期與描述請以來源報道為準。</p>
         <div id="timelineList"></div>
       </section>
       <section class="ai-block" id="entityBlock" hidden>
@@ -1636,11 +1638,14 @@
       const id = url.searchParams.get("id");
       if (!id) return;
       event.preventDefault();
-      location.href = `article.html?id=${encodeURIComponent(id)}`;
+      const quote = url.searchParams.get("quote");
+      location.href = `article.html?id=${encodeURIComponent(id)}${quote ? "&quote=" + encodeURIComponent(quote.slice(0, 500)) : ""}${url.hash}`;
     });
   </script>
   <script src="vendor/fuse.min.js?v=20260718-topicfix"></script>
   <script src="js/common.js?v=20260718-topicfix"></script>
+  <script src="js/reader-state.js"></script>
+  <script src="js/event-reading.js"></script>
   <script src="js/index.js?v=20260718-topicfix"></script>
 </body>
 </html>
