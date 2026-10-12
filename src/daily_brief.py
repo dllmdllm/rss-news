@@ -6,8 +6,8 @@ top stories 寫一段早報 + 重點列表：
   - 輸出 docs/data/daily_brief.json（前端 index 頁「今日早報」卡 + TTS 用）
   - 生成成功後推一次 Telegram（重用 breaking_alert 嘅 bot 設定）
 
-冪等：daily_brief.json 內嘅 date 等於今日（HKT）就直接 skip，
-所以每日只會生成同推送一次。
+生成與通知分開記錄：同日重用早報，Telegram 失敗會重試已存文字。
+新早報有明確 pending 標記；舊記錄嘅發送狀態不明，升級時唔會重送。
 """
 import asyncio
 import json
@@ -160,15 +160,45 @@ def _telegram_text(brief: dict, date_label: str) -> str:
     return "\n".join(lines)
 
 
-async def generate_daily_brief(articles: list) -> None:
-    if not MINIMAX_API_KEY:
-        print("[brief] Skipped — set MINIMAX_API_KEY")
+async def _deliver_brief(session, payload: dict, now: datetime) -> None:
+    # Legacy records have unknown delivery state; do not resend them during
+    # rollout. Only newly generated, explicitly pending records are retryable.
+    if (not TELEGRAM_BOT_TOKEN or not payload.get("telegram_delivery_pending")
+            or payload.get("telegram_delivered_at")):
         return
+    date_label = f"{now.month}月{now.day}日"
+    try:
+        status = await _send_telegram(
+            session, _telegram_text(payload, date_label),
+            photo_url=payload.get("telegram_photo_url", ""),
+        )
+        if 200 <= status < 300:
+            payload["telegram_delivered_at"] = now.isoformat()
+            payload["telegram_delivery_pending"] = False
+            _save(payload)
+        else:
+            print(f"[brief] Telegram failed: HTTP {status}; delivery remains pending")
+    except Exception as exc:
+        print(f"[brief] Telegram failed: {exc!r}; delivery remains pending")
+
+
+async def generate_daily_brief(articles: list) -> None:
     now = datetime.now(HKT)
     existing = _load_existing()
+    if (existing.get("date") == now.strftime("%Y-%m-%d")
+            and existing.get("text") and existing.get("highlights")):
+        # Retry a saved brief even when the AI key is unavailable. Never pay
+        # to regenerate text just because Telegram delivery failed.
+        if now.hour >= GENERATE_AFTER_HOUR:
+            async with aiohttp.ClientSession() as session:
+                await _deliver_brief(session, existing, now)
+        return
     if not should_generate(existing, now):
         print(f"[brief] Skipped — already generated for {existing.get('date')} "
               f"(or before {GENERATE_AFTER_HOUR}:00 HKT)")
+        return
+    if not MINIMAX_API_KEY:
+        print("[brief] Skipped — set MINIMAX_API_KEY")
         return
 
     picked = select_top_articles(articles, now)
@@ -207,19 +237,11 @@ async def generate_daily_brief(articles: list) -> None:
         payload = {
             "date": now.strftime("%Y-%m-%d"),
             "generated_at": now.isoformat(),
+            "telegram_delivery_pending": True,
+            "telegram_photo_url": picked[0].get("thumbnail", "") if picked else "",
             **brief,
         }
         _save(payload)
         print(f"[brief] Generated for {payload['date']}: {brief['title'][:30]}")
 
-        if TELEGRAM_BOT_TOKEN:
-            date_label = f"{now.month}月{now.day}日"
-            # 用 top story（picked 已經按 score/新鮮度排咗）嘅縮圖做早報配圖；
-            # sendPhoto caption 上限 1024 字，_telegram_text 得標題+bullets
-            # 遠遠夠餘。
-            thumbnail = picked[0].get("thumbnail", "") if picked else ""
-            try:
-                status = await _send_telegram(session, _telegram_text(brief, date_label), photo_url=thumbnail)
-                print(f"[brief] Telegram: {status}")
-            except Exception as exc:
-                print(f"[brief] Telegram failed: {exc!r}")
+        await _deliver_brief(session, payload, now)

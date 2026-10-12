@@ -8,6 +8,7 @@ import aiohttp
 import trafilatura
 from src.rss_html import first_rss_image, safe_http_url, sanitize_rss_html
 from src.hk_text import from_simplified
+from src.public_http import UnsafeDestination, public_connector, public_get, read_public_body
 from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
@@ -1028,6 +1029,10 @@ def _dedupe_paragraphs(content: str) -> str:
     soup = BeautifulSoup(content, "html.parser")
     seen: set[str] = set()
     for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "blockquote", "li"]):
+        # Compare disjoint text blocks, never the same occurrence at both its
+        # container and paragraph level (blockquote > p and li > p).
+        if tag.find(["p", "h1", "h2", "h3", "h4", "h5", "blockquote", "li"]):
+            continue
         text = re.sub(r"\s+", " ", tag.get_text(" ", strip=True))
         if len(text) < 20:
             continue
@@ -1209,49 +1214,34 @@ def _rss_fallback_content(
     return content
 
 
-async def _urllib_fetch(url: str, extra_headers: dict | None = None) -> str | None:
-    """Fetch using urllib.request in thread pool — bypasses Cloudflare TLS fingerprinting."""
+async def _legacy_public_fetch(url: str, extra_headers: dict | None = None) -> str | None:
+    # Retained helper names for diagnostics compatibility; no alternate client,
+    # TLS fingerprint or unrestricted resolver may bypass the fetch policy.
     try:
-        import urllib.request
-        loop = asyncio.get_running_loop()
-        def _fetch():
-            headers = {**HTTP_HEADERS, **(extra_headers or {})}
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=_FALLBACK_TIMEOUT) as resp:
-                raw = resp.read()
-                charset = resp.headers.get_content_charset() or "utf-8"
-                return raw.decode(charset, errors="replace")
-        return await loop.run_in_executor(None, _fetch)
+        async with aiohttp.ClientSession(headers={**HTTP_HEADERS, **(extra_headers or {})},
+                                         connector=public_connector()) as session:
+            return await _fetch_html(session, url)
     except Exception as exc:
-        print(f"[WARN] urllib_fetch {url[:60]}: {exc!r}")
+        print(f"[WARN] publisher fetch failed: {type(exc).__name__}")
         return None
+
+
+async def _urllib_fetch(url: str, extra_headers: dict | None = None) -> str | None:
+    return await _legacy_public_fetch(url, extra_headers)
 
 
 async def _cloudscraper_fetch(url: str, extra_headers: dict | None = None) -> str | None:
-    """Bypass Cloudflare using cloudscraper (runs in thread pool)."""
-    try:
-        import cloudscraper
-        loop = asyncio.get_running_loop()
-        def _fetch():
-            scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
-            r = scraper.get(url, timeout=_FALLBACK_TIMEOUT, headers=extra_headers or None)
-            # Unlike _fetch_html/_urllib_fetch, cloudscraper (requests-style)
-            # doesn't raise on non-2xx — a Cloudflare/origin error page whose
-            # body happens not to match any _BLOCK_PHRASES would otherwise be
-            # trusted as real content by _is_blocked() (2026-07-21 audit
-            # finding).
-            if r.status_code >= 400:
-                print(f"[WARN] cloudscraper HTTP {r.status_code} for {url[:60]}")
-                return None
-            return r.text
-        return await asyncio.wait_for(loop.run_in_executor(None, _fetch), timeout=_FALLBACK_TIMEOUT + 5)
-    except Exception as exc:
-        print(f"[WARN] cloudscraper {url[:60]}: {exc!r}")
-        return None
+    return await _legacy_public_fetch(url, extra_headers)
 
 
 class SourceAccessDenied(Exception):
     """An explicit upstream access restriction; do not try another client."""
+
+
+class SourceHTTPError(Exception):
+    def __init__(self, status):
+        super().__init__(f'HTTP {status}')
+        self.status = status
 
 
 async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
@@ -1261,14 +1251,13 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
         if resp.status in {401, 403, 406, 429, 451}:
             raise SourceAccessDenied(f"HTTP {resp.status}")
         if resp.status >= 400:
-            print(f"[WARN] scrape HTTP {resp.status} for {url[:60]}")
-            return ""
-        raw = await resp.read()
+            raise SourceHTTPError(resp.status)
+        raw = await read_public_body(resp)
         charset = resp.charset or "utf-8"
         return raw.decode(charset, errors="replace")
 
-    async with session.get(
-        url,
+    async with public_get(
+        session, url,
         timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
         headers=_extra_headers_for_url(url) or None,
     ) as resp:
@@ -1406,9 +1395,22 @@ async def _scrape_one(
                 article["scrape_error"] = str(exc)
                 _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
                 return article
+            except UnsafeDestination as exc:
+                article['scrape_error'] = f'unsafe destination: {exc}'
+                _rss_fallback_content(article, fallback='rss-unsafe-url', allow_minimal=True)
+                return article
+            except SourceHTTPError as exc:
+                # Access restrictions above stop immediately; only temporary
+                # origin failures get one retry within the existing budget.
+                if exc.status < 500 or attempt == 1:
+                    article['scrape_error'] = str(exc)
+                    _rss_fallback_content(article, fallback='rss-http-error', allow_minimal=True)
+                    return article
             except Exception as exc:
                 if attempt == 1:
                     print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")
+                    article['scrape_error'] = f'fetch failed: {type(exc).__name__}'
+                    _rss_fallback_content(article, fallback='rss-fetch-error', allow_minimal=True)
         # Semaphore released before sleeping so other articles can proceed
         if attempt == 0:
             await asyncio.sleep(3)
@@ -1417,7 +1419,7 @@ async def _scrape_one(
 
 async def scrape_all(articles: list) -> list:
     sem = asyncio.Semaphore(SCRAPE_CONCURRENCY)
-    connector = aiohttp.TCPConnector(limit=SCRAPE_CONCURRENCY)
+    connector = public_connector(limit=SCRAPE_CONCURRENCY)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks = [_scrape_one(session, a, sem) for a in articles]
         try:

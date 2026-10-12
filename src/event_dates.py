@@ -7,7 +7,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 HKT = timezone(timedelta(hours=8))
-EVENT_DATE_VERSION = "source-date-v3"
+EVENT_DATE_VERSION = "source-date-v5"
 
 
 def publication_day(value):
@@ -21,6 +21,13 @@ def publication_day(value):
 
 def resolve_expression(expression, published):
     expression = re.sub(r"\s+", "", str(expression or ""))
+    # Only a precise start suffix/time is discarded; ranges and qualifiers
+    # still fail the full match. Parenthetical relative days must agree.
+    expression = re.sub(r"(?:(?:[01]?\d|2[0-3]):[0-5]\d)?起$", "", expression)
+    relative = re.fullmatch(r"(明日|明天|後日|後天|今日|今天)[(（](\d{1,2})(?:日|號)?[)）]", expression)
+    if relative and published:
+        resolved = resolve_expression(relative[1], published)
+        return resolved if resolved and resolved.day == int(relative[2]) else None
     try:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", expression):
             return date.fromisoformat(expression)
@@ -38,7 +45,7 @@ def resolve_expression(expression, published):
     return None
 
 
-def _expression_is_uncertain(expression, evidence, source):
+def _expression_is_uncertain(expression, evidence, source, published=None):
     """Do not let a model narrow a qualified date or one end of a range.
 
     Inspect only the date's immediate surroundings at the quoted source location,
@@ -51,7 +58,13 @@ def _expression_is_uncertain(expression, evidence, source):
             start = quote_match.start() + date_match.start()
             end = quote_match.start() + date_match.end()
             before, after = source[max(0, start - 20):start], source[end:end + 20]
-            if re.search(r"(?:大約|約|暫定|預計|可能|最早|最遲|不早於|不遲於|不一定|未必|不會|並非|不是)(?:在|於|為)?$", before):
+            # A quote/model must not omit a contradictory parenthetical day.
+            parenthetical = re.match(r"[(（](\d{1,2})(?:日|號)?[)）]", after)
+            if parenthetical and expression in ("明日", "明天", "後日", "後天", "今日", "今天"):
+                resolved = resolve_expression(expression, published)
+                if not resolved or resolved.day != int(parenthetical[1]):
+                    return True
+            if re.search(r"(?:大約|約|暫定|預計|可能|最早|最遲|不早於|不遲於|不一定|未必|不會|並非|不是)(?:均|都)?(?:將|會)?(?:在|於|為)?$", before):
                 return True
             # A model may omit a year qualifier from its quoted expression.
             # Keep that narrowed date uncertain instead of assuming this year.
@@ -59,11 +72,12 @@ def _expression_is_uncertain(expression, evidence, source):
                 return True
             if re.search(r"(?:\d|日|號|[一二三四五六天])(?:至|到|[–—~～-])$", before):
                 return True
+            after = re.sub(r"^(?:(?:[01]?\d|2[0-3]):[0-5]\d)?起", "", after)
             if re.match(r"(?:至|到|[–—~～-])(?:\d|下|本|今|明|後)", after):
                 return True
             if re.match(r"(?:或|或者|及|或於)(?:\d|下|本|今|明|後)", after):
                 return True
-            if re.match(r"(?:左右|前後|之前|之後|以前|以後)", after):
+            if re.match(r"[(（]?(?:暫定|預計|可能|大約|左右|前後|之前|之後|以前|以後)", after):
                 return True
     return False
 
@@ -80,7 +94,7 @@ def validate_event(event, *, title, text, published):
         return None
     if re.sub(r"\s+", "", expression) not in re.sub(r"\s+", "", evidence):
         return None
-    resolved = (None if _expression_is_uncertain(expression, evidence, source)
+    resolved = (None if _expression_is_uncertain(expression, evidence, source, publication_day(published))
                 else resolve_expression(expression, publication_day(published)))
     return {"date": resolved.isoformat() if resolved else None,
             "title": event_title, "date_expression": expression[:80],
@@ -95,4 +109,9 @@ def event_identity(title):
             and any(term in compact for term in ("開通", "啟用", "通關"))
             and not any(term in compact for term in ("巴士", "專線", "路線", "e道", "登記", "關閉"))):
         return "皇崗口岸啟用"
+    # Exact observed on-sale title variants only. Announcement/preorder and
+    # differently named products remain distinct; build_upcoming keeps date
+    # in the occurrence key for this identity.
+    if compact in {"iphoneduo正式開售", "iphoneduo開售"}:
+        return "iphoneduo開售"
     return compact

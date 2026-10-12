@@ -66,7 +66,7 @@
       status.textContent = '呢個瀏覽器未支援朗讀';
       return;
     }
-    let chunks = [], active = false, paused = false, generation = 0, utterance = null;
+    let chunks = [], active = false, paused = false, generation = 0, utterance = null, browserDefault = false;
     function stop(message = '') {
       generation++;
       active = false;
@@ -83,15 +83,40 @@
     function next(token) {
       if (!active || token !== generation) return;
       if (!chunks.length) { stop('朗讀完畢'); return; }
-      utterance = new SpeechSynthesisUtterance(chunks.shift());
+      const text = chunks.shift();
       const voices = synth.getVoices();
-      const voice = voices.find(v => /zh[-_]HK|yue|Cantonese|粵/i.test(v.lang + ' ' + v.name));
-      if (voice) utterance.voice = voice;
-      utterance.lang = voice?.lang || 'zh-HK';
-      utterance.rate = Number(rate.value);
-      utterance.onend = () => next(token);
-      utterance.onerror = () => { if (token === generation) stop('朗讀失敗，請再試'); };
-      synth.speak(utterance);
+      const voice = voices.find(v => /zh[-_]HK|yue|Cantonese|粵/i.test(v.lang + ' ' + v.name))
+        || voices.find(v => /^zh/i.test(v.lang));
+      function speak(useDefault = false) {
+        if (!active || token !== generation) return;
+        utterance = new SpeechSynthesisUtterance(text);
+        if (!useDefault) {
+          if (voice) utterance.voice = voice;
+          utterance.lang = voice?.lang || 'zh-HK';
+        }
+        utterance.rate = Number(rate.value);
+        status.dataset.voice = useDefault ? 'browser-default' : (voice?.name || 'zh-HK (browser selection)');
+        const current = utterance;
+        utterance.onend = () => { if (utterance === current) next(token); };
+        utterance.onerror = event => {
+          if (token !== generation || utterance !== current) return;
+          const error = event?.error || '';
+          status.dataset.error = error;
+          // Only retry unavailable language/voice, once, with browser default.
+          // Permission/audio/network failures need a new user action or device fix.
+          if (!useDefault && ['language-unavailable', 'voice-unavailable'].includes(error)) {
+            browserDefault = true;
+            status.textContent = '所選語音不可用，嘗試瀏覽器預設語音';
+            speak(true);
+            return;
+          }
+          const selected = status.dataset.voice;
+          stop(error ? `朗讀失敗（${error}；語音：${selected}），請檢查瀏覽器語音支援後再試` : '朗讀失敗，請再試');
+        };
+        try { synth.speak(utterance); }
+        catch (_) { utterance.onerror({error: 'synthesis-failed'}); }
+      }
+      speak(browserDefault);
     }
     play.addEventListener('click', () => {
       if (active) { stop(); return; }
@@ -108,6 +133,8 @@
       play.setAttribute('aria-pressed', 'true');
       pause.disabled = false;
       status.textContent = '朗讀中';
+      browserDefault = false;
+      delete status.dataset.error;
       next(++generation);
     });
     pause.addEventListener('click', () => {

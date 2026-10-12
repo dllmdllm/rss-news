@@ -16,6 +16,9 @@ class _FakeResp:
     async def text(self):
         return ""
 
+    async def json(self, **kwargs):
+        return {'ok': 200 <= self.status < 300}
+
 
 class _FakeSession:
     """Records each session.post(...) call and returns statuses in order."""
@@ -139,3 +142,13 @@ def test_format_alert_text_appends_link_when_url_present():
         "headline": "有連結", "summary": "", "sources": ["明報"], "url": "https://example.com/x",
     })
     assert text.endswith('<a href="https://example.com/x">睇原文</a>')
+
+
+def test_telegram_http_success_requires_api_acknowledgement():
+    class Rejected(_FakeResp):
+        async def json(self, **kwargs): return {'ok': False}
+    class Session:
+        def post(self, *args, **kwargs): return Rejected(200)
+    import pytest
+    with pytest.raises(RuntimeError, match='acknowledge'):
+        asyncio.run(_send_telegram(Session(), 'message'))

@@ -186,11 +186,16 @@ class _FakeJsonResp:
     async def json(self, content_type=None):
         return self._payload
 
+    async def read(self):
+        import json
+        return json.dumps(self._payload).encode('utf-8')
+
 
 class _FakeJsonSession:
     def __init__(self, payload):
         self._payload = payload
-    def get(self, url, timeout=None, headers=None):
+    def get(self, url, timeout=None, headers=None, allow_redirects=True):
+        assert allow_redirects is False
         return _FakeJsonResp(self._payload)
 
 
@@ -262,7 +267,8 @@ def test_fetch_oncc_daily_recaps_after_merging_two_days(monkeypatch):
     max_items = 20
     calls = {"n": 0}
 
-    def fake_get(url, timeout=None, headers=None):
+    def fake_get(url, timeout=None, headers=None, allow_redirects=True):
+        assert allow_redirects is False
         class _Resp:
             status = 200
             async def __aenter__(self_):
@@ -513,3 +519,16 @@ def test_feed_tls_failure_never_retries_insecurely():
         asyncio.run(fetch._read_feed_with_tls_fallback(session, 'https://example.com/rss', {}))
     assert len(session.calls) == 1
     assert session.calls[0]['ssl'] is True
+
+
+def test_html_feed_response_reports_actionable_error_and_drops_validators(monkeypatch):
+    import asyncio
+    from src import fetch as F
+    async def read(*args, **kwargs):
+        return 200, b'<!DOCTYPE html><html><body>publisher challenge</body></html>', {}
+    monkeypatch.setattr(F, '_read_feed_with_tls_fallback', read)
+    feed = {'name':'Public source', 'url':'https://example.com/feed', 'category':'新聞'}
+    cache = {feed['url']: {'etag':'old'}}
+    articles, error, not_modified = asyncio.run(F._fetch_one(None, feed, datetime.now(timezone.utc), cache))
+    assert articles == [] and 'non-feed HTML' in error and not not_modified
+    assert feed['url'] not in cache

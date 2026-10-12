@@ -48,15 +48,18 @@ _TEXT_TAGS = ("p", "h2", "h3", "h4", "li", "blockquote")
 
 SYSTEM_PROMPT = (
     "你係一個新聞翻譯員，將英文新聞內文翻譯做香港繁體中文。"
-    "輸出一個 JSON 陣列，每個元素對應輸入陣列同一位置嘅譯文，"
-    "按原文順序排列，陣列長度必須等於輸入段落數量。"
+    "輸入每項有 text（要翻譯嘅文字片段）及 paragraph_context（只供理解語法同指代嘅完整段落）。"
+    "輸出一個 JSON 陣列，每個元素只翻譯同一位置嘅 text 片段，"
+    "按原文順序排列，陣列長度必須等於輸入片段數量。"
+    "唔好將 paragraph_context 翻譯或重複輸出；片段可能由行內格式分開，"
+    "用段落上下文保持前後語意連貫，但唔好將其他片段嘅意思搬入當前片段。"
     "唔好有任何其他文字、解釋、markdown 或思考過程。"
     "翻譯要自然流暢，符合新聞寫作風格，人名/地名/機構名用約定俗成嘅香港譯法"
     "（唔係台灣或者大陸譯法）；如果冇把握某個人名/地名/作品名嘅香港譯法，"
     "直接保留英文原文，唔好自己砌一個音譯；空白段落原樣輸出空字串。"
 )
 
-TRANSLATE_VERSION = "t-" + hashlib.md5(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:8]
+TRANSLATE_VERSION = "dom2-" + hashlib.md5(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:8]
 
 
 def load_cache() -> dict:
@@ -91,6 +94,10 @@ def extract_paragraphs(content: str) -> tuple[BeautifulSoup, list]:
     soup = BeautifulSoup(content or "", "html.parser")
     tags = []
     for tag in soup.find_all(_TEXT_TAGS):
+        # A selected parent and child contain the same prose. Translate only
+        # leaf blocks so quotations and list containers remain intact.
+        if tag.find(_TEXT_TAGS):
+            continue
         if tag.find("img"):
             continue
         text = tag.get_text(" ", strip=True)
@@ -102,8 +109,30 @@ def extract_paragraphs(content: str) -> tuple[BeautifulSoup, list]:
 def _replace_tag_text(tag, new_text: str):
     """Replace a tag's text content in place, keeping the tag itself (and
     thus the surrounding document structure/position) untouched."""
-    tag.clear()
-    tag.append(NavigableString(new_text))
+    if isinstance(tag, NavigableString):
+        original = str(tag)
+        leading = original[:len(original) - len(original.lstrip())]
+        trailing = original[len(original.rstrip()):]
+        tag.replace_with(NavigableString(leading + new_text.strip() + trailing))
+    else:
+        # Plain blocks have no inline elements. Never clear structured DOM.
+        tag.string.replace_with(NavigableString(new_text))
+
+
+def _translation_units(content: str):
+    soup = BeautifulSoup(content or "", "html.parser")
+    units = []
+    for node in soup.descendants:
+        if type(node) is not NavigableString or not str(node).strip():
+            continue
+        block = node.find_parent(_TEXT_TAGS)
+        if (block is None or block.find("img")
+                or len(block.get_text(" ", strip=True)) > _MAX_PARAGRAPH_CHARS):
+            continue
+        # Nearest block ownership visits every text occurrence once, including
+        # a list item's direct prose before its nested sub-list.
+        units.append(node)
+    return soup, units
 
 
 def _parse_translated_array(raw: str, expected: int) -> list[str] | None:
@@ -129,12 +158,18 @@ async def _translate_article(
     counter: list,
 ) -> None:
     content = article.get("content") or ""
-    soup, tags = extract_paragraphs(content)
+    soup, tags = _translation_units(content)
     if not tags:
         return
 
     texts = [tag.get_text(" ", strip=True) for tag in tags]
-    user_text = "\n".join(f"[{i}] {t}" for i, t in enumerate(texts))
+    user_text = "\n".join(
+        f"[{i}] " + json.dumps({
+            "text": text,
+            "paragraph_context": tag.find_parent(_TEXT_TAGS).get_text(" ", strip=True),
+        }, ensure_ascii=False)
+        for i, (tag, text) in enumerate(zip(tags, texts))
+    )
 
     translated: list[str] | None = None
     async with sem:
@@ -182,7 +217,7 @@ async def _translate_article(
     cache[article["id"]] = {
         "content": article["content"],
         "source_hash": _source_hash(texts),
-        "translated_hash": _source_hash([t.get_text(" ", strip=True) for t in extract_paragraphs(article["content"])[1]]),
+        "translated_hash": _source_hash([t.get_text(" ", strip=True) for t in _translation_units(article["content"])[1]]),
         "version": TRANSLATE_VERSION,
     }
     # Incremental flush so a mid-run timeout (build.py wraps this whole call
@@ -210,7 +245,7 @@ async def translate_english_content(articles: list) -> None:
     for a in articles:
         if a.get("source") not in ENGLISH_SOURCES or not a.get("content"):
             continue
-        soup, tags = extract_paragraphs(a["content"])
+        soup, tags = _translation_units(a["content"])
         if not tags:
             continue
         texts = [t.get_text(" ", strip=True) for t in tags]
@@ -221,20 +256,11 @@ async def translate_english_content(articles: list) -> None:
             and (cached.get("source_hash") == _source_hash(texts)
                  or cached.get("translated_hash") == _source_hash(texts)
                  or (a.get("content_retention") and
-                     _source_hash([t.get_text(" ", strip=True) for t in extract_paragraphs(cached.get("content", ""))[1]]) == _source_hash(texts)))
+                     _source_hash([t.get_text(" ", strip=True) for t in _translation_units(cached.get("content", ""))[1]]) == _source_hash(texts)))
         ):
             # Reuse translated text, not stale HTML that may predate repaired
             # RSS images. Keep the current sanitized media and document order.
-            _, translated_tags = extract_paragraphs(cached["content"])
-            # Legacy translation clears selected parent tags, so nested selected
-            # children disappear. Replay only the surviving outermost blocks.
-            def outermost(selected):
-                selected_ids = {id(tag) for tag in selected}
-                return [tag for tag in selected if not any(
-                    id(parent) in selected_ids for parent in tag.parents
-                )]
-            tags = outermost(tags)
-            translated_tags = outermost(translated_tags)
+            _, translated_tags = _translation_units(cached["content"])
             if len(translated_tags) == len(tags):
                 for tag, translated_tag in zip(tags, translated_tags):
                     _replace_tag_text(tag, translated_tag.get_text(" ", strip=True))

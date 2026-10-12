@@ -102,6 +102,10 @@
       firstImage.remove();
     }
     doc.querySelectorAll("img").forEach((img) => {
+      if (!img.getAttribute("alt")) {
+        const caption = img.closest("figure")?.querySelector("figcaption")?.textContent.trim();
+        img.setAttribute("alt", caption || "報道配圖（來源未提供圖片描述）");
+      }
       img.setAttribute("referrerpolicy", "no-referrer");
       img.setAttribute("loading", "lazy");
       img.setAttribute("decoding", "async");
@@ -262,10 +266,14 @@
       document.body.classList.remove("fs-small", "fs-large");
       if (next === "small") document.body.classList.add("fs-small");
       if (next === "large") document.body.classList.add("fs-large");
-      buttons.forEach((b) => b.classList.toggle("active", b.id === FONT_BUTTON_ID[next]));
+      buttons.forEach((b) => {
+        const active = b.id === FONT_BUTTON_ID[next];
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", String(active));
+      });
       return next;
     }
-    applyFontSize(localStorage.getItem(FONT_KEY) || localStorage.getItem("rss_home_font_size") || "large");
+    applyFontSize(storageGet(FONT_KEY) || storageGet("rss_home_font_size") || "large");
     buttons.forEach((button) => {
       button.addEventListener("click", () => {
         const size = Object.keys(FONT_BUTTON_ID).find((key) => FONT_BUTTON_ID[key] === button.id);
@@ -275,19 +283,22 @@
     });
     $("textOnly").addEventListener("click", () => {
       document.body.classList.toggle("text-only");
-      $("textOnly").classList.toggle("active", document.body.classList.contains("text-only"));
+      const active = document.body.classList.contains("text-only");
+      $("textOnly").classList.toggle("active", active);
+      $("textOnly").setAttribute("aria-pressed", String(active));
     });
     const aiToggle = $("aiToggle");
     if (aiToggle) {
       const applyAiState = (collapsed) => {
         document.body.classList.toggle("ai-collapsed", collapsed);
         aiToggle.classList.toggle("active", !collapsed);
+        aiToggle.setAttribute("aria-expanded", String(!collapsed));
       };
-      applyAiState(localStorage.getItem("article.aiCollapsed") === "1");
+      applyAiState(storageGet("article.aiCollapsed") === "1");
       aiToggle.addEventListener("click", () => {
         const collapsed = !document.body.classList.contains("ai-collapsed");
         applyAiState(collapsed);
-        localStorage.setItem("article.aiCollapsed", collapsed ? "1" : "0");
+        storageSet("article.aiCollapsed", collapsed ? "1" : "0");
       });
     }
   }
@@ -349,7 +360,7 @@
     const dekEl = $("dek");
     dekEl.textContent = "";
     dekEl.style.display = "none";
-    $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="">` : "";
+    $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="${esc((article.title || "新聞") + "配圖")}">` : "";
     const summaryInner = summaryItems.length
       ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;

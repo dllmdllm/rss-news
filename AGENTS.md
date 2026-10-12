@@ -864,3 +864,21 @@ The push worker accepts known HTTPS browser push providers only, validates store
 subscriptions again before sending, rejects redirects and bounds request size,
 admission and fanout. KV admission quotas are best effort under concurrent writes;
 strict distributed rate limits require separately approved infrastructure.
+
+### Review repairs: publisher transport and data contracts (2026-10-12)
+
+- Publisher/feed GETs use `src/public_http.py`: validate every redirect, public-only
+  connection-time DNS, one request budget and 8 MiB response cap. Keep public CDN
+  redirects; never reintroduce unrestricted urllib/cloudscraper fetches or a
+  separate DNS pre-check followed by a second unrestricted resolution.
+- Paragraph dedupe compares disjoint blocks; a container and its descendant are
+  one text occurrence. Translation preserves text-node/inline/block structure.
+- Homepage index includes `sentiment`; browser regression uses the actual writer
+  projection. Mutable content sidecars are network-first with offline fallback.
+- Embedding cancellation kills/drains/reaps the child; timeout/nonzero exit must
+  mark the optional stage failed. Daily brief generation and Telegram delivery
+  acknowledgements are separate; saved pending text retries without paid AI.
+- Graph refs are complete for accurate time-window counts. Explicit start dates
+  can normalize safely; ranges/conflicts stay uncertain and event merging remains
+  conservative. Native TTS diagnostics report error/voice; unavailable voice gets
+  one browser-default fallback, never a claim that device audio was verified.

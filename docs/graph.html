@@ -304,8 +304,8 @@
       const data = node.data();
       document.getElementById("sidebar-label").textContent = TYPE_LABEL[data.etype] || "";
       document.getElementById("sidebar-name").textContent = data.label;
-      document.getElementById("sidebar-stat").textContent = `出現喺 ${data.count} 篇文章`;
-      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
+      document.getElementById("sidebar-stat").textContent = `目前時段出現喺 ${recentArticleIds(data.articles).length} 篇文章`;
+      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(recentArticleIds(data.articles || []));
       document.getElementById("sidebar").classList.add("show");
       requestAnimationFrame(() => cy?.resize());
     }
@@ -316,8 +316,8 @@
       const tgt = cy.getElementById(data.target).data();
       document.getElementById("sidebar-label").textContent = "共同出現";
       document.getElementById("sidebar-name").textContent = `${src.label} ↔ ${tgt.label}`;
-      document.getElementById("sidebar-stat").textContent = `共出現喺 ${data.weight} 篇文章`;
-      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(data.articles || []);
+      document.getElementById("sidebar-stat").textContent = `目前時段共同出現喺 ${recentArticleIds(data.articles).length} 篇文章`;
+      document.getElementById("sidebar-articles").innerHTML = renderArticleLinks(recentArticleIds(data.articles || []));
       document.getElementById("sidebar").classList.add("show");
       requestAnimationFrame(() => cy?.resize());
     }

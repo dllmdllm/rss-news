@@ -240,3 +240,96 @@ def test_graph_entities_are_keyboard_accessible(browser, news_data):
         page.keyboard.press('Escape')
         assert not page.locator('#sidebar').is_visible()
         page.close()
+
+
+@pytest.mark.parametrize('width', [390, 1280])
+def test_article_renders_with_storage_blocked_and_accessible_controls(browser, news_data, width):
+    with _static_server() as base_url:
+        context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
+        page = context.new_page()
+        _route_data(page, news_data)
+        page.add_init_script("Storage.prototype.getItem = Storage.prototype.setItem = () => { throw new DOMException('blocked', 'SecurityError'); };")
+        page.goto(base_url + '/article.html?id=a0')
+        page.locator('#content strong').wait_for()
+        assert page.locator('#title').inner_text() == '測試新聞 0'
+        assert page.locator('#content mark.key-sentence').all_text_contents() == ['今日有', '重要', '消息。']
+        page.locator('#textOnly').click()
+        assert page.locator('#textOnly').get_attribute('aria-pressed') == 'true'
+        page.locator('#aiToggle').click()
+        assert page.locator('#aiToggle').get_attribute('aria-expanded') == 'false'
+        page.locator('#fontSmall').click()
+        assert page.locator('#fontSmall').get_attribute('aria-pressed') == 'true'
+        context.close()
+
+
+def test_tts_voice_fallback_and_diagnostics(browser, news_data):
+    with _static_server() as base_url:
+        context = browser.new_context(service_workers='block')
+        page = context.new_page()
+        _route_data(page, news_data)
+        page.add_init_script("""
+          window.ttsCalls=[];
+          window.speechSynthesis.getVoices=()=>[];
+          window.speechSynthesis.speak=u=>{window.currentUtterance=u;ttsCalls.push(u);};
+          window.speechSynthesis.cancel=()=>{};
+        """)
+        page.goto(base_url + '/article.html?id=a0')
+        page.locator('#content strong').wait_for()
+        page.locator('#articleTts').click()
+        page.evaluate("currentUtterance.onerror({error:'language-unavailable'})")
+        assert page.evaluate('ttsCalls.length') == 2
+        assert page.evaluate('ttsCalls[0].text === ttsCalls[1].text')
+        page.evaluate('ttsCalls[0].onend()')
+        assert page.evaluate('ttsCalls.length') == 2
+        assert page.locator('#articleTtsStatus').get_attribute('data-voice') == 'browser-default'
+        page.evaluate("currentUtterance.onerror({error:'not-allowed'})")
+        assert 'not-allowed' in page.locator('#articleTtsStatus').inner_text()
+        assert page.evaluate('ttsCalls.length') == 2
+        assert page.locator('#articleTtsPause').is_disabled()
+        context.close()
+
+
+@pytest.mark.parametrize('width', [390, 1280])
+def test_production_index_projection_renders_mood(browser, news_data, width):
+    # Exercise the actual build projection rather than returning full article rows
+    # for both endpoints, which previously concealed dropped sentiment fields.
+    import ast
+    source = (ROOT / 'build.py').read_text()
+    module = ast.parse(source)
+    projection = next(node.value for node in ast.walk(module)
+                      if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'index_payload' for t in node.targets))
+    news_data['articles'][2]['sentiment'] = 'negative'
+    payload = news_data
+    index = eval(compile(ast.Expression(projection), str(ROOT / 'build.py'), 'eval'),
+                 {'payload': payload, 'source_stats': payload['sources'], 'articles': payload['articles']})
+    with _static_server() as base_url:
+        context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
+        page = context.new_page()
+        _route_data(page, news_data)
+        page.route('**/data/articles_index.json', lambda route: route.fulfill(json=index))
+        page.goto(base_url + '/index.html')
+        page.locator('#feed a.card').first.wait_for()
+        assert page.locator('#moodCount').inner_text() == '3 篇'
+        assert '中性 67%' in page.locator('#moodBar').inner_text()
+        page.locator('#moodBar button[data-sentiment="neutral"]').dispatch_event('click')
+        # The first matching article moves into leadStory; feed deliberately
+        # skips it. Assert the full visible article set, not feed alone.
+        links = page.locator('#leadStory > a, #feed a.card')
+        assert sorted(links.evaluate_all('(links) => links.map(a => a.getAttribute("href"))')) == ['article.html?id=a0', 'article.html?id=a1']
+        assert '2 篇' in page.locator('#resultCount').inner_text()
+        context.close()
+
+
+def test_article_images_preserve_alt_and_use_publisher_caption(browser, news_data):
+    with _static_server() as base_url:
+        context = browser.new_context(service_workers='block')
+        page = context.new_page()
+        _route_data(page, news_data)
+        page.route('**/data/content/**', lambda route: route.fulfill(json={
+            'content': '<figure><img src="/one.png"><figcaption>來源提供的圖片說明</figcaption></figure><img src="/two.png" alt="既有替代文字"><img src="/three.png">'}))
+        page.route('**/*.png', lambda route: route.fulfill(status=404, body=''))
+        page.goto(base_url + '/article.html?id=a0')
+        page.locator('#content img').first.wait_for()
+        assert page.locator('#content img').evaluate_all('(images) => images.map(i => i.alt)') == [
+            '來源提供的圖片說明', '既有替代文字', '報道配圖（來源未提供圖片描述）']
+        context.close()

@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiohttp
+from src.public_http import public_connector
 
 from src.breaking_alert import TELEGRAM_BOT_TOKEN, _send_telegram
 from src.feeds import HTTP_HEADERS, RSS_FEEDS
@@ -241,7 +242,7 @@ async def main() -> None:
 
     async def _run():
         nonlocal articles, matched, sent
-        async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
+        async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=public_connector()) as session:
             articles = await _fetch_watched(session, cutoff)
             fresh = [a for a in articles
                      if a.get("id") and not any(k in seen for k in _seen_keys(a))]

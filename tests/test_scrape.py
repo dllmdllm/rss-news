@@ -155,47 +155,15 @@ def test_expand_stheadline_galleries_escapes_attributes():
     assert 'alt="有 &quot;quote&quot; 嘅 caption"' in out
 
 
-def test_cloudscraper_fetch_returns_none_on_http_error(monkeypatch):
-    # 2026-07-21 audit finding：cloudscraper（requests-style）唔似
-    # _fetch_html/_urllib_fetch 咁會喺 4xx/5xx raise——之前唔 check status
-    # 就直接 return r.text，錯誤頁如果冇撞中 _BLOCK_PHRASES 就會被當正文。
-    import sys
-    import types
-
-    class _FakeResponse:
-        status_code = 403
-        text = "<html>Cloudflare challenge page</html>"
-
-    class _FakeScraper:
-        def get(self, url, timeout=None, headers=None):
-            return _FakeResponse()
-
-    fake_module = types.ModuleType("cloudscraper")
-    fake_module.create_scraper = lambda **kw: _FakeScraper()
-    monkeypatch.setitem(sys.modules, "cloudscraper", fake_module)
-
-    result = asyncio.run(scrape._cloudscraper_fetch("https://example.com/a"))
-    assert result is None
-
-
-def test_cloudscraper_fetch_returns_text_on_success(monkeypatch):
-    import sys
-    import types
-
-    class _FakeResponse:
-        status_code = 200
-        text = "<html><body><p>正文</p></body></html>"
-
-    class _FakeScraper:
-        def get(self, url, timeout=None, headers=None):
-            return _FakeResponse()
-
-    fake_module = types.ModuleType("cloudscraper")
-    fake_module.create_scraper = lambda **kw: _FakeScraper()
-    monkeypatch.setitem(sys.modules, "cloudscraper", fake_module)
-
-    result = asyncio.run(scrape._cloudscraper_fetch("https://example.com/a"))
-    assert result == "<html><body><p>正文</p></body></html>"
+def test_legacy_helpers_cannot_bypass_public_transport(monkeypatch):
+    calls = []
+    async def safe_fetch(url, extra_headers=None):
+        calls.append((url, extra_headers))
+        return '<p>safe response</p>'
+    monkeypatch.setattr(scrape, '_legacy_public_fetch', safe_fetch)
+    for helper in [scrape._urllib_fetch, scrape._cloudscraper_fetch]:
+        assert asyncio.run(helper('https://example.com/a')) == '<p>safe response</p>'
+    assert calls == [('https://example.com/a', None)] * 2
 
 
 def test_scrape_one_retries_mingpao_empty_response_with_urllib(monkeypatch):
@@ -879,3 +847,64 @@ def test_tvb_payload_uses_allowlisted_markup_and_protocols():
     assert 'javascript:' not in content and 'java\nscript:' not in content
     assert '<iframe' not in content
     assert '連結' in content
+
+
+def test_nested_unique_paragraphs_survive_deduplication():
+    from bs4 import BeautifulSoup
+    content = ('<blockquote><p>This is the only quoted paragraph of this article.</p></blockquote>'
+               '<ul><li><p>This is a unique list paragraph and should survive.</p></li></ul>'
+               '<p>This genuine sibling duplicate has repeated content.</p>'
+               '<p>This genuine sibling duplicate has repeated content.</p>')
+    soup = BeautifulSoup(scrape._dedupe_paragraphs(content), 'html.parser')
+    assert soup.blockquote.p.get_text().startswith('This is the only')
+    assert soup.li.p.get_text().startswith('This is a unique')
+    assert len(soup.find_all('p')) == 3
+
+
+def test_scrape_temporary_http_failure_retries_and_persists_exhausted_status(monkeypatch):
+    calls = []
+    async def no_delay(*args): pass
+    monkeypatch.setattr(scrape.asyncio, 'sleep', no_delay)
+    async def fetch(session, url):
+        calls.append(url)
+        if len(calls) == 1: raise scrape.SourceHTTPError(503)
+        return '<p>Recovered complete article body.</p>'
+    monkeypatch.setattr(scrape, '_fetch_html', fetch)
+    monkeypatch.setattr(scrape, '_process_html_sync', lambda *args: ('<p>Recovered complete article body.</p>', None))
+    result = asyncio.run(scrape._scrape_one(None, _article(), asyncio.Semaphore(1)))
+    assert len(calls) == 2 and 'Recovered complete' in result['content']
+    assert result['content_quality']['fallback'] == 'none' and not result.get('scrape_error')
+    calls.clear()
+    async def failed(session, url):
+        calls.append(url)
+        raise scrape.SourceHTTPError(503)
+    monkeypatch.setattr(scrape, '_fetch_html', failed)
+    result = asyncio.run(scrape._scrape_one(None, _article(), asyncio.Semaphore(1)))
+    assert len(calls) == 2 and result['scrape_error'] == 'HTTP 503'
+    assert result['content_quality']['fallback'] == 'rss-http-error'
+    assert 'RSS fallback text' in result['content']
+
+
+def test_unsafe_scrape_retains_rss_without_retry(monkeypatch):
+    async def forbidden_sleep(*args): raise AssertionError('unsafe destinations must not retry')
+    monkeypatch.setattr(scrape.asyncio, 'sleep', forbidden_sleep)
+    class Session:
+        def get(self, *args, **kwargs): raise AssertionError('must reject URL before HTTP')
+    article = _article(url='http://169.254.169.254/latest/meta-data/')
+    result = asyncio.run(scrape._scrape_one(Session(), article, asyncio.Semaphore(1)))
+    assert result['scrape_error'].startswith('unsafe destination:')
+    assert 'RSS fallback text' in result['content']
+
+
+def test_http_503_is_an_explicit_retryable_error():
+    class Session:
+        def get(self, *args, **kwargs):
+            assert kwargs['allow_redirects'] is False
+            class Response:
+                status = 503
+                async def __aenter__(self): return self
+                async def __aexit__(self, *args): pass
+            return Response()
+    import pytest
+    with pytest.raises(scrape.SourceHTTPError, match='HTTP 503'):
+        asyncio.run(scrape._fetch_html(Session(), 'https://example.com/a'))

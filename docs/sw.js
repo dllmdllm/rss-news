@@ -1,9 +1,9 @@
 // Service worker for 新聞快訊
 // Strategy:
 //   - HTML / docs data JSON : network-first (fall back to cache when offline)
-//   - content/*.json, images, js, css : stale-while-revalidate
+//   - images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v278";
+const CACHE   = "rss-news-v279";
 const SHELL   = [
   "./",
   "./index.html",
@@ -54,7 +54,7 @@ function networkFirst(req) {
       // (2026-07-21 audit finding). Prefer a still-good cached copy.
       return caches.match(key).then(cached => cached || res);
     })
-    .catch(() => caches.match(key));
+    .catch(async () => (await caches.match(key)) || Response.error());
 }
 
 function staleWhileRevalidate(req) {
@@ -112,8 +112,7 @@ self.addEventListener("fetch", event => {
   const isHtml  = req.destination === "document" || url.pathname.endsWith(".html");
   const isDataJson = url.origin === location.origin
     && url.pathname.includes("/data/")
-    && url.pathname.endsWith(".json")
-    && !url.pathname.includes("/data/content/");
+    && url.pathname.endsWith(".json");
 
   if (isHtml || isDataJson) {
     event.respondWith(networkFirst(req));

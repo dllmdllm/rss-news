@@ -85,3 +85,96 @@ def test_telegram_text_omits_paragraph_to_avoid_duplication():
     assert "・重點一" in text
     assert "・重點二" in text
     assert "呢段長 paragraph" not in text
+
+
+def test_saved_brief_retries_delivery_without_regeneration(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    from src import daily_brief as DB
+    fixed = datetime(2026, 10, 12, 7, tzinfo=HKT)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed
+    monkeypatch.setattr(DB, 'datetime', Clock)
+    monkeypatch.setattr(DB, 'OUTPUT_PATH', tmp_path / 'brief.json')
+    monkeypatch.setattr(DB, 'MINIMAX_API_KEY', '')
+    monkeypatch.setattr(DB, 'TELEGRAM_BOT_TOKEN', 'fake-token')
+    DB._save({'date': '2026-10-12', 'title': '焦點', 'text': '保存正文。',
+              'telegram_delivery_pending': True,
+              'highlights': [{'point': '重點', 'id': 'a'}]})
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('saved text must not be regenerated')
+    monkeypatch.setattr(DB, 'post_messages', forbidden)
+    statuses = iter([503, 200])
+    calls = []
+    async def send(session, text, **kwargs):
+        calls.append(text)
+        return next(statuses)
+    monkeypatch.setattr(DB, '_send_telegram', send)
+    asyncio.run(DB.generate_daily_brief([]))
+    assert not DB._load_existing().get('telegram_delivered_at')
+    asyncio.run(DB.generate_daily_brief([]))
+    assert DB._load_existing()['telegram_delivered_at'] == fixed.isoformat()
+    asyncio.run(DB.generate_daily_brief([]))
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert json.loads(DB.OUTPUT_PATH.read_text())['text'] == '保存正文。'
+
+
+def test_delivery_exception_keeps_saved_brief_pending(monkeypatch, tmp_path):
+    import asyncio
+    from src import daily_brief as DB
+    monkeypatch.setattr(DB, 'OUTPUT_PATH', tmp_path / 'brief.json')
+    monkeypatch.setattr(DB, 'TELEGRAM_BOT_TOKEN', 'fake-token')
+    payload = {'date': '2026-10-12', 'text': '正文', 'highlights': [{'point': '重點'}],
+               'telegram_delivery_pending': True}
+    DB._save(payload)
+    async def fail(*args, **kwargs):
+        raise TimeoutError('simulated')
+    monkeypatch.setattr(DB, '_send_telegram', fail)
+    asyncio.run(DB._deliver_brief(None, payload, datetime(2026, 10, 12, 7, tzinfo=HKT)))
+    assert not DB._load_existing().get('telegram_delivered_at')
+
+
+def test_legacy_brief_unknown_delivery_does_not_resend(monkeypatch, tmp_path):
+    import asyncio
+    from src import daily_brief as DB
+    monkeypatch.setattr(DB, 'OUTPUT_PATH', tmp_path / 'brief.json')
+    monkeypatch.setattr(DB, 'TELEGRAM_BOT_TOKEN', 'fake-token')
+    legacy = {'date': '2026-10-12', 'text': '正文', 'highlights': [{'point': '重點'}]}
+    DB._save(legacy)
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('unknown legacy delivery must not trigger a duplicate')
+    monkeypatch.setattr(DB, '_send_telegram', forbidden)
+    asyncio.run(DB._deliver_brief(None, legacy, datetime(2026, 10, 12, 7, tzinfo=HKT)))
+    assert DB._load_existing() == legacy
+
+
+def test_new_brief_is_durable_before_failed_delivery_and_not_regenerated(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    from src import daily_brief as DB
+    fixed = datetime(2026, 10, 12, 7, tzinfo=HKT)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed
+    monkeypatch.setattr(DB, 'datetime', Clock)
+    monkeypatch.setattr(DB, 'OUTPUT_PATH', tmp_path / 'brief.json')
+    monkeypatch.setattr(DB, 'MINIMAX_API_KEY', 'fake-key')
+    monkeypatch.setattr(DB, 'TELEGRAM_BOT_TOKEN', 'fake-token')
+    generations = []
+    async def generate(*args, **kwargs):
+        generations.append(1)
+        return json.dumps({'title': '焦點', 'text': '正文',
+                           'highlights': [{'point': '重點', 'id': 'a0'}]}), {}, 200
+    monkeypatch.setattr(DB, 'post_messages', generate)
+    async def fail(*args, **kwargs):
+        assert DB._load_existing()['text'] == '正文'
+        return 500
+    monkeypatch.setattr(DB, '_send_telegram', fail)
+    articles = [{'id': f'a{i}', 'date': fixed.isoformat(), 'score': 8} for i in range(5)]
+    asyncio.run(DB.generate_daily_brief(articles))
+    asyncio.run(DB.generate_daily_brief(articles))
+    assert len(generations) == 1
+    assert not DB._load_existing().get('telegram_delivered_at')

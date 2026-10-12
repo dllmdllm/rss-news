@@ -41,6 +41,28 @@ BATCH_SIZE = 64
 WORKER_TIMEOUT = 170   # build.py's own asyncio.wait_for around this call is 180s
 
 
+async def _stop_worker(proc) -> None:
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+    # Drain pipes after killing: wait() alone can stall when a noisy worker
+    # filled its stdout pipe before cancellation interrupted communicate().
+    async def reap():
+        await proc.communicate()
+        await proc.wait()
+    cleanup = asyncio.create_task(reap())
+    cancelled = False
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            cancelled = True
+    cleanup.result()
+    if cancelled:
+        raise asyncio.CancelledError
+
+
 def _article_text(a: dict) -> str:
     title   = (a.get("title")   or "").strip()
     summary = (a.get("summary") or "").replace("\n", " ").strip()
@@ -266,15 +288,16 @@ async def compute_embeddings(
             # This actually terminates the OS process — unlike cancelling a
             # thread-backed future, which just stops awaiting it while the
             # thread keeps running.
-            proc.kill()
-            await proc.wait()
-            print(f"[embed] worker exceeded {timeout}s — killed subprocess, keeping previous embeddings")
-            return
+            await _stop_worker(proc)
+            raise TimeoutError(f"embedding worker exceeded {timeout}s and was reaped")
+        except asyncio.CancelledError:
+            await _stop_worker(proc)
+            raise
 
         output = (stdout or b"").decode("utf-8", errors="replace")
         if output:
             print(output, end="" if output.endswith("\n") else "\n")
         if proc.returncode != 0:
-            print(f"[embed] worker exited with code {proc.returncode}")
+            raise RuntimeError(f"embedding worker exited with code {proc.returncode}")
     finally:
         tmp_input.unlink(missing_ok=True)

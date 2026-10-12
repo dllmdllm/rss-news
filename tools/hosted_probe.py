@@ -27,6 +27,7 @@ import aiohttp  # noqa: E402
 
 from src.feeds import HTTP_HEADERS, RSS_FEEDS  # noqa: E402
 from src import fetch as fetch_mod  # noqa: E402
+from src.public_http import public_connector  # noqa: E402
 from src.scrape import scrape_all  # noqa: E402
 
 SAMPLE_PER_FEED = 2
@@ -48,7 +49,7 @@ async def main() -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(
         hours=fetch_mod.ARTICLE_MAX_AGE_HOURS
     )
-    connector = aiohttp.TCPConnector(limit=10)
+    connector = public_connector(limit=10)
     async with aiohttp.ClientSession(
         headers=HTTP_HEADERS, connector=connector
     ) as session:

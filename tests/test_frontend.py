@@ -477,15 +477,17 @@ def test_payload_is_complete_rejects_empty_sources_and_articles():
     fn = _extract_js_function(source, "payloadIsComplete")
     js = fn + """
     const complete = {
-      articles: [{ summary: "x" }],
+      articles: [{ summary: "x", sentiment: "neutral" }],
       sources: { "明報": {} },
       trending_topics: [],
     };
+    const missingSentiment = { ...complete, articles: [{summary:"x"}] };
     const emptySources = { ...complete, sources: {} };
     const emptyArticles = { ...complete, articles: [] };
     const noSources = { ...complete, sources: null };
 
     if (payloadIsComplete(complete) !== true) throw new Error("complete payload rejected");
+    if (payloadIsComplete(missingSentiment) !== false) throw new Error("legacy index missing sentiment accepted");
     if (payloadIsComplete(emptySources) !== false) throw new Error("empty sources accepted");
     if (payloadIsComplete(emptyArticles) !== false) throw new Error("empty articles accepted");
     if (payloadIsComplete(noSources) !== false) throw new Error("null sources accepted");
@@ -1575,6 +1577,33 @@ def test_contradiction_display_rejects_legacy_pairs_and_tension():
       if (!elements.contraBlock.hidden || elements.contraList.innerHTML) throw Error('legacy data shown');
       renderContradictions({topic:{digest:{contradictions:[{claim_a:'27日',claim_b:'28日',quote_a:'原文27日',quote_b:'原文28日',article_id_a:'a',article_id_b:'b'}]}}});
       if (elements.contraBlock.hidden || !elements.contraList.innerHTML.includes('原文27日') || !elements.contraList.innerHTML.includes('article.html?id=a')) throw Error('evidence missing');
+    '''
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_sw_content_freshness_and_offline_fallback():
+    source = (ROOT / 'docs/sw.js').read_text(encoding='utf-8')
+    script = '''
+      const vm = require('node:vm');
+      const assert = require('node:assert/strict');
+      let handler, offline = false, unavailable = false, cached = new Response('old-body');
+      const context = {URL,Response,location:{origin:'https://example.com'},
+        self:{addEventListener(name, fn){if(name==='fetch')handler=fn;}},
+        caches:{match:async()=>cached?.clone(),open:async()=>({put:async()=>{}})},
+        fetch:async()=>{if(offline)throw Error('offline');return new Response('new-body', {status:unavailable ? 503 : 200});}};
+      vm.createContext(context);
+    ''' + 'vm.runInContext(' + __import__('json').dumps(source) + ''',context);
+      async function request(){let result;handler({request:new Request('https://example.com/data/content/a.json',{cache:'no-cache'}),respondWith(p){result=p;}});return result;}
+      (async()=>{
+        assert.equal(await (await request()).text(),'new-body');
+        unavailable=true;
+        assert.equal(await (await request()).text(),'old-body');
+        offline=true;
+        assert.equal(await (await request()).text(),'old-body');
+        cached=undefined;
+        assert.equal((await request()).type,'error');
+      })().catch(e=>{console.error(e);process.exitCode=1});
     '''
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

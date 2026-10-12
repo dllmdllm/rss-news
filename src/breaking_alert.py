@@ -125,7 +125,8 @@ async def _send_telegram(session: aiohttp.ClientSession, text: str, photo_url: s
             json={"chat_id": TELEGRAM_CHAT_ID, "photo": photo_url, "caption": text, "parse_mode": "HTML"},
             timeout=aiohttp.ClientTimeout(total=20),
         ) as resp:
-            if resp.status < 400:
+            acknowledgement = await resp.json(content_type=None) if 200 <= resp.status < 300 else {}
+            if 200 <= resp.status < 300 and acknowledgement.get('ok') is True:
                 return resp.status
             print(f"[telegram] sendPhoto failed ({resp.status}), falling back to sendMessage")
 
@@ -135,6 +136,10 @@ async def _send_telegram(session: aiohttp.ClientSession, text: str, photo_url: s
         json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
         timeout=aiohttp.ClientTimeout(total=15),
     ) as resp:
+        if 200 <= resp.status < 300:
+            acknowledgement = await resp.json(content_type=None)
+            if acknowledgement.get('ok') is not True:
+                raise RuntimeError('Telegram did not acknowledge delivery')
         return resp.status
 
 
