@@ -131,6 +131,13 @@ def test_recovery_trusts_only_selected_checkout_without_persistent_config(tmp_pa
     repo = _repo(tmp_path)
     original = (repo / '.git/config').read_bytes()
     monkeypatch.setenv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1')
+    # Hosted images can trust all paths globally; isolate this security fixture
+    # from machine configuration without modifying any real Git settings.
+    import os
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', os.devnull)
+    monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
+    monkeypatch.delenv('GIT_CONFIG_COUNT', raising=False)
+    monkeypatch.delenv('GIT_CONFIG_PARAMETERS', raising=False)
     denied = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True)
     assert denied.returncode != 0 and b'dubious ownership' in denied.stderr
     manifest = snapshot(repo, tmp_path / 'trusted.zip')
