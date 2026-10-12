@@ -420,6 +420,8 @@ def build_knowledge_graph(
                 if not label or len(label) < 2:
                     continue
                 key = f"{etype}:{label}"
+                if key in keys:
+                    continue
                 if key not in node_labels:
                     node_labels[key] = label
                     node_types[key] = etype
@@ -461,7 +463,7 @@ def build_knowledge_graph(
             "label": node_labels[key],
             "type": node_types[key],
             "count": node_counts[key],
-            "articles": sorted(node_articles[key])[:20],
+            "articles": sorted(node_articles[key]),
         }
         for key in nodes_sorted
     ]
@@ -470,7 +472,7 @@ def build_knowledge_graph(
             "source": a,
             "target": b,
             "weight": w,
-            "articles": sorted(edge_articles[(a, b)])[:10],
+            "articles": sorted(edge_articles[(a, b)]),
         }
         for (a, b), w in edges_filtered
     ]
@@ -637,7 +639,7 @@ def save_json(articles: list, source_stats: dict):
             {"id": a["id"], "title": a.get("title"), "source": a.get("source"),
              "date": a.get("date"), "category": a.get("category"),
              "thumbnail": a.get("thumbnail"), "summary": a.get("summary"),
-             "score": a.get("score"), "tags": a.get("tags"),
+             "score": a.get("score"), "tags": a.get("tags"), "sentiment": a.get("sentiment"),
              "topic": a.get("topic"), "cluster_size": a.get("cluster_size"),
              "event_type": a.get("event_type"),
              "duplicate_of": a.get("duplicate_of"), "duplicate_count": a.get("duplicate_count"),

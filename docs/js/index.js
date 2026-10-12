@@ -1158,7 +1158,7 @@
     if (!payload || !Array.isArray(payload.articles) || !payload.trending_topics) return false;
     if (!payload.sources || Object.keys(payload.sources).length === 0) return false;
     if (!payload.articles.length) return false;
-    return "summary" in payload.articles[0];
+    return "summary" in payload.articles[0] && "sentiment" in payload.articles[0];
   }
 
   async function fetchArticleData() {
@@ -1204,7 +1204,7 @@
     const textHtml = paras.filter((p) => p.trim())
       .map((p) => `<p>${esc(p.trim())}</p>`).join("");
     host.hidden = false;
-    const collapsed = localStorage.getItem(BRIEF_COLLAPSE_KEY) === "1";
+    const collapsed = storageGet(BRIEF_COLLAPSE_KEY) === "1";
     host.classList.toggle("collapsed", collapsed);
     host.innerHTML = `
       <div class="morning-brief-head">
@@ -1222,7 +1222,7 @@
       </div>`;
     $("briefToggle")?.addEventListener("click", () => {
       const nowCollapsed = host.classList.toggle("collapsed");
-      localStorage.setItem(BRIEF_COLLAPSE_KEY, nowCollapsed ? "1" : "0");
+      storageSet(BRIEF_COLLAPSE_KEY, nowCollapsed ? "1" : "0");
       $("briefToggle")?.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
       // 摺埋時仲讀緊就停埋把聲，唔係會有把聲喺度但見唔到停止掣。
       if (nowCollapsed) stopBriefTts();

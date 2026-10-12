@@ -234,16 +234,16 @@
       const typeLabel = TYPE_LABEL[e.type] || e.type;
       const summary = e.summary
         ? `<div class="entity-summary">${esc(e.summary)}</div>` : "";
-      const aids = (e.article_ids || []).slice(0, 5);
+      const aids = [...new Set(e.article_ids || [])].filter(aid => articlesIndex[aid]);
       const articleLinks = aids.map(aid => {
         const meta = articlesIndex[aid];
         if (!meta) return "";
         return `<a class="entity-article" href="article.html?id=${encodeURIComponent(aid)}">
           <span class="entity-article-source">${esc(meta.source || "")}</span>${esc(meta.title || "")}
         </a>`;
-      }).filter(Boolean).join("");
-      const more = (e.article_ids || []).length > 5
-        ? `<div class="entity-more">…還有 ${(e.article_ids.length - 5)} 篇</div>` : "";
+      }).filter(Boolean);
+      const more = articleLinks.length > 5
+        ? `<details class="entity-more"><summary>查看其餘 ${articleLinks.length - 5} 篇相關文章</summary><div class="entity-articles">${articleLinks.slice(5).join("")}</div></details>` : "";
       return `<div class="entity-card">
         <div class="entity-head">
           <span class="entity-name">${esc(e.name)}</span>
@@ -251,7 +251,7 @@
           <span class="entity-count">${e.count} 篇</span>
         </div>
         ${summary}
-        ${articleLinks ? `<div class="entity-articles">${articleLinks}</div>` : ""}
+        ${articleLinks.length ? `<div class="entity-articles">${articleLinks.slice(0, 5).join("")}</div>` : ""}
         ${more}
       </div>`;
     }

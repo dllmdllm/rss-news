@@ -99,6 +99,7 @@ class _FakeProc:
 
     def kill(self):
         self.killed = True
+        self._hang = False
 
     async def wait(self):
         self.waited = True
@@ -152,10 +153,62 @@ def test_compute_embeddings_kills_subprocess_on_timeout(monkeypatch, tmp_path):
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
 
     articles = [{"id": "a1", "title": "t", "summary": "s"}]
-    asyncio.run(E.compute_embeddings(articles, data_dir=tmp_path, timeout=0.05))
+    import pytest
+    with pytest.raises(TimeoutError, match="reaped"):
+        asyncio.run(E.compute_embeddings(articles, data_dir=tmp_path, timeout=0.05))
 
     assert fake_proc.killed
     assert fake_proc.waited
+
+
+def test_compute_embeddings_outer_cancellation_kills_and_reaps(monkeypatch, tmp_path):
+    import asyncio
+    fake_proc = _FakeProc(hang=True)
+    async def fake_exec(*args, **kwargs):
+        return fake_proc
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    async def run():
+        task = asyncio.create_task(E.compute_embeddings([{"id": "a"}], data_dir=tmp_path))
+        await asyncio.sleep(0)
+        task.cancel()
+        import pytest
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    asyncio.run(run())
+    assert fake_proc.killed and fake_proc.waited
+
+
+def test_compute_embeddings_nonzero_is_explicit_failure(monkeypatch, tmp_path):
+    import asyncio
+    import pytest
+    async def fake_exec(*args, **kwargs):
+        return _FakeProc(returncode=2)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    with pytest.raises(RuntimeError, match="code 2"):
+        asyncio.run(E.compute_embeddings([{"id": "a"}], data_dir=tmp_path))
+
+
+def test_outer_timeout_reaps_real_local_worker(monkeypatch, tmp_path):
+    import asyncio
+    import sys
+    import pytest
+    create = asyncio.create_subprocess_exec
+    processes = []
+    inputs = []
+    async def local_worker(*args, **kwargs):
+        inputs.append(Path(args[args.index('--input') + 1]))
+        proc = await create(sys.executable, '-c',
+                            'import sys,time; sys.stdout.write("x"*200000); sys.stdout.flush(); time.sleep(30)',
+                            **kwargs)
+        processes.append(proc)
+        return proc
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', local_worker)
+    async def run():
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(E.compute_embeddings([{'id': 'fixture'}], data_dir=tmp_path), 0.1)
+        assert len(processes) == 1 and processes[0].returncode is not None
+    asyncio.run(run())
+    assert not inputs[0].exists()
 
 
 def test_compute_embeddings_writes_minimal_input_fields(monkeypatch, tmp_path):

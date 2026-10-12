@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import unquote, urljoin
+from src.public_http import public_connector, public_get, read_public_body
 
 import aiohttp
 import feedparser
@@ -343,14 +344,14 @@ async def _fetch_yahoo_tech(
             headers = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
             if referer:
                 headers["Referer"] = referer
-            async with session.get(
+            async with public_get(session,
                 url,
                 timeout=aiohttp.ClientTimeout(total=20),
                 headers=headers,
             ) as resp:
                 if resp.status >= 400:
                     return None
-                raw = await resp.read()
+                raw = await read_public_body(resp)
                 return raw.decode(resp.charset or "utf-8", errors="replace")
         except Exception:
             return None
@@ -465,13 +466,13 @@ async def _read_feed(
     ssl=True,
     request_timeout=15,
 ) -> tuple[int, bytes, dict]:
-    async with session.get(
+    async with public_get(session,
         url,
         timeout=aiohttp.ClientTimeout(total=request_timeout),
         headers=cond_headers or None,
         ssl=ssl,
     ) as resp:
-        raw = await resp.read()
+        raw = await read_public_body(resp)
         return resp.status, raw, dict(resp.headers)
 
 
@@ -498,14 +499,14 @@ async def _fetch_hk01(
     articles: list = []
     url = feed_info["url"]
     try:
-        async with session.get(
+        async with public_get(session,
             url,
             timeout=aiohttp.ClientTimeout(total=15),
             headers={"Accept": "application/json"},
         ) as resp:
             if resp.status >= 400:
                 return articles, f"HTTP {resp.status}", False
-            data = await resp.json(content_type=None)
+            data = json.loads(await read_public_body(resp))
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return articles, repr(exc), False
@@ -566,14 +567,14 @@ async def _fetch_am730(
 ) -> tuple[list, str | None, bool]:
     """am730 publishes a Google News-style sitemap with title/date/image."""
     try:
-        async with session.get(
+        async with public_get(session,
             feed_info["url"],
             timeout=aiohttp.ClientTimeout(total=20),
             headers={"Accept": "application/xml,text/xml,*/*;q=0.8"},
         ) as resp:
             if resp.status >= 400:
                 return [], f"HTTP {resp.status}", False
-            raw = await resp.read()
+            raw = await read_public_body(resp)
             charset = resp.charset or "utf-8"
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
@@ -645,14 +646,14 @@ async def _fetch_tvb(
 ) -> tuple[list, str | None, bool]:
     """TVB News sitemap (Google News format) with title/date/image per entry."""
     try:
-        async with session.get(
+        async with public_get(session,
             feed_info["url"],
             timeout=aiohttp.ClientTimeout(total=25),
             headers={"Accept": "application/xml,text/xml,*/*;q=0.8"},
         ) as resp:
             if resp.status >= 400:
                 return [], f"HTTP {resp.status}", False
-            raw = await resp.read()
+            raw = await read_public_body(resp)
             charset = resp.charset or "utf-8"
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
@@ -678,14 +679,14 @@ async def _fetch_nowtv(
 ) -> tuple[list, str | None, bool]:
     """Now TV news JSON API."""
     try:
-        async with session.get(
+        async with public_get(session,
             feed_info["url"],
             timeout=aiohttp.ClientTimeout(total=15),
             headers={"Accept": "application/json"},
         ) as resp:
             if resp.status >= 400:
                 return [], f"HTTP {resp.status}", False
-            data = await resp.json(content_type=None)
+            data = json.loads(await read_public_body(resp))
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return [], repr(exc), False
@@ -800,7 +801,7 @@ async def _fetch_oncc_daily(
         date_str = (now_hkt - timedelta(days=day_offset)).strftime("%Y%m%d")
         url = _ONCC_DAILYLIST_URL.format(date=date_str, section=section)
         try:
-            async with session.get(
+            async with public_get(session,
                 url,
                 timeout=aiohttp.ClientTimeout(total=15),
                 headers={"Accept": "application/json,text/javascript,*/*;q=0.8"},
@@ -808,7 +809,7 @@ async def _fetch_oncc_daily(
                 if resp.status >= 400:
                     errors.append(f"HTTP {resp.status} ({date_str})")
                     continue
-                raw = await resp.read()
+                raw = await read_public_body(resp)
             # feed 帶 UTF-8 BOM，要用 utf-8-sig 解
             data = json.loads(raw.decode("utf-8-sig", errors="replace"))
         except Exception as exc:
@@ -840,7 +841,7 @@ async def _fetch_oncc(
     """
     url = feed_info["url"]
     try:
-        async with session.get(
+        async with public_get(session,
             url,
             timeout=aiohttp.ClientTimeout(total=15),
             headers={
@@ -850,7 +851,7 @@ async def _fetch_oncc(
         ) as resp:
             if resp.status >= 400:
                 return [], f"HTTP {resp.status}", False
-            raw = await resp.read()
+            raw = await read_public_body(resp)
             charset = resp.charset or "utf-8"
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
@@ -904,6 +905,9 @@ async def _fetch_one(
         if status >= 400:
             return articles, f"HTTP {status}", False
 
+        if re.match(br'\s*(?:<\?xml[^>]*>\s*)?(?:<!doctype\s+html|<html\b)', raw, re.I):
+            http_cache.pop(url, None)
+            return articles, 'non-feed HTML response (publisher challenge or error page)', False
         feed = feedparser.parse(raw)
         if getattr(feed, "bozo", False):
             if not feed.entries:
@@ -1000,7 +1004,7 @@ async def retranslate_english_titles(articles: list) -> None:
     if not pending:
         return
     titles = [a["title"] for a in pending]
-    async with aiohttp.ClientSession(headers=HTTP_HEADERS) as session:
+    async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=public_connector()) as session:
         # Translate in chunks of 10 to keep each response well under the token
         # budget. Chunks run concurrently so one slow straggler does not
         # serialize the whole retrofix pass.
@@ -1056,7 +1060,7 @@ async def _fetch_one_capped(
 async def fetch_all() -> tuple[list, dict]:
     cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     http_cache = _load_feed_http_cache()
-    connector  = aiohttp.TCPConnector(limit=30)
+    connector  = public_connector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         tasks   = [_fetch_one_capped(session, f, cutoff, http_cache) for f in RSS_FEEDS]
         # return_exceptions=True so a single feed crash (TLS error, parser

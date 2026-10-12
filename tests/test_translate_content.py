@@ -205,6 +205,7 @@ def test_nested_legacy_translation_cache_preserves_media_without_request(monkeyp
     asyncio.run(TC.translate_english_content([article]))
     assert '引文。' in article['content'] and '第二段。' in article['content']
     assert 'https://example.com/new.jpg' in article['content']
+    assert '<blockquote><p>引文。</p></blockquote>' in article['content']
 
 
 def test_retained_translation_is_not_translated_again(monkeypatch):
@@ -229,3 +230,43 @@ def test_retained_translation_is_not_translated_again(monkeypatch):
     article['content'] = '<p>Corrected first paragraph.</p><p>Second paragraph.</p>'
     asyncio.run(TC.translate_english_content([article]))
     assert len(calls) == 2
+
+
+def test_translation_preserves_nested_blocks_inline_markup_and_cache(monkeypatch):
+    from bs4 import BeautifulSoup
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'fake-key')
+    store = {}
+    monkeypatch.setattr(TC, 'load_cache', lambda: dict(store))
+    monkeypatch.setattr(TC, 'save_cache', lambda cache: store.update(cache))
+    calls = []
+    async def fake_post(session, **kwargs):
+        calls.append(kwargs['user_text'])
+        return json.dumps(['第一段。', '第二段。', '清單前 ', '重要', ' 後文。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    content = ('<blockquote><p>First.</p><p>Second.</p></blockquote>'
+               '<ul><li><p>Before <strong>important</strong> after.</p></li></ul>'
+               '<img src="https://example.com/old.jpg">')
+    for image in ('old', 'new'):
+        article = _article(content=content.replace('old.jpg', f'{image}.jpg'))
+        asyncio.run(TC.translate_english_content([article]))
+        soup = BeautifulSoup(article['content'], 'html.parser')
+        assert len(soup.select('blockquote > p')) == 2
+        assert soup.select_one('li > p > strong').get_text() == '重要'
+        assert soup.select_one('li > p').get_text() == '清單前 重要 後文。'
+        assert soup.img['src'].endswith(f'{image}.jpg')
+    assert len(calls) == 1
+    items = [json.loads(line.split('] ', 1)[1]) for line in calls[0].splitlines()]
+    assert [item['text'] for item in items].count('First.') == 1
+    inline = items[2:]
+    assert [item['text'] for item in inline] == ['Before', 'important', 'after.']
+    assert all(item['paragraph_context'] == 'Before important after.' for item in inline)
+    assert '只翻譯同一位置嘅 text' in TC.SYSTEM_PROMPT
+    assert '唔好將 paragraph_context 翻譯或重複輸出' in TC.SYSTEM_PROMPT
+
+
+def test_translation_units_include_list_parent_text_once():
+    soup, units = TC._translation_units('<ul><li>Parent prose.<ul><li>Child prose.</li></ul>Tail prose.</li></ul>')
+    assert [node.get_text(strip=True) for node in units] == ['Parent prose.', 'Child prose.', 'Tail prose.']
+    for unit, text in zip(units, ['父項。', '子項。', '結尾。']):
+        TC._replace_tag_text(unit, text)
+    assert str(soup) == '<ul><li>父項。<ul><li>子項。</li></ul>結尾。</li></ul>'

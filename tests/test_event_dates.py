@@ -73,3 +73,44 @@ def test_narrowed_alternative_negated_and_year_qualified_dates_stay_uncertain():
                                 title='消息', text=text, published='2026-10-09')
         assert result['date'] is None
         assert result['precision'] == 'uncertain'
+
+
+def test_explicit_start_dates_and_consistent_parenthetical_days():
+    for expression in ("10月13日起", "10月13日 10:00起", "明日(13日)", "明日（13）"):
+        assert resolve_expression(expression, date(2026, 10, 12)) == date(2026, 10, 13)
+    for expression in ("明日(14日)", "10月13日25:00起", "10月13日起至15日", "約10月13日起"):
+        assert resolve_expression(expression, date(2026, 10, 12)) is None
+
+
+def test_start_dates_remain_source_grounded_and_qualified_dates_uncertain():
+    for expression, source, expected in (
+        ("10月13日起", "展覽10月13日起舉行", "2026-10-13"),
+        ("10月14日 10:00起", "展覽10月14日 10:00起舉行", "2026-10-14"),
+        ("明日(13日)", "展覽明日(13日)舉行", "2026-10-13"),
+        ("10月13日起", "展覽約10月13日起舉行", None),
+        ("明日", "展覽明日(14日)舉行", None),
+        ("10月13日", "展覽10月13日起至15日舉行", None),
+        ("10月13日", "展覽10月13日10:00起至15日舉行", None),
+    ):
+        event = validate_event(dict(title="展覽", date_expression=expression, evidence=source),
+                               title="消息", text=source, published="2026-10-12T00:00:00Z")
+        assert event["date"] == expected
+
+
+def test_exact_iphone_on_sale_alias_does_not_merge_other_occurrences():
+    assert event_identity("iPhone Duo 正式開售") == event_identity("iPhone Duo 開售")
+    for other in ("iPhone Duo 預購", "iPhone Duo 宣布開售", "iPhone Duo 發布", "iPhone Air 開售"):
+        assert event_identity(other) != event_identity("iPhone Duo 開售")
+    assert event_identity("Apple 新產品發布") != event_identity("Apple Welcome Home 活動")
+
+
+def test_immediate_qualified_date_with_adverbs_and_narrowed_quote():
+    for source in ("新產品預計均於10月13日亮相", "新產品可能都將於10月13日亮相",
+                   "新產品10月13日（暫定）亮相", "新產品10月13日左右亮相"):
+        event = validate_event(dict(title="產品亮相", date_expression="10月13日", evidence="10月13日"),
+                               title="消息", text=source, published="2026-10-12")
+        assert event["date"] is None
+    # Qualifiers separated by another fact or sentence must not leak across.
+    event = validate_event(dict(title="產品亮相", date_expression="10月13日", evidence="10月13日"),
+                           title="消息", text="新手機預計11月上市。平板於10月13日亮相", published="2026-10-12")
+    assert event["date"] == "2026-10-13"

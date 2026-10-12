@@ -130,7 +130,7 @@
       const diffDays = Math.round((d - today) / 86400000);
       if (diffDays <= 1) return "本週";
       if (diffDays <= 13) return "未來兩週";
-      if (diffDays <= 30) return "本月";
+      if (d.getUTCFullYear() === today.getUTCFullYear() && d.getUTCMonth() === today.getUTCMonth()) return "本月";
       return "之後";
     }
 
@@ -209,7 +209,7 @@
         const uncertain = (data.uncertain_events || []).filter(ev => ev && ev.title);
         const sub = document.getElementById("subtitle");
         sub.textContent = events.length
-          ? events.length + " 個未來活動 · 過去 " + (data.lookahead_days || 90) + " 日內"
+          ? events.length + " 個未來活動 · 未來 " + (data.lookahead_days || 90) + " 日內"
           : (uncertain.length ? uncertain.length + " 個事件日期有待確認" : "未有未來活動數據");
 
         const root = document.getElementById("content");
