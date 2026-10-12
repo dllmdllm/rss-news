@@ -140,6 +140,7 @@ jobs:
           TELEGRAM_CHAT_ID: ''
 
       - name: Commit & push if changed
+        id: publication
         # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
         # picks up WSL bash first from PATH, which can't handle Windows
         # paths like `C:\actions-runner\_work\...` that Actions injects.
@@ -159,6 +160,10 @@ jobs:
           [ -n "$selected_checkout" ] || exit 1
           git() { command git -c safe.directory= -c "safe.directory=$selected_checkout" "$@"; }
           git rev-parse --show-toplevel >/dev/null || exit 1
+          record_revision() {
+            published_revision=$(git rev-parse HEAD) || return 1
+            printf 'revision=%s\n' "$published_revision" >> "$GITHUB_OUTPUT"
+          }
 
           # Stage ONLY the generated artefacts. Used both for the initial
           # commit and after every resync below.
@@ -191,7 +196,7 @@ jobs:
           tested_source=$(git rev-parse HEAD) || exit 1
           git diff --cached --quiet
           diff_status=$?
-          if [ "$diff_status" -eq 0 ]; then echo "no changes"; exit 0; fi
+          if [ "$diff_status" -eq 0 ]; then record_revision || exit 1; echo "no changes"; exit 0; fi
           [ "$diff_status" -eq 1 ] || { echo "staged diff failed"; exit 1; }
           ts="$(date -u +'%Y-%m-%d %H:%M') UTC"
           git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
@@ -224,10 +229,11 @@ jobs:
             stage_outputs || { echo "generated data staging failed"; exit 1; }
             git diff --cached --quiet
             diff_status=$?
-            if [ "$diff_status" -eq 0 ]; then echo "no changes after resync"; exit 0; fi
+            if [ "$diff_status" -eq 0 ]; then record_revision || exit 1; echo "no changes after resync"; exit 0; fi
             [ "$diff_status" -eq 1 ] || { echo "staged diff failed"; exit 1; }
             git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "chore: update articles $ts" || { echo "commit failed"; exit 1; }
             if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 push origin HEAD:main; then
+              record_revision || exit 1
               echo "push OK on attempt $i"
               exit 0
             fi
@@ -236,6 +242,27 @@ jobs:
           done
           echo "push failed after 3 attempts — see output above"
           exit 1
+
+      - name: Verify public Pages publication
+        # Poll public bytes only. A CDN/deployment delay never repeats paid
+        # analysis, dispatches another job or rolls back production.
+        # The pinned commit includes data-only resyncs and the no-change path.
+        run: python tools/verify_publication.py --revision "${{ steps.publication.outputs.revision }}" --result "$env:RUNNER_TEMP\rss-news-publication-check-${{ github.run_id }}.json"
+        env:
+          MINIMAX_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+          WORKER_URL: ''
+          NOTIFY_SECRET: ''
+
+      - name: Retain publication verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-news-publication-check-${{ github.run_id }}
+          path: ${{ runner.temp }}/rss-news-publication-check-${{ github.run_id }}.json
+          retention-days: 3
+          if-no-files-found: warn
 
       - name: Retain recovery artifact
         if: always()
