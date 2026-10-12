@@ -220,7 +220,8 @@ def test_response_size_guard_is_in_the_live_reader(monkeypatch):
         asyncio.run(V.public_bytes(Session(), V.INDEX, 'a' * 40))
 
 
-def test_expected_hashes_and_samples_come_from_commit_not_dirty_worktree(tmp_path):
+@pytest.mark.parametrize('autocrlf', ['false', 'true'])
+def test_expected_hashes_and_samples_come_from_commit_not_dirty_worktree(tmp_path, autocrlf):
     articles = [{'id': 'news1', 'summary_evidence': [{'quote': '公開'}], 'content_quality': {'fallback': 'none'}},
                 {'id': 'news2', 'content_quality': {'fallback': 'none'}},
                 {'id': 'news3', 'content_quality': {'fallback': 'none'}},
@@ -228,7 +229,7 @@ def test_expected_hashes_and_samples_come_from_commit_not_dirty_worktree(tmp_pat
                 {'id': f'news{i}'} for i in range(5, 12)]
     payload = {'schema_version': 2, 'articles': articles,
                'sources': {'法庭線': {'fetch_status': 'success', 'fresh_count': 5}}}
-    files = {path: b'committed' for path in V.CORE_PATHS}
+    files = {path: b'committed\nsecond line\n' for path in V.CORE_PATHS}
     files['data/articles.json'] = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     for article in articles:
         files['data/content/' + article['id'] + '.json'] = b'public body'
@@ -242,9 +243,13 @@ def test_expected_hashes_and_samples_come_from_commit_not_dirty_worktree(tmp_pat
     subprocess.run(git + ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                          'commit', '-qm', 'fixture'], check=True, capture_output=True)
     revision = subprocess.check_output(git + ['rev-parse', 'HEAD'], text=True, encoding='utf-8').strip()
+    subprocess.run(git + ['config', 'core.autocrlf', autocrlf], check=True, capture_output=True)
+    subprocess.run(git + ['config', 'core.eol', 'crlf'], check=True, capture_output=True)
     (tmp_path / 'docs/article.html').write_bytes(b'uncommitted')
     hashes, health = V.expected_snapshot(tmp_path, revision)
-    assert hashes['article.html'] == V.digest(b'committed')
+    assert hashes['article.html'] == V.digest(b'committed\nsecond line\n')
+    assert subprocess.check_output(git + ['config', 'core.autocrlf'], text=True).strip() == autocrlf
+    assert subprocess.check_output(git + ['config', 'core.eol'], text=True).strip() == 'crlf'
     assert {path for path in hashes if path.startswith('data/content/')} == {
         'data/content/news1.json', 'data/content/news2.json', 'data/content/news3.json', 'data/content/news4.json'}
     assert health['法庭線']['fresh_count'] == 5
