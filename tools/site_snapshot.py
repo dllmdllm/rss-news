@@ -21,6 +21,13 @@ MANIFEST = '.rss-recovery.json'
 MAX_BYTES = 512 * 1024 * 1024
 
 
+def _git(repo):
+    # Trust only this explicitly selected checkout for this read-only process.
+    # Windows service runners may not own the checkout; never persist config.
+    repo = Path(repo).resolve()
+    return ['git', '-c', 'safe.directory=' + repo.as_posix(), '-C', str(repo)]
+
+
 def _files(archive):
     files, total = {}, 0
     infos = archive.infolist()
@@ -48,8 +55,8 @@ def snapshot(repo: Path, out: Path, *, allow_unvalidated=False):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     if out.is_relative_to(repo / 'docs'):
         raise ValueError('recovery archive must stay outside published docs')
-    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
-    raw = subprocess.check_output(['git', '-C', str(repo), 'archive', '--format=zip', revision, 'docs'])
+    revision = subprocess.check_output(_git(repo) + ['rev-parse', 'HEAD'], text=True).strip()
+    raw = subprocess.check_output(_git(repo) + ['archive', '--format=zip', revision, 'docs'])
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         files = _files(archive)
     # Validate the archived commit's bytes, not potentially modified checkout
@@ -116,7 +123,7 @@ def restore(archive_path: Path, out: Path):
 def check_source(repo: Path, tested: str, current: str):
     # Data commits can restack normally. A new code/assets revision needs its
     # own build/tests, not a silent mixture of old output and new source.
-    changed = subprocess.check_output(['git', '-C', str(repo), 'diff', '--name-only',
+    changed = subprocess.check_output(_git(repo) + ['diff', '--name-only',
                                       tested, current, '--'], text=True).splitlines()
     allowed = {'config/watch_keywords.txt', 'config/trending_keywords.txt'}
     if any(not name.startswith('docs/data/') and name not in allowed for name in changed):

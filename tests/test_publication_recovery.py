@@ -125,3 +125,18 @@ def test_concurrent_data_commit_is_allowed_but_changed_code_requires_rebuild(tmp
     commit()
     with pytest.raises(ValueError, match='changed since tested'):
         check_source(repo, tested, 'HEAD')
+
+
+def test_recovery_trusts_only_selected_checkout_without_persistent_config(tmp_path, monkeypatch):
+    repo = _repo(tmp_path)
+    original = (repo / '.git/config').read_bytes()
+    monkeypatch.setenv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1')
+    denied = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True)
+    assert denied.returncode != 0 and b'dubious ownership' in denied.stderr
+    manifest = snapshot(repo, tmp_path / 'trusted.zip')
+    check_source(repo, manifest['revision'], 'HEAD')
+    assert (repo / '.git/config').read_bytes() == original
+    from tools.site_snapshot import _git
+    command = _git(repo)
+    assert command[2] == 'safe.directory=' + repo.resolve().as_posix()
+    assert command[2] != 'safe.directory=*'
