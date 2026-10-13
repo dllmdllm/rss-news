@@ -8,6 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-180.png">
   <title>新聞控制台</title>
+  <link rel="stylesheet" href="css/summary-player.css">
   <style>
     :root {
       color-scheme: dark;
@@ -1440,6 +1441,10 @@
         </div>
       </div>
 
+      <div class="desktop-view-tabs" id="desktopViewTabs" role="tablist" aria-label="新聞閱讀方式">
+        <button id="newsListTab" role="tab" aria-selected="true" aria-controls="feed" data-desktop-view="list" type="button">新聞列表</button>
+        <button id="summaryPlayTab" role="tab" aria-selected="false" aria-controls="summaryPlayer" data-desktop-view="player" type="button" tabindex="-1">摘要播放</button>
+      </div>
       <section class="morning-brief" id="morningBrief" hidden></section>
       <article class="lead" id="leadStory"></article>
       <aside class="brief">
@@ -1458,7 +1463,18 @@
         <h2 id="feedTitle">重點新聞流</h2>
         <span id="resultCount"></span>
       </div>
-      <section class="feed" id="feed"></section>
+      <section class="summary-player" id="summaryPlayer" role="tabpanel" aria-labelledby="summaryPlayTab" hidden>
+        <div class="summary-controls">
+          <button type="button" data-player-toggle aria-pressed="false">▶ 繼續</button>
+          <label>速度 <select data-player-speed aria-label="摘要捲動速度"><option value="slow">慢</option><option value="normal" selected>中</option><option value="fast">快</option></select></label>
+          <button type="button" data-player-restart>↺ 重新開始</button>
+          <p data-player-count></p><p data-player-status role="status"></p>
+        </div>
+        <div class="summary-viewport" tabindex="0" role="region" aria-label="完整 AI 摘要；移入滑鼠或鍵盤焦點可暫停">
+          <div class="summary-track"></div>
+        </div>
+      </section>
+      <section class="feed" id="feed" role="tabpanel" aria-labelledby="newsListTab"></section>
 
       <section class="search-stage" id="searchStage" aria-label="搜尋面板">
         <section class="ai-block">
@@ -1646,6 +1662,7 @@
   <script src="js/common.js?v=20260718-topicfix"></script>
   <script src="js/reader-state.js"></script>
   <script src="js/event-reading.js"></script>
+  <script src="js/summary-player.js"></script>
   <script src="js/index.js?v=20260718-topicfix"></script>
 </body>
 </html>

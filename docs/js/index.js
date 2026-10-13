@@ -49,6 +49,7 @@
     preTopicFilter: null,
     openCategories: new Set(),
     mode: "latest",
+    desktopView: "list",
     query: "",
     fuse: null,
     recentSearches: loadRecentSearches(),
@@ -752,6 +753,7 @@
     renderMood(state.articles);
     renderDailyBrief();
     renderFeed(list);
+    syncDesktopView(list);
     if ($("eventReadingList")) $("eventReadingList").innerHTML = window.RssEventReading?.render(state.topics, list, state.panels) || "";
     renderMobileSideHealth();
     // 來源 chips 靠 state.sources——initial load 時 updateMobileSubUi 行先過
@@ -1011,6 +1013,19 @@
   }
 
   function bindEvents() {
+    $("desktopViewTabs")?.addEventListener("click", event => {
+      const button = event.target.closest('[data-desktop-view]');
+      if (!button) return;
+      state.desktopView = button.dataset.desktopView;
+      syncDesktopView();
+    });
+    $("desktopViewTabs")?.addEventListener("keydown", event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      state.desktopView = event.key === 'Home' ? 'list' : event.key === 'End' ? 'player' : state.desktopView === 'list' ? 'player' : 'list';
+      syncDesktopView();
+      document.querySelector('#desktopViewTabs [aria-selected="true"]')?.focus();
+    });
     $("readingStatus")?.addEventListener("change", event => { state.readingStatus = event.target.value; renderAll(); });
     window.addEventListener("rss-reader-state", event => { if (event.detail?.statusChanged !== false) renderAll(); });
     document.addEventListener("click", event => { const button = event.target.closest("[data-save-later]"); if (!button || !window.RssReaderState) return; const id = button.dataset.saveLater; window.RssReaderState.saveLater(id, !window.RssReaderState.articleState(id).saved); });
@@ -1549,6 +1564,25 @@
     renderAll();
   }
 
+  const summaryPlayer = $("summaryPlayer") && window.RssSummaryPlayer?.create($("summaryPlayer"), { points: summaryPoints, timeLabel });
+  function syncDesktopView(list) {
+    const playing = !isMobile() && state.desktopView === 'player';
+    document.body.classList.toggle('summary-mode', playing);
+    if ($('summaryPlayer')) $('summaryPlayer').hidden = !playing;
+    if (playing) {
+      summaryPlayer?.setArticles(Array.isArray(list) ? list : filteredArticles());
+      $('feedTitle').textContent = '摘要播放';
+    } else if ($('feedTitle')?.textContent === '摘要播放') {
+      renderFeed(filteredArticles());
+    }
+    document.querySelectorAll('#desktopViewTabs [data-desktop-view]').forEach(button => {
+      const selected = button.dataset.desktopView === state.desktopView;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    summaryPlayer?.setActive(playing);
+  }
+  window.matchMedia?.('(max-width: 900px)')?.addEventListener?.('change', () => syncDesktopView());
   load().catch((err) => {
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
   });

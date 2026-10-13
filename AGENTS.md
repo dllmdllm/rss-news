@@ -915,3 +915,13 @@ strict distributed rate limits require separately approved infrastructure.
 - Code regression and strict generated snapshot validation precede data push.
   Recovery archives contain public tracked docs only and restore into an empty
   review folder. See `ROLLBACK.md`; rollback/merge/deploy require approval.
+
+### Desktop summary playback (2026-10-13)
+
+`summary-player.js` reuses the homepage's complete existing summaries and filters;
+it never fetches articles, calls AI, starts speech or marks items read. Its desktop
+view is separate from sorting and mobile navigation. One frame loop uses elapsed
+time and fractional positions. Hover/focus pause; background/view exit stop and
+return paused. Reduced motion starts paused; manual resume is explicit. Changed
+filters/content reset the queue paused, unchanged rerenders preserve position.
+Cards use DOM text nodes and encoded article IDs, with no HTML from source data.

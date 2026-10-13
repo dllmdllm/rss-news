@@ -15,7 +15,11 @@ DOCS = ROOT / "docs"
 @contextlib.contextmanager
 def _static_server():
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(DOCS))
-    with socketserver.TCPServer(("127.0.0.1", 0), handler) as server:
+    # Parallel browser asset requests must not block behind a single connection.
+    class StaticServer(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+        request_queue_size = 32
+    with StaticServer(("127.0.0.1", 0), handler) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
