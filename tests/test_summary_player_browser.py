@@ -1,6 +1,7 @@
 """Fixture-only summary playback regressions: never call AI or live publishers."""
 import copy
 import os
+from pathlib import Path
 
 import pytest
 
@@ -198,4 +199,73 @@ def test_summary_player_visual_capture(browser, player_data, tmp_path):
         assert not errors
         out = os.environ.get('RSS_PLAYER_SCREENSHOT')
         page.screenshot(path=out or str(tmp_path / 'summary-player.png'), full_page=False)
+        context.close()
+
+
+def test_thumbnails_left_safe_and_broken_layout_is_stable(browser, player_data):
+    data = copy.deepcopy(player_data)
+    urls = ['https://images.example.com/good.png', 'https://images.example.com/broken.png', None,
+            'javascript:alert(1)', 'data:image/svg+xml,bad', 'http://127.0.0.1/private',
+            'https://user:secret@images.example.com/private', 'http://localhost/private',
+            'https://private.internal/image', 'https://images.example.com:8443/private']
+    for article, url in zip(data['articles'], urls): article['thumbnail'] = url
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width':1440,'height':1000}, service_workers='block')
+        page = context.new_page(); _route_data(page, data)
+        pending = []
+        def image(route):
+            if route.request.url.endswith('good.png'):
+                route.fulfill(path=str(Path(__file__).resolve().parents[1] / 'docs/icon-180.png'))
+            else:
+                pending.append(route)
+        def guarded(route):
+            if route.request.resource_type == 'image':
+                if route.request.url.startswith('https://images.example.com/'):
+                    image(route)
+                else:
+                    route.abort()  # Hostile fixture thumbnails must never contact a real destination.
+            else:
+                route.fallback()
+        page.route('**/*', guarded)
+        page.goto(base + '/index.html', wait_until='domcontentloaded')
+        page.locator('#feed .card').first.wait_for(); page.locator('#summaryPlayTab').click()
+        page.locator('[data-player-toggle]').click()  # Freeze while checking image loads.
+        cards = page.locator('.summary-play-card')
+        assert cards.locator('img').count() == 2
+        img = cards.first.locator('img')
+        page.wait_for_function('document.querySelector(".summary-play-media img").naturalWidth>0')
+        assert img.get_attribute('loading') == 'lazy'
+        assert img.get_attribute('decoding') == 'async'
+        assert img.get_attribute('referrerpolicy') == 'no-referrer'
+        media = cards.first.locator('.summary-play-media').bounding_box()
+        text = cards.first.locator('.summary-play-body').bounding_box()
+        assert media['x'] + media['width'] < text['x'] and media['width'] > 100
+        broken = cards.nth(1).locator('.summary-play-media')
+        before = broken.bounding_box()
+        broken.scroll_into_view_if_needed()
+        for _ in range(50):
+            if pending: break
+            page.wait_for_timeout(20)
+        assert pending
+        for route in pending: route.fulfill(status=404, body='')
+        page.wait_for_function('document.querySelectorAll(".summary-play-media")[1].textContent.includes("未能載入")')
+        after = broken.bounding_box()
+        assert abs(before['width'] - after['width']) < 1 and abs(before['height'] - after['height']) < 1
+        assert cards.nth(2).locator('.summary-play-media').inner_text() == '未有圖片'
+        assert cards.nth(5).locator('img').count() == 0
+        page.set_viewport_size({'width':1024,'height':900})
+        assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
+        assert cards.first.locator('.summary-play-body').bounding_box()['width'] > 300
+        context.close()
+
+
+def test_mobile_long_headline_wraps_without_overflow(browser, news_data):
+    data = copy.deepcopy(news_data)
+    data['articles'][1]['title'] = '手機新聞 ' + 'LongUnbrokenPublisherHeadline' * 8
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width':390,'height':900}, service_workers='block')
+        page=context.new_page(); _route_data(page,data)
+        page.goto(base+'/index.html',wait_until='domcontentloaded'); page.locator('#feed .card').first.wait_for()
+        assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
+        assert not page.locator('#summaryPlayer').is_visible()
         context.close()

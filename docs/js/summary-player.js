@@ -1,5 +1,20 @@
 /* Device-only summary playback: no fetch, AI, speech, storage or read-state writes. */
 (function () {
+  function thumbnailUrl(value) {
+    if (typeof value !== 'string' || !value || value !== value.trim() || /[\u0000-\u0020\u007f\\]/.test(value)) return '';
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase().replace(/\.$/, '');
+      // Existing publisher thumbnails only: no credentials, executable/data
+      // schemes, local names or IP-literal targets. Do not discover a fallback.
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+          !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,63}$/.test(host) ||
+          /\.(local|localhost|internal|test|invalid)$/.test(host) ||
+          (url.port && !['80', '443'].includes(url.port))) return '';
+      return url.href;
+    } catch (_) { return ''; }
+  }
+
   function create(host, { points, timeLabel }) {
     const viewport = host.querySelector('.summary-viewport');
     const track = host.querySelector('.summary-track');
@@ -97,7 +112,7 @@
         const summary = points(article, Infinity);
         if (!summary.length) { skipped++; continue; }
         rows.push({ id: article.id, title: article.title || '', source: article.source || '', date: article.date || '',
-          time: timeLabel(article), summary });
+          time: timeLabel(article), thumbnail: thumbnailUrl(article.thumbnail), summary });
       }
       count.textContent = `${rows.length} 篇摘要${skipped ? ` · ${skipped} 篇等候 AI` : ''}`;
       const next = JSON.stringify(rows.map(({ time, ...row }) => row));
@@ -114,6 +129,30 @@
       for (const row of rows) {
         const card = document.createElement('article');
         card.className = 'summary-play-card';
+        const media = document.createElement('div');
+        media.className = 'summary-play-media';
+        const fallback = document.createElement('span');
+        fallback.textContent = '未有圖片';
+        media.append(fallback);
+        if (row.thumbnail) {
+          const image = document.createElement('img');
+          image.alt = ''; // Decorative source thumbnail; headline supplies context.
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          image.referrerPolicy = 'no-referrer';
+          image.width = 400;
+          image.height = 300;
+          fallback.hidden = true;
+          image.addEventListener('error', () => {
+            image.remove();
+            fallback.hidden = false;
+            fallback.textContent = '圖片未能載入';
+          }, { once: true });
+          image.src = row.thumbnail;
+          media.append(image);
+        }
+        const body = document.createElement('div');
+        body.className = 'summary-play-body';
         const meta = document.createElement('p');
         meta.className = 'summary-play-meta';
         meta.textContent = `${row.source} · ${row.time}`;
@@ -128,7 +167,8 @@
           item.textContent = text;
           list.append(item);
         }
-        card.append(meta, title, list);
+        body.append(meta, title, list);
+        card.append(media, body);
         fragment.append(card);
       }
       track.replaceChildren(fragment);

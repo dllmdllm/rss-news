@@ -920,3 +920,9 @@ time and fractional positions. Hover/focus pause; background/view exit stop and
 return paused. Reduced motion starts paused; manual resume is explicit. Changed
 filters/content reset the queue paused, unchanged rerenders preserve position.
 Cards use DOM text nodes and encoded article IDs, with no HTML from source data.
+Existing publisher thumbnails appear left of the complete summary in the same
+scrolling card. The reserved 4:3 box contains the original image without cropping;
+missing/load-failed images keep explicit placeholders and stable geometry.
+Thumbnail URLs reject executable/data schemes, credentials and local/IP-literal
+targets. Loading is lazy/async with no-referrer; never invent or discover a fallback
+picture. No article-body fetch or new AI generation is involved.
