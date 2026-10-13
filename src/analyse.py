@@ -8,7 +8,7 @@ from pathlib import Path
 import aiohttp
 from bs4 import BeautifulSoup
 from src.event_dates import EVENT_DATE_VERSION, validate_event
-from src.article_evidence import validate_summary_evidence, body_text, normalise_text
+from src.article_evidence import validate_summary_evidence, body_text, normalise_text, verified_quote
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -625,6 +625,9 @@ async def analyse_all(articles: list) -> list:
     if not MINIMAX_API_KEY:
         print("[analyse] Skipped — set MINIMAX_API_KEY")
         for article in articles:
+            original = article.pop('_unit_marker_repair_from', None)
+            if original and article.get('analysis_input_hash') == analysis_input_hash(dict(article, content=original)):
+                article['analysis_input_hash'] = analysis_input_hash(article)
             if article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
                 for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
                     article.pop(field, None)
@@ -637,6 +640,22 @@ async def analyse_all(articles: list) -> list:
     pending: list = []
     for a in articles:
         aid = a["id"]
+        original = a.pop('_unit_marker_repair_from', None)
+        if original:
+            previous = dict(a, content=original)
+            cached = cache.get(aid) or {}
+            if not _needs_full_analysis(cached, a):
+                pass  # Already migrated in a prior ordinary cycle.
+            elif not _needs_full_analysis(cached, previous):
+                cached['input_hash'] = analysis_input_hash(a)
+                cached['summary_evidence'] = validate_summary_evidence(dict(a, summary=cached.get('summary')), cached.get('summary_evidence'))
+                cached['key_sentences'] = [s for s in cached.get('key_sentences', []) if verified_quote(s, a)]
+            else:
+                # No paid refresh solely to remove input-unit labels.
+                for field in ('summary', 'summary_evidence', 'key_sentences', 'analysis_input_hash', 'analysis_version'):
+                    a.pop(field, None)
+                _ensure_analysis_defaults([a])
+                continue
         if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
             a["analysis_input_hash"] = c["input_hash"]

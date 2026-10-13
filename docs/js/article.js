@@ -77,7 +77,7 @@
 
   function sanitizeHtml(html, heroImage = "") {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
-    const allowedTags = new Set(["P", "DIV", "SPAN", "BR", "HR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "FIGURE", "FIGCAPTION", "IMG", "A", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "PRE", "CODE", "SUP", "SUB"]);
+    const allowedTags = new Set(["P", "DIV", "SPAN", "BR", "HR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "FIGURE", "FIGCAPTION", "IMG", "A", "TABLE", "CAPTION", "THEAD", "TBODY", "TR", "TH", "TD", "PRE", "CODE", "SUP", "SUB"]);
     doc.querySelectorAll("script, style, iframe, object, embed, form, input, button, svg, math, template").forEach(node => node.remove());
     doc.body.querySelectorAll("*").forEach(node => {
       if (!allowedTags.has(node.tagName)) { node.replaceWith(...node.childNodes); return; }
@@ -85,7 +85,8 @@
         const name = attr.name.toLowerCase();
         const permitted = name === "title" || name === "alt" ||
           (node.tagName === "A" && name === "href") ||
-          (node.tagName === "IMG" && name === "src");
+          (node.tagName === "IMG" && name === "src") ||
+          (['TD', 'TH'].includes(node.tagName) && ['rowspan', 'colspan'].includes(name) && /^\d+$/.test(attr.value) && Number(attr.value) >= 1 && Number(attr.value) <= 100);
         if (!permitted) { node.removeAttribute(attr.name); return; }
         if (name === "href" || name === "src") {
           try {
@@ -98,7 +99,9 @@
     });
     const heroSig = imageSignature(heroImage);
     const firstImage = doc.querySelector("img");
-    if (firstImage && heroSig && imageSignature(firstImage.getAttribute("src")) === heroSig) {
+    const beforeImage = firstImage ? document.createRange() : null;
+    if (beforeImage) { beforeImage.selectNodeContents(doc.body); beforeImage.setEndBefore(firstImage); }
+    if (firstImage && !beforeImage.toString().trim() && heroSig && imageSignature(firstImage.getAttribute("src")) === heroSig) {
       firstImage.remove();
     }
     doc.querySelectorAll("img").forEach((img) => {
@@ -119,6 +122,10 @@
     const notice = $("contentNotice");
     const retained = article.content_retention;
     notice.hidden = !partial && !retained;
+    if (article.content_capture) {
+      notice.hidden = false;
+      notice.textContent = '正文來自已核對嘅公開原文快照；未代表最新自動抓取已成功更新。';
+    }
     if (retained) {
       const when = retained.scraped_at ? `（擷取時間：${retained.scraped_at}）` : "（擷取時間未有記錄）";
       const status = retained.latest_fallback === "rss-blocked" ? "來源限制存取" : "最新嘗試未取得全文";
@@ -130,6 +137,7 @@
         notice.textContent = short
           ? "RSS 摘要：未取得全文。以下只係來源 RSS 提供嘅短摘要。"
           : "RSS 內容：未取得網頁全文，內容可能不完整。";
+        if (article.content_quality?.origin === 'wordpress-public-posts') notice.textContent = '公開 WordPress API 提供嘅正文；文章網頁未能讀取，完整性未獨立核實。';
         if (!article.thumbnail && !$("content").querySelector("img")) notice.textContent += " 來源 RSS 未提供可用圖片。";
       } else {
         notice.textContent = "未取得全文：暫時未有可用正文，請查看原文。";

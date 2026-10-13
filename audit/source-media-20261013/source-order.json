@@ -1,0 +1,964 @@
+[
+  {
+    "source": "RTHK 本地",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 19,
+        "list_prefix_count": 19,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 19,
+        "list_prefix_count": 19,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 19,
+        "list_prefix_count": 19,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "明報 本地",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 29,
+        "list_prefix_count": 29,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 29,
+        "list_prefix_count": 29,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 29,
+        "list_prefix_count": 29,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "am730",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 39,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 39,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 39,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "東網 本地",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 29,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 29,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 29,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "星島頭條",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 99,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 99,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 99,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "RTHK 國際",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "RTHK 大中華",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "明報 國際",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 16,
+        "list_prefix_count": 16,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 16,
+        "list_prefix_count": 16,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 16,
+        "list_prefix_count": 16,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "明報 中國",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 14,
+        "list_prefix_count": 14,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 14,
+        "list_prefix_count": 14,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 14,
+        "list_prefix_count": 14,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "東網 國際",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "明報 娛樂",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 28,
+        "list_prefix_count": 28,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "東網 娛樂",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "明報 消閒",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 11,
+        "list_prefix_count": 11,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 11,
+        "list_prefix_count": 11,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 11,
+        "list_prefix_count": 11,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "WeekendHK",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "GoTrip",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "cnBeta",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 45,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 45,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 45,
+        "list_prefix_count": 31,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HKEPC",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "Unwire",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "Yahoo 科技",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 12,
+        "list_prefix_count": 12,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "9to5Mac",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 21,
+        "list_prefix_count": 21,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 21,
+        "list_prefix_count": 21,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 21,
+        "list_prefix_count": 21,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "New MobileLife",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 21,
+        "list_prefix_count": 23,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 21,
+        "list_prefix_count": 23,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 21,
+        "list_prefix_count": 23,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "法庭線",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 8,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 8,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 8,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "The Collective HK",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "The Witness",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 突發",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 社會",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 17,
+        "list_prefix_count": 17,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 國際",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 20,
+        "list_prefix_count": 20,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 中國",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 娛樂",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 10,
+        "list_prefix_count": 10,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 熱話",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 8,
+        "list_prefix_count": 8,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HK01 深圳",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 9,
+        "list_prefix_count": 9,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HuffPost 新聞",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 15,
+        "list_prefix_count": 15,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 15,
+        "list_prefix_count": 15,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 15,
+        "list_prefix_count": 15,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HuffPost 娛樂",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 0,
+        "list_prefix_count": 0,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 0,
+        "list_prefix_count": 0,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 0,
+        "list_prefix_count": 0,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "HuffPost 生活",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 2,
+        "list_prefix_count": 2,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 2,
+        "list_prefix_count": 2,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 2,
+        "list_prefix_count": 2,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "TVB 新聞",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 28,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "Now 新聞",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 23,
+        "list_prefix_count": 24,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 23,
+        "list_prefix_count": 24,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 23,
+        "list_prefix_count": 24,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  },
+  {
+    "source": "Now 國際",
+    "checks": [
+      {
+        "mode": "latest",
+        "player_count": 30,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "balanced",
+        "player_count": 30,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      },
+      {
+        "mode": "critical",
+        "player_count": 30,
+        "list_prefix_count": 30,
+        "same_source": true,
+        "shared_prefix_order": true
+      }
+    ]
+  }
+]

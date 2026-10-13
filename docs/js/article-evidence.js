@@ -83,6 +83,7 @@
     const fallback = article.content_quality?.fallback;
     const partial = article.evidence_status === 'partial' || (fallback && fallback !== 'none');
     const status = element('p', partial ? '目前正文可能只包含 RSS 摘要或保留內容，證據範圍有限。' : '引用只核對目前顯示的正文；AI 摘要仍需讀者判斷。');
+    if (article.content_quality?.origin === 'wordpress-public-posts') status.textContent = '正文來自來源公開 WordPress API；完整性未獨立核實。引用只核對目前顯示的正文。';
     if (article.content_retention) status.textContent = '目前顯示之前保留的正文；最近抓取未能取得完整更新。';
     section.append(status);
     if (article.scrape_error || article.content_retention?.latest_error) section.append(element('p', '最近抓取狀況：' + String(article.scrape_error || article.content_retention.latest_error).slice(0, 500)));

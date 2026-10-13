@@ -97,6 +97,20 @@ jobs:
           WORKER_URL: ''
           NOTIFY_SECRET: ''
 
+      - name: Verify prior publication before paid collection
+        # Existing cycles resume public reads before enrichment; no AI retry.
+        run: |
+          $priorRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/verify_publication.py --revision "$priorRevision" --result "$env:RUNNER_TEMP\rss-news-prior-publication-${{ github.run_id }}.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        env:
+          MINIMAX_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+          WORKER_URL: ''
+          NOTIFY_SECRET: ''
+
       - name: Fetch RSS, scrape & analyse
         # Retry once on a *fast* failure. lxml's C extension segfaults the
         # interpreter mid-scrape at a low but steady rate (0xC0000005 in
@@ -132,6 +146,8 @@ jobs:
         # This is deliberately before staging/committing/pushing generated data.
         run: |
           python tools/validate_publication.py docs --require-current
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/check_media_inventory.py docs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest tests/test_data_quality.py -q
         env:
@@ -190,6 +206,7 @@ jobs:
             # 唔 stage 就每次 checkout 清零，24 小時嘅斷更門檻永遠夠唔到，
             # 等於成個偵測機制失效。
             git add docs/data/source_health.json 2>/dev/null || true
+            git add docs/data/media_qa.json 2>/dev/null || true
           }
 
           stage_outputs || { echo "generated data staging failed"; exit 1; }
@@ -260,7 +277,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rss-news-publication-check-${{ github.run_id }}
-          path: ${{ runner.temp }}/rss-news-publication-check-${{ github.run_id }}.json
+          path: |
+            ${{ runner.temp }}/rss-news-publication-check-${{ github.run_id }}.json
+            ${{ runner.temp }}/rss-news-prior-publication-${{ github.run_id }}.json
           retention-days: 3
           if-no-files-found: warn
 

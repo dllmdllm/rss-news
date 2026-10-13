@@ -16,6 +16,20 @@ def _article(**overrides):
     return base
 
 
+def test_confirmed_numbered_cache_never_falls_through_to_paid_refresh(monkeypatch):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'test-key')
+    content='<p>[0] 第一段。</p><p>[1] 第二段。</p><p>[2] 第三段。</p>'
+    article=_article(id='f7bef5e0ede8',content=content)
+    texts=[t.get_text(' ',strip=True)for t in TC._translation_units(content)[1]]
+    cache={'f7bef5e0ede8':{'version':TC.TRANSLATE_VERSION,'content':content,'source_hash':'original-english','translated_hash':TC._source_hash(texts)}}
+    monkeypatch.setattr(TC,'load_cache',lambda:cache)
+    async def forbidden(*args,**kwargs):raise AssertionError('paid marker refresh forbidden')
+    monkeypatch.setattr(TC,'_translate_article',forbidden)
+    monkeypatch.setattr(TC,'save_cache',lambda *_:None)
+    asyncio.run(TC.translate_english_content([article]))
+    assert '[0]' not in article['content'] and article['_unit_marker_repair_from']==content
+
+
 def test_extract_paragraphs_skips_image_bearing_tags():
     content = '<p>Text one.</p><p><img src="a.jpg">Caption text.</p><h2>Heading.</h2>'
     _, tags = TC.extract_paragraphs(content)

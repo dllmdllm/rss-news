@@ -918,6 +918,15 @@ strict distributed rate limits require separately approved infrastructure.
 
 ### Desktop key-sentence playback (2026-10-13)
 
+Source/media verification: use `SOURCE-MEDIA-QA.md` and its dated audit matrix.
+Count current configured feeds, not old baselines. Keep all-article integrity,
+sampled original fidelity, image load coverage, source health and player ordering
+separate. Quotes/tables and source revisions require explicit checks; hero/body
+deduplication and category-grouped lists can explain apparent differences.
+The bounded media loop runs in the existing publisher cycle; see the QA runbook
+for CPU deadlines, checkpoint/backoff, pending notification and paid-call boundaries.
+Its one-time approval grants no future arbitrary release authority.
+
 `summary-player.js` displays existing `key_sentences` and shared homepage filters.
 The slim index omits these, so the player reads existing `articles.json` once on
 demand, with a 15-second abort and explicit retry after failure. Match ID, title,

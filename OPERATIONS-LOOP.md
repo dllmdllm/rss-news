@@ -6,6 +6,10 @@ The schedule, Windows dispatcher, runner settings and permissions stay as alread
 configured. This document grants no authority to merge future code or change
 access controls.
 
+The source/media audit procedure and proposed bounded media checkpoint stage are
+documented in [SOURCE-MEDIA-QA.md](SOURCE-MEDIA-QA.md). That stage is implemented under the specific 2026-10-13 approval; rollout
+remains gated. See the dated audit for original coverage and current release evidence.
+
 ```mermaid
 flowchart LR
     A[Existing 20-minute run] --> B[Offline regressions and prior snapshot]

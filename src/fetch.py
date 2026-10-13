@@ -944,6 +944,7 @@ def _parse_wordpress_posts(posts, feed_info: dict, cutoff: datetime) -> list[dic
             "date": published.isoformat(), "source": feed_info["name"],
             "category": _map_category_for_url(raw_url, feed_info),
             "content": None, "thumbnail": thumbnail, "rss_content": body,
+            "collection_method": "wordpress-public-posts",
         })
     if posts and not valid_records:
         raise ValueError("public posts index contains no valid published metadata")

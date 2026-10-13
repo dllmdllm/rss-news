@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+from src.media_fields import clean_unit_markers
 from pathlib import Path
 
 import aiohttp
@@ -146,7 +147,11 @@ def _parse_translated_array(raw: str, expected: int) -> list[str] | None:
         return None
     if not isinstance(data, list) or len(data) != expected:
         return None
-    return [str(item) for item in data]
+    values = [str(item) for item in data]
+    numbered = [re.match(r'^\[(\d+)\]\s+', value) for value in values]
+    if len(values) >= 3 and all(numbered) and [int(m[1]) for m in numbered] == list(range(len(values))):
+        values = [value[m.end():] for value, m in zip(values, numbered)]
+    return values
 
 
 async def _translate_article(
@@ -237,6 +242,12 @@ async def translate_english_content(articles: list) -> None:
     """Translate article bodies for ENGLISH_SOURCES in place. Cheap no-op
     (skipped entirely) when MINIMAX_API_KEY is unset, matching every other
     MiniMax-backed build step."""
+    for article in articles:
+        if article.get('id') == 'f7bef5e0ede8' and article.get('source') == '9to5Mac' and article.get('content'):
+            cleaned, changed = clean_unit_markers(article['content'])
+            if changed:
+                article['_unit_marker_repair_from'] = article['content']
+                article['content'] = cleaned
     if not MINIMAX_API_KEY:
         return
 
@@ -249,12 +260,16 @@ async def translate_english_content(articles: list) -> None:
         if not tags:
             continue
         texts = [t.get_text(" ", strip=True) for t in tags]
+        original_texts = texts
+        if a.get('_unit_marker_repair_from'):
+            original_texts = [t.get_text(' ', strip=True) for t in _translation_units(a['_unit_marker_repair_from'])[1]]
         cached = cache.get(a["id"])
         if (
             cached
             and cached.get("version") == TRANSLATE_VERSION
             and (cached.get("source_hash") == _source_hash(texts)
                  or cached.get("translated_hash") == _source_hash(texts)
+                 or cached.get("translated_hash") == _source_hash(original_texts)
                  or (a.get("content_retention") and
                      _source_hash([t.get_text(" ", strip=True) for t in _translation_units(cached.get("content", ""))[1]]) == _source_hash(texts)))
         ):
@@ -265,7 +280,19 @@ async def translate_english_content(articles: list) -> None:
                 for tag, translated_tag in zip(tags, translated_tags):
                     _replace_tag_text(tag, translated_tag.get_text(" ", strip=True))
                 a["content"] = str(soup)
+                if a.get('id') == 'f7bef5e0ede8' and cached.get('deterministic_unit_cleanup'):
+                    a['_unit_marker_repair_from'] = a['content']
+                # The audit confirmed this one cached unit-label echo. A
+                # deterministic repair must not trigger paid retranslation.
+                if a.get('id') == 'f7bef5e0ede8' and a.get('source') == '9to5Mac':
+                    cleaned, changed = clean_unit_markers(a['content'])
+                    if changed:
+                        a['_unit_marker_repair_from'] = a['content']
+                        a['content'] = cleaned
                 continue
+        if a.get('_unit_marker_repair_from'):
+            # A known artifact repair cannot create a paid cache-miss path.
+            continue
         pending.append(a)
 
     if not pending:

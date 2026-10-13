@@ -1,0 +1,1172 @@
+{
+  "revision": "4ddd3b0fb8e5441d7bdbf6809e37a418d7a096b5",
+  "samples": [
+    {
+      "source": "RTHK 本地",
+      "id": "9c06f0a24678",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=9c06f0a24678",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 0,
+      "image_load_sample": [],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "明報 本地",
+      "id": "d2734fd03834",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=d2734fd03834",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://fs.mingpao.com/ins/20261013/s00001/22f6c483c49f400d85e6c32bf596e992.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "am730",
+      "id": "f6404ef31e32",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=f6404ef31e32",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://cdn3.am730.com.hk/processed/2026-10/1058188/article/1058188/df/01M4T41VGQ0E465728JJE6FNT7.jpg?updatedAt=1791878314",
+          "loaded": true,
+          "complete": true,
+          "width": 1916
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "東網 本地",
+      "id": "c346211a5d53",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=c346211a5d53",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": true
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://hk.on.cc/hk/bkn/cnt/news/20261013/photo/bkn-20261013160253546-1013_00822_001_01s.jpg?20261013160438",
+          "loaded": true,
+          "complete": true,
+          "width": 608
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "星島頭條",
+      "id": "e6b33bf8cc05",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=e6b33bf8cc05",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://image.hkhl.hk/f/1200p0/0x0/100/none/e38e1d6dee3ec56da7c2d8ef9232623a/2026-10/KF_Yan_-_2026-10-13T163007_842.png",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "RTHK 國際",
+      "id": "c31a05cfdd68",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=c31a05cfdd68",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://newsstatic.rthk.hk/images/mfile_1873754_1_M_20261013151246.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 618
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "RTHK 大中華",
+      "id": "1f18f819fda7",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=1f18f819fda7",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://newsstatic.rthk.hk/images/mfile_1873752_1_M_20261013150135.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 618
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "明報 國際",
+      "id": "3e311741f597",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=3e311741f597",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://fs.mingpao.com/ins/20261013/s00005/91ff8fe8bf8440edb97c8e721c46ffac.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1024
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "明報 中國",
+      "id": "7530613df528",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=7530613df528",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://fs.mingpao.com/ins/20261013/s00004/0d7491447c9a47ffa3a2fe38358918ca.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1500
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "東網 國際",
+      "id": "dc06a4ef1aa6",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=dc06a4ef1aa6",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": true
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://hk.on.cc/hk/bkn/cnt/intnews/20261013/photo/bkn-20261013163355025-1013_00992_001_01s.jpg?20261013163403",
+          "loaded": true,
+          "complete": true,
+          "width": 608
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "明報 娛樂",
+      "id": "84fad0218658",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=84fad0218658",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://fs.mingpao.com/ins/20261013/s00007/ca3d711fc0d34d408aa4a516ce2e86c8.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 800
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "東網 娛樂",
+      "id": "5042a0075d54",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=5042a0075d54",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://hk.on.cc/hk/bkn/cnt/entertainment/20261013/photo/bkn-20261013160138626-1013_00862_001_01p.jpg?20261013154210",
+          "loaded": true,
+          "complete": true,
+          "width": 608
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "明報 消閒",
+      "id": "819dadceafbc",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=819dadceafbc",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://fs.mingpao.com/ins/20261013/s00024/457f7f62658e48619a1d820d57a54936.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1024
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "WeekendHK",
+      "id": "5f377f746185",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=5f377f746185",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://imgs.weekendhk.com/wp-content/uploads/2026/10/179188023529449297_13895526256acdec2c0fdfd.png",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "GoTrip",
+      "id": "131c830f745c",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=131c830f745c",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://imgs.gotrip.hk/wp-content/uploads/2026/10/179187898039493787_16125534326acde74487326.png",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "cnBeta",
+      "id": "caddbfd085f1",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=caddbfd085f1",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://static.cnbetacdn.com/article/2026/1013/3dd951258c3cb2c.png",
+          "loaded": true,
+          "complete": true,
+          "width": 1080
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HKEPC",
+      "id": "d1ccf0639b4f",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=d1ccf0639b4f",
+      "sidecar_exact_bytes": true,
+      "title_matches": false,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 0,
+      "image_load_sample": [],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "Unwire",
+      "id": "39d37045c482",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=39d37045c482",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.unwire.hk/wp-content/uploads/2026/10/dtv_1w34njzl0nrxrvgh-694x389.jpeg",
+          "loaded": true,
+          "complete": true,
+          "width": 694
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "Yahoo 科技",
+      "id": "e31c9cb71132",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=e31c9cb71132",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 3,
+        "actual_images": 3,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 4,
+      "image_load_sample": [
+        {
+          "src": "https://s.yimg.com/lo/mysterio/api/b6e57e18141e02ad75628dc717727a623b35f8423c4b5d9e6c1a4e77e90b7662/lightyear_networkapi/resizefill_w1200%3Bquality_80%3Bformat_webp/https%3A%2F%2Fmedia.zenfs.com%2Fen%2Fhk_animal_post_231%2Fda42ab09e8b8e31e218f6b728996a30b.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        },
+        {
+          "src": "https://s.yimg.com/lo/mysterio/api/5ba0633a0cdf045361fa698a144af9b7cd4907a325536baaab5d970c915e8906/lightyear_networkapi/resizefill_w960%3Bquality_80%3Bformat_webp/https%3A%2F%2Fmedia.zenfs.com%2Fen%2Fhk_animal_post_231%2F9383cf5cfe9d248563aec644bbfd267a.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 960
+        },
+        {
+          "src": "https://s.yimg.com/lo/mysterio/api/307a4fdf872c784623a92a325ddb2d8587c3289d10727a417c25322e6391cc17/lightyear_networkapi/resizefill_w960%3Bquality_80%3Bformat_webp/https%3A%2F%2Fmedia.zenfs.com%2Fen%2Fhk_animal_post_231%2Fb73cbb1b5911f46e53409d53717965d4.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 960
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "9to5Mac",
+      "id": "f7bef5e0ede8",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=f7bef5e0ede8",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://9to5mac.com/wp-content/uploads/sites/6/2026/09/iphone-duo-hinge-closeup.jpg?quality=82&strip=all&w=1600",
+          "loaded": true,
+          "complete": true,
+          "width": 1600
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "New MobileLife",
+      "id": "205e173fca03",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=205e173fca03",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 6,
+        "actual_images": 6,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 7,
+      "image_load_sample": [
+        {
+          "src": "https://www.newmobilelife.com/wp-content/uploads/2026/10/460x460bb-75-135.webp",
+          "loaded": true,
+          "complete": true,
+          "width": 460
+        },
+        {
+          "src": "https://www.newmobilelife.com/wp-content/uploads/2026/10/1179x2556bb-11.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1179
+        },
+        {
+          "src": "https://www.newmobilelife.com/wp-content/uploads/2026/10/1179x2556bb-12.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1179
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "法庭線",
+      "id": "edf3013227dc",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=edf3013227dc",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 3,
+        "actual_images": 3,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 4,
+      "image_load_sample": [
+        {
+          "src": "https://hkcourtnews.com/wp-content/uploads/2026/10/20261013_hkcourtnews_abbychoi_2b.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        },
+        {
+          "src": "https://hkcourtnews.com/wp-content/uploads/2026/10/signal-2026-10-13-15-47-39-285-819x1024.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 819
+        },
+        {
+          "src": "https://hkcourtnews.com/wp-content/uploads/2023/05/%E5%BA%AD%E5%88%8A%EF%BD%9CHKCourtNews_PayMe_QR_code.png",
+          "loaded": true,
+          "complete": true,
+          "width": 716
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "The Collective HK",
+      "id": "9e0ceadde738",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=9e0ceadde738",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 1,
+        "actual_images": 1,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 2,
+      "image_load_sample": [
+        {
+          "src": "https://thecollectivehk.com/wp-content/uploads/2026/10/tamfungchuncover.jpeg",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        },
+        {
+          "src": "https://thecollectivehk.com/wp-content/uploads/2026/10/tamandchoi-876x1024.jpeg",
+          "loaded": true,
+          "complete": true,
+          "width": 876
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "The Witness",
+      "id": "b8523dc846b0",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=b8523dc846b0",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://thewitnesshk.com/wp-content/uploads/2026/03/wong8-2.png",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 突發",
+      "id": "cf4f6608e919",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=cf4f6608e919",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 7,
+        "actual_images": 7,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 8,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186708506531598336049528.jpeg/DrXWkuvRzu_NB17bbSk758N05amTwWj3hKZ6BqGmegY",
+          "loaded": true,
+          "complete": true,
+          "width": 6000
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186708846798704640064372.jpeg/Z_X7EN6Hj86vM-rzHn2ru1mkDzlLH-O-mwZfFr4GXxY",
+          "loaded": true,
+          "complete": true,
+          "width": 6000
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186709447464980480638542.jpeg/VL_njdejdYpHYxu2KRyWH_qxbed88sl0N9oZwBLaGcA",
+          "loaded": true,
+          "complete": true,
+          "width": 6000
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 社會",
+      "id": "55da158d8dca",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=55da158d8dca",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 7,
+        "actual_images": 7,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 8,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20260517/1132794730510290944815679.jpeg/C5PCr_JgASZSqvmzkKtQishXp6JdRcxVwedJBcHnSQU",
+          "loaded": true,
+          "complete": true,
+          "width": 3929
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20260422/1123667127665037312654230.jpeg/xIT31Gd5bESNGyqDZaMrTRbX_pvxrc6-i_-E-5H_hPs",
+          "loaded": true,
+          "complete": true,
+          "width": 4032
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20260422/1123678083417640960139862.jpeg/oBt-4fwXwNiaCrTHymg1kR6NurGh9yAVbg8B4UsPAeE",
+          "loaded": true,
+          "complete": true,
+          "width": 2848
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 國際",
+      "id": "47b9f09a024d",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=47b9f09a024d",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 41,
+        "actual_images": 41,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 42,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186647087635238912641530.jpeg/C5AjzYfN08Z5qMMh-ZhIGxPtytq80r6qv3etDL93rQw",
+          "loaded": true,
+          "complete": true,
+          "width": 3600
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186639160929161216907285.jpeg/NE7gLts85uvQx26iwxuWB7JhIUBFhoGZn6eko5-npKM",
+          "loaded": true,
+          "complete": true,
+          "width": 424
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186639163244548096961208.jpeg/3aj5Zb5TQfPc8gWAeiHjY5TmY06JHU4-5oU6Q-aFOkM",
+          "loaded": true,
+          "complete": true,
+          "width": 424
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 中國",
+      "id": "084ea1ca34f4",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=084ea1ca34f4",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 7,
+        "actual_images": 7,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 8,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186704520223133696568701.jpeg/wKY7nNjzr1ZYBRuafpcL7h_SU6doBdfHekQm5npEJuY",
+          "loaded": true,
+          "complete": true,
+          "width": 540
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186703684084436992920371.jpeg/oEjlp1wHIM6bBgxspqRwMVJM6FjlI0F4IcJntyHCZ7c",
+          "loaded": true,
+          "complete": true,
+          "width": 540
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186703073171869696745389.jpeg/V6Zrh5R9owujAVFIPEnUxtDqtoBGx7V0eOeaOHjnmjg",
+          "loaded": true,
+          "complete": true,
+          "width": 1080
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 娛樂",
+      "id": "6d37f02a65f7",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=6d37f02a65f7",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 22,
+        "actual_images": 22,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 23,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261009/1185285192219103232753169.jpeg/_PqubVeE1cv3npl6POUWEG-mSGw8YfxtoyLzSKMi80g",
+          "loaded": true,
+          "complete": true,
+          "width": 1920
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261012/1186425054661971968829756.png/jibUJbp1TclOGLG-JFUhwuHWyb19ATf_NV28GjVdvBo",
+          "loaded": true,
+          "complete": true,
+          "width": 775
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261012/1186425057124159488073865.png/spsoZhThEV6ngTF2BnHG1VtfYe3RSDOj9_YEQ_f2BEM",
+          "loaded": true,
+          "complete": true,
+          "width": 785
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 熱話",
+      "id": "aae8eadf4948",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=aae8eadf4948",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 8,
+        "actual_images": 8,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 9,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186716075069280256597308.jpeg/X9Pq3KR8ut-iLaAtjieV3nZvU6M-YjpeRcHNr0XBza8",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186708992487854080982470.jpeg/NcdIkUw6XUoUS8IFLFVei2vSmnkZ6_4p8rngi_K54Is",
+          "loaded": true,
+          "complete": true,
+          "width": 5000
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186707256129884160758634.jpeg/2TZNjjHQf4jYGMu97sQT2mTvi3zThPvhSfntdUn57XU",
+          "loaded": true,
+          "complete": true,
+          "width": 1600
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HK01 深圳",
+      "id": "7b999b25c1af",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=7b999b25c1af",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 43,
+        "actual_images": 43,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 44,
+      "image_load_sample": [
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261013/1186664572518404096781309.jpeg/cr5nOyRZr2_Rm3QoY6DuSp_szgZywLGZTdJMcE3STHA",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261010/1185649952718589952108265.jpeg/I9ugh99wH7Kd6x-M6A1ctB1sQro5dAZpSnTF8Up0xfE",
+          "loaded": true,
+          "complete": true,
+          "width": 1022
+        },
+        {
+          "src": "https://cdn.hk01.com/di/media/images/dw/20261010/1185649955092697088815764.jpeg/SFm5_liWegztID_L4cD6bClssV1NEmgeqbvJbqm7yW4",
+          "loaded": true,
+          "complete": true,
+          "width": 1022
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HuffPost 新聞",
+      "id": "5d63dcc98442",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=5d63dcc98442",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://img.huffingtonpost.com/asset/6acd56591c0000a52d9611dc.jpeg?cache=3pF2exqUWu&ops=1200_630",
+          "loaded": true,
+          "complete": true,
+          "width": 1200
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "HuffPost 生活",
+      "id": "9aefb97b1b91",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=9aefb97b1b91",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 3,
+        "actual_images": 3,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 4,
+      "image_load_sample": [
+        {
+          "src": "https://img.huffingtonpost.com/asset/6acd47c61800001137f16cf7.jpeg?cache=2ci59lUegG&ops=500_281%2Cscalefit_1200_630",
+          "loaded": true,
+          "complete": true,
+          "width": 1121
+        },
+        {
+          "src": "https://img.huffingtonpost.com/asset/6acd27ce1c0000f7279611a9.jpeg?cache=nBZetX33yN&ops=scalefit_720_noupscale",
+          "loaded": true,
+          "complete": true,
+          "width": 720
+        },
+        {
+          "src": "https://img.huffingtonpost.com/asset/6acd4564180000d636f16cf5.jpeg?ops=scalefit_720_noupscale",
+          "loaded": true,
+          "complete": true,
+          "width": 720
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "TVB 新聞",
+      "id": "4710f1a09ff1",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=4710f1a09ff1",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://tvb-vod-hk.oss-cn-hongkong.aliyuncs.com/uploads/image/2026/10/2026fZUe6OXzMC1791782632.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 492
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "Now 新聞",
+      "id": "94b14102c175",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=94b14102c175",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://d1x4njjgkw4jf2.cloudfront.net/nownews/NewsImage/POWER-TST-261013-15.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1920
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    },
+    {
+      "source": "Now 國際",
+      "id": "abffc3812da8",
+      "url": "https://dllmdllm.github.io/rss-news/article.html?id=abffc3812da8",
+      "sidecar_exact_bytes": true,
+      "title_matches": true,
+      "body_sequence": {
+        "matches": true,
+        "expected_images": 0,
+        "actual_images": 0,
+        "hero_duplicate_removed": false
+      },
+      "rendered_images": 1,
+      "image_load_sample": [
+        {
+          "src": "https://d1x4njjgkw4jf2.cloudfront.net/nownews/NewsImage/GPAPER-NBC-261013.jpg",
+          "loaded": true,
+          "complete": true,
+          "width": 1920
+        }
+      ],
+      "mobile_no_horizontal_overflow": true
+    }
+  ],
+  "sort_modes": [
+    {
+      "mode": "latest",
+      "cards": 722,
+      "content_or_thumbnail_mismatches": [
+        "7bd86660d030",
+        "f562146358be",
+        "2b8e855b9e10",
+        "9251b9591e6c"
+      ],
+      "list_prefix": [
+        "e6b33bf8cc05",
+        "9c06f0a24678",
+        "d2734fd03834",
+        "fc0fbd4371ec",
+        "dc06a4ef1aa6",
+        "47b9f09a024d",
+        "55309ec6ab53",
+        "10e8af9a496a",
+        "9aefb97b1b91",
+        "5d63dcc98442",
+        "7297f6961a08",
+        "7325338c5655",
+        "c564ec37c61b",
+        "04e53a01ad69",
+        "aaba1ea4a56c",
+        "1faedd3a77fb",
+        "caddbfd085f1",
+        "205e173fca03",
+        "3c5828560e4b",
+        "13b66c7c7dd6",
+        "5f377f746185",
+        "e341455ee5c3",
+        "35e2a835f46f",
+        "aae8eadf4948",
+        "b8523dc846b0",
+        "edf3013227dc",
+        "9e0ceadde738",
+        "feb6b16eb9c1"
+      ],
+      "player_prefix": [
+        "6d37f02a65f7",
+        "dc06a4ef1aa6",
+        "e6b33bf8cc05",
+        "caddbfd085f1",
+        "47b9f09a024d",
+        "5f377f746185",
+        "9c06f0a24678",
+        "d2734fd03834",
+        "c564ec37c61b",
+        "fc0fbd4371ec",
+        "e341455ee5c3",
+        "33435e242cc8",
+        "cf4f6608e919",
+        "c4869bdabd59",
+        "df28ca61a35d",
+        "31c6ebafb71f",
+        "e23f41b3bec3",
+        "35e2a835f46f",
+        "aae8eadf4948",
+        "860a8998eba4",
+        "9a6a27d5f2ba",
+        "55309ec6ab53",
+        "205e173fca03",
+        "10e8af9a496a",
+        "629954856f82",
+        "77ead9ee246a",
+        "04e53a01ad69"
+      ],
+      "shared_order": false,
+      "utc_descending": true
+    },
+    {
+      "mode": "balanced",
+      "cards": 722,
+      "content_or_thumbnail_mismatches": [
+        "9251b9591e6c",
+        "7bd86660d030",
+        "2b8e855b9e10",
+        "f562146358be"
+      ],
+      "list_prefix": [
+        "599feda6886b",
+        "9251b9591e6c",
+        "a9c5bdeb5351",
+        "04f47c787e9d",
+        "7d76f30320c2",
+        "61fbfbe3e946",
+        "4ff66c348dc2",
+        "c38afe02d4ce",
+        "9aefb97b1b91",
+        "41f06fb8e336",
+        "27f3c3484a77",
+        "13f3a1ab2ce5",
+        "04b9c7d73302",
+        "8d833d240a47",
+        "cdc36ac0297a",
+        "8e50cc4ed94c",
+        "bfad47a90790",
+        "14b609540fd9",
+        "073bb8c7f031",
+        "caddbfd085f1",
+        "819dadceafbc",
+        "9425a3ca06e3",
+        "23f495fe3857",
+        "426fdede4844",
+        "9e0ceadde738",
+        "01a305d3f61e",
+        "b8523dc846b0",
+        "edf3013227dc"
+      ],
+      "player_prefix": [
+        "367b5f984f89",
+        "7d76f30320c2",
+        "61fbfbe3e946",
+        "4ff66c348dc2",
+        "599feda6886b",
+        "c38afe02d4ce",
+        "9e0ceadde738",
+        "04b9c7d73302",
+        "a56011af6903",
+        "4f6c7530ec4c",
+        "bfad47a90790",
+        "5354b15bfb8c",
+        "26dd9f29569f",
+        "9251b9591e6c",
+        "14b609540fd9",
+        "11ee0c5815cb",
+        "a9c5bdeb5351",
+        "04f47c787e9d",
+        "4e59652eeec5",
+        "5c152526f336",
+        "1fdf42953832",
+        "376ef37611a2",
+        "998bf77bdb89",
+        "90ef6aae07e4",
+        "c6a036fae37a",
+        "a562ed2951fd",
+        "53c36cb0ea2b"
+      ],
+      "shared_order": false,
+      "score_descending": true
+    },
+    {
+      "mode": "critical",
+      "cards": 722,
+      "content_or_thumbnail_mismatches": [
+        "9251b9591e6c",
+        "7bd86660d030",
+        "f562146358be",
+        "2b8e855b9e10"
+      ],
+      "list_prefix": [
+        "69d2f59f4f5e",
+        "df52c68dc7fc",
+        "bd59c1b070c6",
+        "a1b974460917",
+        "53c36cb0ea2b",
+        "c38afe02d4ce",
+        "c63f53957568",
+        "b353c75a8cd2",
+        "6bcf1993c735",
+        "7325338c5655",
+        "9aefb97b1b91",
+        "41f06fb8e336",
+        "9b813400a441",
+        "04b9c7d73302",
+        "95d29986c37a",
+        "8d833d240a47",
+        "1fe16700048e",
+        "7061d9a1e40d",
+        "b154c99d18ac",
+        "75b2297b4f63",
+        "819dadceafbc",
+        "50898e958bbb",
+        "9425a3ca06e3",
+        "a4e9e4b9b053",
+        "9e0ceadde738",
+        "edf3013227dc",
+        "b8523dc846b0",
+        "5531b49772d9"
+      ],
+      "player_prefix": [
+        "61fbfbe3e946",
+        "9e0ceadde738",
+        "69d2f59f4f5e",
+        "53c36cb0ea2b",
+        "df52c68dc7fc",
+        "bd59c1b070c6",
+        "a1b974460917",
+        "eacbb3b96e1e",
+        "c38afe02d4ce",
+        "938e20f25def",
+        "04f47c787e9d",
+        "e40c7063d3ab",
+        "c63f53957568",
+        "b353c75a8cd2",
+        "8d52f63fd00b",
+        "09bbaa6d8775",
+        "4f6c7530ec4c",
+        "1fdf42953832",
+        "7d76f30320c2",
+        "860a8998eba4",
+        "c7f4b0b1d129",
+        "9db502db6bc0",
+        "ba4b79e06cbc",
+        "94b14102c175",
+        "a562ed2951fd",
+        "10e8af9a496a",
+        "5100dd56aeb8"
+      ],
+      "shared_order": false
+    }
+  ],
+  "pageerrors": []
+}
