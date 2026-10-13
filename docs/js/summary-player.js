@@ -1,4 +1,4 @@
-/* Device-only summary playback: no fetch, AI, speech, storage or read-state writes. */
+/* Existing key-sentence playback: no AI, speech, storage or read-state writes. */
 (function () {
   function thumbnailUrl(value) {
     if (typeof value !== 'string' || !value || value !== value.trim() || /[\u0000-\u0020\u007f\\]/.test(value)) return '';
@@ -24,7 +24,7 @@
     const count = host.querySelector('[data-player-count]');
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let active = false, opened = false, paused = true, hovered = false, focused = false;
-    let frame = null, previous = null, position = 0, endWait = 0, signature = '', ready = 0;
+    let frame = null, previous = null, position = 0, endWait = 0, signature = '', ready = 0, notice = '';
     const speeds = { slow: 12, normal: 24, fast: 40 };
 
     function stop() {
@@ -41,9 +41,9 @@
       toggle.textContent = paused ? '▶ 繼續' : 'Ⅱ 暫停';
       toggle.setAttribute('aria-pressed', String(!paused));
       toggle.disabled = ready === 0;
-      const message = !ready ? '暫時冇可播放嘅 AI 摘要' : paused ?
+      const message = notice || (!ready ? '暫時冇可播放嘅關鍵句' : paused ?
         (motion.matches ? '減少動態：已暫停，可手動捲動或按繼續' : '已暫停，可手動捲動') :
-        hovered || focused ? '閱讀中：暫停捲動' : '由下向上播放 · 播完循環';
+        hovered || focused ? '閱讀中：暫停捲動' : '由下向上播放 · 播完循環');
       if (status.textContent !== message) status.textContent = message;
       if (running()) frame = requestAnimationFrame(tick);
     }
@@ -55,7 +55,7 @@
       const max = viewport.scrollHeight - viewport.clientHeight;
       if (max <= 1) {
         // A short single card is already fully readable; no pointless motion.
-        status.textContent = '摘要已全部顯示，可手動閱讀';
+        status.textContent = '關鍵句已全部顯示，可手動閱讀';
         previous = null;
         return;
       }
@@ -114,7 +114,7 @@
         rows.push({ id: article.id, title: article.title || '', source: article.source || '', date: article.date || '',
           time: timeLabel(article), thumbnail: thumbnailUrl(article.thumbnail), summary });
       }
-      count.textContent = `${rows.length} 篇摘要${skipped ? ` · ${skipped} 篇等候 AI` : ''}`;
+      count.textContent = `${rows.length} 篇關鍵句${skipped ? ` · ${skipped} 篇未有可用關鍵句` : ''}`;
       const next = JSON.stringify(rows.map(({ time, ...row }) => row));
       if (next === signature) {
         // Relative clock labels may change without changing the reading queue.
@@ -187,7 +187,8 @@
       focused = viewport.contains(document.activeElement);
       refresh();
     }
-    return { setArticles, setActive };
+    function setNotice(value) { notice = value; refresh(); }
+    return { setArticles, setActive, setNotice };
   }
   window.RssSummaryPlayer = { create };
 })();

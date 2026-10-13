@@ -14,6 +14,7 @@ def player_data(news_data):
     template = data['articles'][0]
     data['articles'] = [{**template, 'id': f'play{i}', 'title': f'新聞 {i}',
                          'summary': '\n'.join(f'・完整重點 {j}：{i} 呢段摘要保留所有內容，唔截字。' for j in range(8)),
+                         'key_sentences': [f'已有關鍵句 {j}：{i} 呢段原有資料保留所有內容，唔截字。' for j in range(8)],
                          'score': i + 1,
                          'source': '本地來源' if i < 5 else '科技來源',
                          'category': '新聞' if i < 5 else '科技'} for i in range(10)]
@@ -52,8 +53,11 @@ def ticks(page, count=50, interval=20):
 def test_full_summary_safe_render_and_fractional_scroll_timing(player_page):
     page = player_page
     page.locator('#summaryPlayTab').click()
+    page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10', polling=20)
     assert page.locator('.summary-play-card').count() == 10
     assert page.locator('.summary-play-card').first.locator('li').count() == 8
+    assert '已有關鍵句' in page.locator('.summary-play-card').first.inner_text()
+    assert '完整重點' not in page.locator('#summaryPlayer').inner_text()
     assert page.locator('.summary-play-meta').first.inner_text().startswith('本地來源 · ')
     first_y = page.locator('.summary-play-card').first.bounding_box()['y']
     ticks(page, 51)
@@ -77,10 +81,87 @@ def test_full_summary_safe_render_and_fractional_scroll_timing(player_page):
     assert page.locator('[data-player-toggle]').inner_text() == 'Ⅱ 暫停'
 
 
+def test_slim_metadata_retry_stale_guard_and_sentence_search(browser, player_data):
+    index = copy.deepcopy(player_data)
+    for row in index['articles']:
+        row.pop('key_sentences', None)
+        row['content_hash'] = 'current'
+    full = copy.deepcopy(player_data)
+    for row in full['articles']: row['content_hash'] = 'current'
+    full['articles'][0]['content_hash'] = 'stale'
+    full['articles'][1]['key_sentences'] = ['唯一可搜尋句', '唯一可搜尋句', '', None]
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width':1280,'height':900}, service_workers='block')
+        page = context.new_page(); _route_data(page, index)
+        requests = []
+        def metadata(route):
+            requests.append(route.request.url)
+            if len(requests) == 1: route.fulfill(status=503, body='unavailable')
+            else: route.fulfill(json=full)
+        page.route('**/data/articles.json', metadata)
+        page.goto(base + '/index.html'); page.locator('#feed .card').first.wait_for()
+        assert not requests
+        page.locator('#summaryPlayTab').click()
+        page.locator('#keySentenceRetry').wait_for(state='visible')
+        assert '讀取失敗' in page.locator('[data-player-status]').inner_text()
+        assert page.locator('.summary-play-card').count() == 0
+        page.locator('#newsListTab').click(); page.locator('#summaryPlayTab').click()
+        page.locator('#search').fill('新聞'); page.locator('#search').fill('')
+        assert len(requests) == 1  # Failed metadata requires explicit retry.
+        page.locator('#keySentenceRetry').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===9')
+        assert '1 篇未有可用關鍵句' in page.locator('[data-player-count]').inner_text()
+        assert '完整重點' not in page.locator('#summaryPlayer').inner_text()
+        page.locator('#search').fill('唯一可搜尋句')
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===1')
+        assert page.locator('.summary-play-card li').count() == 1
+        page.locator('#search').fill('完整重點')
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===0')
+        page.locator('#newsListTab').click()
+        assert page.locator('#feed .card').count() > 0  # Ordinary list keeps summary search and pagination.
+        page.locator('#search').fill(''); page.locator('#summaryPlayTab').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===9')
+        assert len(requests) == 2
+        context.close()
+
+
+def test_metadata_timeout_is_bounded_and_tab_switches_share_request(browser, player_data):
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width':1280,'height':900}, service_workers='block')
+        page = context.new_page(); _route_data(page, player_data)
+        page.add_init_script("""
+          const originalFetch=window.fetch, originalTimeout=window.setTimeout;
+          window.metadataCalls=0;
+          window.setTimeout=(fn,ms,...args)=>{
+            if(ms===15000) window.expireMetadata=fn;
+            return originalTimeout(fn,ms,...args);
+          };
+          window.fetch=(url,options)=>{
+            if(url==='data/articles.json' && ++window.metadataCalls===1)
+              return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))));
+            return originalFetch(url,options);
+          };
+        """)
+        page.goto(base + '/index.html'); page.locator('#feed .card').first.wait_for()
+        page.locator('#summaryPlayTab').click()
+        for _ in range(3):
+            page.locator('#newsListTab').click(); page.locator('#summaryPlayTab').click()
+        assert page.evaluate('metadataCalls') == 1
+        assert '正在讀取' in page.locator('[data-player-status]').inner_text()
+        page.evaluate('expireMetadata()')
+        page.locator('#keySentenceRetry').wait_for(state='visible')
+        page.locator('#keySentenceRetry').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10')
+        assert page.evaluate('metadataCalls') == 2
+        context.close()
+
+
 def test_hover_focus_background_and_view_switch_preserve_read_state(player_page):
     page = player_page
     before = page.evaluate('localStorage.getItem("rss_reader_state_v1")')
-    page.locator('#summaryPlayTab').click(); ticks(page)
+    page.locator('#summaryPlayTab').click()
+    page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10', polling=20)
+    ticks(page)
     page.locator('.summary-viewport').hover()
     at = position(page); ticks(page)
     assert position(page) == at
@@ -107,6 +188,7 @@ def test_hover_focus_background_and_view_switch_preserve_read_state(player_page)
 def test_filter_empty_and_queue_loop_boundaries(player_page):
     page = player_page
     page.locator('#summaryPlayTab').click()
+    page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10', polling=20)
     page.locator('#search').fill('科技來源')
     page.wait_for_function('document.querySelectorAll(".summary-play-card").length===5', polling=20)
     assert page.locator('.summary-play-card').count() == 5
@@ -130,6 +212,7 @@ def test_reduced_motion_keyboard_and_responsive_regression(player_page):
     page.emulate_media(reduced_motion='reduce')
     page.locator('#newsListTab').focus(); page.keyboard.press('ArrowRight')
     assert page.locator('#summaryPlayTab').get_attribute('aria-selected') == 'true'
+    page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10', polling=20)
     ticks(page)
     assert position(page) == 0 and '減少動態' in page.locator('[data-player-status]').inner_text()
     page.locator('[data-player-toggle]').click(); ticks(page)
@@ -153,6 +236,7 @@ def test_existing_order_and_reading_filter_are_shared(player_page):
     page = player_page
     assert page.locator('.summary-play-card').count() == 0  # Lazy, no hidden duplicate list.
     page.locator('#summaryPlayTab').click()
+    page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10', polling=20)
     assert page.locator('.summary-play-card h2').first.inner_text() == '新聞 0'
     page.locator('#modeNav [data-mode="balanced"]').click()
     assert page.locator('.summary-play-card h2').first.inner_text() == '新聞 9'
@@ -169,9 +253,9 @@ def test_existing_order_and_reading_filter_are_shared(player_page):
 def test_missing_summary_injection_and_single_short_card(browser, news_data):
     data = copy.deepcopy(news_data)
     data['articles'] = [
-        {**data['articles'][0], 'id':'safe', 'title':'<img src=x onerror=alert(1)>', 'source':'<svg onload=alert(1)>', 'summary':'・<script>window.injected=true</script>'},
-        {**data['articles'][1], 'summary':''},
-        {**data['articles'][2], 'summary':data['articles'][2]['title']},
+        {**data['articles'][0], 'id':'safe', 'title':'<img src=x onerror=alert(1)>', 'source':'<svg onload=alert(1)>', 'key_sentences':['<script>window.injected=true</script>']},
+        {**data['articles'][1], 'key_sentences':[]},
+        {**data['articles'][2], 'key_sentences':None},
     ]
     with _static_server() as base:
         context = browser.new_context(viewport={'width':1280,'height':900}, service_workers='block')
@@ -179,10 +263,11 @@ def test_missing_summary_injection_and_single_short_card(browser, news_data):
         page.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw new DOMException('denied','SecurityError')}})")
         page.goto(base + '/index.html', wait_until='domcontentloaded')
         page.locator('#feed .card').first.wait_for(); page.locator('#summaryPlayTab').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===1')
         assert page.locator('.summary-play-card').count() == 1
         assert page.locator('.summary-play-card script, .summary-play-card img, .summary-play-card svg').count() == 0
         assert page.evaluate('window.injected') is None
-        assert '2 篇等候 AI' in page.locator('[data-player-count]').inner_text()
+        assert '2 篇未有可用關鍵句' in page.locator('[data-player-count]').inner_text()
         page.wait_for_function('document.querySelector("[data-player-status]").textContent.includes("全部顯示")')
         page.locator('[data-player-toggle]').click(); page.locator('[data-player-restart]').click()
         assert position(page) == 0
@@ -200,6 +285,7 @@ def test_summary_player_visual_capture(browser, player_data, tmp_path):
         tab = page.locator('#desktopViewTabs').bounding_box(); brief = page.locator('.brief').bounding_box()
         assert brief['y'] >= tab['y'] + tab['height']
         page.locator('#summaryPlayTab').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10')
         assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
         assert not errors
         out = os.environ.get('RSS_PLAYER_SCREENSHOT')
@@ -234,6 +320,7 @@ def test_thumbnails_left_safe_and_broken_layout_is_stable(browser, player_data):
         page.route('**/*', guarded)
         page.goto(base + '/index.html', wait_until='domcontentloaded')
         page.locator('#feed .card').first.wait_for(); page.locator('#summaryPlayTab').click()
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===10')
         page.locator('[data-player-toggle]').click()  # Freeze while checking image loads.
         cards = page.locator('.summary-play-card')
         assert cards.locator('img').count() == 2
