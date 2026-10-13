@@ -36,6 +36,7 @@ def _require_node():
     [
         "docs/js/common.js",
         "docs/js/index.js",
+        "docs/js/summary-player.js",
         "docs/js/article.js",
         "docs/sw.js",
     ],

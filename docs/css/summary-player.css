@@ -1,0 +1,33 @@
+.desktop-view-tabs { grid-column: 1 / -1; display: flex; gap: 8px; }
+.desktop-view-tabs button, .summary-controls button, .summary-controls select {
+  color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer;
+}
+.desktop-view-tabs [aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+.summary-player[hidden] { display: none; }
+.summary-player { grid-column: 1 / -1; min-width: 0; }
+.summary-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.summary-controls p { margin: 0; color: var(--muted); font-size: .86rem; }
+.summary-viewport {
+  height: min(calc(100dvh - 260px), 760px); min-height: 280px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
+  scrollbar-gutter: stable; scroll-behavior: auto;
+}
+.summary-track { max-width: 850px; margin: auto; padding: 20px 28px; }
+.summary-play-card { padding: 26px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.summary-play-card:last-child { border-bottom: 0; }
+.summary-play-meta { color: var(--muted); font-size: .88rem; margin: 0 0 10px; }
+.summary-play-card h2 { font-size: 1.4rem; line-height: 1.5; margin: 0 0 18px; }
+.summary-play-card ul { margin: 0; padding-left: 1.3em; font-size: 1.15rem; line-height: 1.85; }
+.summary-play-card li + li { margin-top: 10px; }
+.summary-play-card a:hover { color: var(--accent); text-decoration: underline; }
+.summary-player :focus-visible, .desktop-view-tabs :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (min-width: 901px) {
+  body .main > .brief { grid-row: 3 / span 99; }
+  body.summary-mode .app { grid-template-columns: 184px minmax(0, 1fr); }
+  body.summary-mode .main { grid-template-columns: minmax(0, 1fr); }
+  body.summary-mode .main > .morning-brief, body.summary-mode .main > .lead,
+  body.summary-mode .main > .brief, body.summary-mode #feed, body.summary-mode .ai { display: none; }
+}
+@media (max-width: 900px) { .desktop-view-tabs, .summary-player { display: none; } }
+@media (prefers-reduced-motion: reduce) { .summary-player * { scroll-behavior: auto; } }
