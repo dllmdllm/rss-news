@@ -94,7 +94,7 @@
     summary.after(section);
     if (!document.getElementById('source-evidence-styles')) {
       const style = element('style'); style.id = 'source-evidence-styles';
-      style.textContent = '.source-evidence{margin:1rem 0;padding:1rem;border:1px solid #69778a;border-radius:.5rem}.source-evidence dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1rem}.source-evidence dd{margin:0}.summary-source-link,.summary-source-status{margin-inline-start:.6rem;font-size:.85em}.source-evidence-match{background:#ffe08a;color:#17202a;scroll-margin-top:6rem}.source-evidence-match:focus{outline:3px solid #426acb}.summary-source-status{opacity:.75}';
+      style.textContent = '.source-evidence{margin:1rem auto;padding:1rem;width:100%;min-width:0;box-sizing:border-box;overflow-wrap:anywhere;border:1px solid #69778a;border-radius:.5rem}.source-evidence dl{display:grid;grid-template-columns:fit-content(6em) minmax(0,1fr);gap:.3rem 1rem}.source-evidence dt,.source-evidence dd{min-width:0;overflow-wrap:anywhere}.source-evidence dd{margin:0}.summary-source-link,.summary-source-status{margin-inline-start:.6rem;font-size:.85em}.source-evidence-match{background:#ffe08a;color:#17202a;scroll-margin-top:6rem}.source-evidence-match:focus{outline:3px solid #426acb}.summary-source-status{opacity:.75}';
       document.head.append(style);
     }
     const evidence = Array.isArray(article.summary_evidence) ? article.summary_evidence : [];

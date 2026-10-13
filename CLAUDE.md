@@ -911,16 +911,20 @@ strict distributed rate limits require separately approved infrastructure.
   Recovery archives contain public tracked docs only and restore into an empty
   review folder. See `ROLLBACK.md`; rollback/merge/deploy require approval.
 
-### Desktop summary playback (2026-10-13)
+### Desktop key-sentence playback (2026-10-13)
 
-`summary-player.js` reuses the homepage's complete existing summaries and filters;
-it never fetches articles, calls AI, starts speech or marks items read. Its desktop
+`summary-player.js` displays existing `key_sentences` and shared homepage filters.
+The slim index omits these, so the player reads existing `articles.json` once on
+demand, with a 15-second abort and explicit retry after failure. Match ID, title,
+source, date and available body hash before using sentences. Missing sentences
+stay unavailable; never fall back to AI summaries or generate new analysis.
+It never fetches article bodies, calls AI, starts speech or marks items read. Its desktop
 view is separate from sorting and mobile navigation. One frame loop uses elapsed
 time and fractional positions. Hover/focus pause; background/view exit stop and
 return paused. Reduced motion starts paused; manual resume is explicit. Changed
 filters/content reset the queue paused, unchanged rerenders preserve position.
 Cards use DOM text nodes and encoded article IDs, with no HTML from source data.
-Existing publisher thumbnails appear left of the complete summary in the same
+Existing publisher thumbnails appear left of the complete key sentences in the same
 scrolling card. The reserved 4:3 box contains the original image without cropping;
 missing/load-failed images keep explicit placeholders and stable geometry.
 Thumbnail URLs reject executable/data schemes, credentials and local/IP-literal

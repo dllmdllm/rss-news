@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from test_browser_smoke import browser
+from test_browser_smoke import browser, news_data, _route_data, _static_server
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'docs/js/article-evidence.js'
@@ -77,4 +77,22 @@ def test_repeated_init_does_not_duplicate_links_or_provenance(browser):
         assert page.locator('#source-evidence').count() == 1
         assert page.locator('.summary-source-status').count() == 2
     finally:
+        context.close()
+
+
+@pytest.mark.parametrize('width', [390, 1188, 2200])
+def test_real_article_source_panel_aligns_and_wraps(browser, news_data, width):
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width':width, 'height':920}, service_workers='block')
+        page = context.new_page(); _route_data(page, news_data)
+        page.goto(base + '/article.html?id=a0')
+        page.locator('#content strong').wait_for()
+        page.evaluate("() => { const a={id:'a0',scrape_error:'long-token-'.repeat(80),content_quality:{fallback:'rss-blocked'}}; RssArticleEvidence.init(a); RssArticleEvidence.init(a); }")
+        panel = page.locator('#source-evidence').bounding_box()
+        summary = page.locator('#summaryBox').bounding_box()
+        assert abs(panel['x'] - summary['x']) < 1
+        assert abs(panel['width'] - summary['width']) < 1
+        assert panel['width'] <= 920
+        assert page.locator('#source-evidence').count() == 1
+        assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
         context.close()

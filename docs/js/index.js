@@ -224,7 +224,8 @@
       if (state.sentiment && article.sentiment !== state.sentiment) return false;
       if (entityIds && !entityIds.has(article.id)) return false;
       if (!query) return true;
-      const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
+      const text = !isMobile() && state.desktopView === 'player' ? keySentencePoints(article).join(' ') : article.summary || '';
+      const haystack = `${article.title || ""} ${text} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
       return haystack.includes(query);
     }));
   }
@@ -1013,6 +1014,7 @@
   }
 
   function bindEvents() {
+    $('keySentenceRetry')?.addEventListener('click', () => { keySentenceFailed = false; loadKeySentences(); });
     $("desktopViewTabs")?.addEventListener("click", event => {
       const button = event.target.closest('[data-desktop-view]');
       if (!button) return;
@@ -1564,23 +1566,58 @@
     renderAll();
   }
 
-  const summaryPlayer = $("summaryPlayer") && window.RssSummaryPlayer?.create($("summaryPlayer"), { points: summaryPoints, timeLabel });
+  let keySentenceRecords = new Map(), keySentenceReady = false, keySentenceFailed = false, keySentenceRequest = null;
+  function keySentencePoints(article) {
+    const record = keySentenceRecords.get(article.id);
+    if (!record || record.title !== article.title || record.source !== article.source || record.date !== article.date ||
+        (article.content_hash && record.content_hash !== article.content_hash) || !Array.isArray(record.key_sentences)) return [];
+    return [...new Set(record.key_sentences.filter(text => typeof text === 'string' && text.trim()).map(text => text.trim()))];
+  }
+  function loadKeySentences() {
+    if (keySentenceRequest || keySentenceReady || keySentenceFailed) return;
+    $('keySentenceRetry').hidden = true;
+    summaryPlayer?.setNotice('正在讀取已有關鍵句…');
+    // The slim homepage index intentionally omits this field. Read the existing
+    // metadata once on demand; never generate AI or fetch per-article bodies.
+    keySentenceRequest = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch('data/articles.json', { cache: 'no-cache', signal: controller.signal });
+        if (!response.ok) throw new Error('metadata unavailable');
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.articles)) throw new Error('invalid metadata');
+        keySentenceRecords = new Map(payload.articles.filter(row => row && typeof row.id === 'string').map(row => [row.id, row]));
+        keySentenceReady = true;
+        summaryPlayer?.setNotice('');
+        renderAll();
+      } catch (_) {
+        keySentenceFailed = true;
+        summaryPlayer?.setNotice('關鍵句資料讀取失敗，請重試；未使用 AI 摘要代替');
+        $('keySentenceRetry').hidden = false;
+      } finally { clearTimeout(timer); keySentenceRequest = null; }
+    })();
+  }
+  const summaryPlayer = $("summaryPlayer") && window.RssSummaryPlayer?.create($("summaryPlayer"), { points: keySentencePoints, timeLabel });
   function syncDesktopView(list) {
     const playing = !isMobile() && state.desktopView === 'player';
     document.body.classList.toggle('summary-mode', playing);
     if ($('summaryPlayer')) $('summaryPlayer').hidden = !playing;
     if (playing) {
-      summaryPlayer?.setArticles(Array.isArray(list) ? list : filteredArticles());
-      $('feedTitle').textContent = '摘要播放';
-    } else if ($('feedTitle')?.textContent === '摘要播放') {
+      if (keySentenceReady) summaryPlayer?.setArticles(Array.isArray(list) ? list : filteredArticles());
+      else loadKeySentences();
+      $('feedTitle').textContent = '關鍵句播放';
+      $('search').placeholder = '搜尋標題、關鍵句、來源';
+    } else if ($('feedTitle')?.textContent === '關鍵句播放') {
       renderFeed(filteredArticles());
+      $('search').placeholder = '搜尋標題、摘要、來源';
     }
     document.querySelectorAll('#desktopViewTabs [data-desktop-view]').forEach(button => {
       const selected = button.dataset.desktopView === state.desktopView;
       button.setAttribute('aria-selected', String(selected));
       button.tabIndex = selected ? 0 : -1;
     });
-    summaryPlayer?.setActive(playing);
+    summaryPlayer?.setActive(playing && keySentenceReady);
   }
   window.matchMedia?.('(max-width: 900px)')?.addEventListener?.('change', () => syncDesktopView());
   load().catch((err) => {
