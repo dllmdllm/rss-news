@@ -135,11 +135,16 @@ def test_reduced_motion_keyboard_and_responsive_regression(player_page):
     page.locator('[data-player-toggle]').click(); ticks(page)
     assert position(page) > 0  # Explicit user override only.
     page.set_viewport_size({'width':390,'height':900})
+    # CSS responds synchronously, but matchMedia change callbacks are queued.
+    # Wait for the real mobile transition before simulating animation frames;
+    # two rapid viewport overrides can otherwise coalesce into no transition.
+    page.wait_for_function('document.body.classList.contains("mobile-home") && !document.body.classList.contains("summary-mode")', polling=20)
     assert not page.locator('#desktopViewTabs').is_visible()
     assert not page.locator('#summaryPlayer').is_visible()
     assert page.locator('#feed').is_visible()
     assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
     page.set_viewport_size({'width':1280,'height':900})
+    page.wait_for_function('document.body.classList.contains("summary-mode") && document.querySelector("[data-player-toggle]").textContent.includes("繼續")', polling=20)
     at = position(page); ticks(page)
     assert position(page) == at
 
