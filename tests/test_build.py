@@ -606,6 +606,10 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(build, "generate_daily_brief", fake_daily_brief)
+    monkeypatch.setattr(build, "run_media_qa", fake_daily_brief)
+    async def fake_media_notification():
+        return []
+    monkeypatch.setattr(build, "notify_media_qa", fake_media_notification)
 
     # sync_trending_keywords() 會真.打 Google Trends RSS endpoint——dry run
     # 唔應該喺跑 test 嗰陣觸發真實網絡請求（同上面 daily_brief/telegram
@@ -662,7 +666,7 @@ def _isolate_core(monkeypatch, tmp_path):
         pass
     for name in ['sync_trending_keywords', 'retranslate_english_titles', 'translate_english_content',
                  'generate_panel_digests', 'compute_embeddings', 'send_breaking_alerts',
-                 'send_keyword_alerts', 'check_source_health', 'generate_daily_brief', 'generate_entity_digests']:
+                 'send_keyword_alerts', 'check_source_health', 'generate_daily_brief', 'generate_entity_digests', 'run_media_qa', 'notify_media_qa']:
         monkeypatch.setattr(build, name, noop)
     async def fetch():
         return [_article('partial', '<p>完整內文</p>')], {'Test source': {'category':'Test', 'count':1}}
@@ -671,6 +675,12 @@ def _isolate_core(monkeypatch, tmp_path):
     monkeypatch.setattr(build, 'fetch_all', fetch)
     monkeypatch.setattr(build, 'scrape_all', identity)
     monkeypatch.setattr(build, 'analyse_all', identity)
+
+
+def test_matching_first_image_after_text_keeps_original_position():
+    content='<p>原始導言</p><img src="https://example.com/coverphoto.jpg"><p>後文</p>'
+    result,removed=build.remove_duplicate_leading_thumbnail(content,'https://example.com/coverphoto.jpg')
+    assert not removed and result==content
 
 
 @pytest.fixture

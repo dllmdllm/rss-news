@@ -1,0 +1,436 @@
+{
+  "hk01_embedded_order": [
+    {
+      "source": "HK01 突發",
+      "id": "cf4f6608e919",
+      "source_images": 7,
+      "published_body_images": 7,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 7,
+      "source_block_types": {
+        "image": 2,
+        "gallery": 2,
+        "text": 3,
+        "related": 1
+      },
+      "chars_before_first_remaining_image": 164
+    },
+    {
+      "source": "HK01 社會",
+      "id": "55da158d8dca",
+      "source_images": 7,
+      "published_body_images": 7,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 5,
+      "source_block_types": {
+        "image": 4,
+        "gallery": 1,
+        "text": 2,
+        "related": 1
+      },
+      "chars_before_first_remaining_image": 115
+    },
+    {
+      "source": "HK01 國際",
+      "id": "47b9f09a024d",
+      "source_images": 41,
+      "published_body_images": 41,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 52,
+      "source_block_types": {
+        "text": 16,
+        "gallery": 4,
+        "related": 4,
+        "quote": 3,
+        "image": 2,
+        "summary": 5
+      },
+      "chars_before_first_remaining_image": 216
+    },
+    {
+      "source": "HK01 中國",
+      "id": "084ea1ca34f4",
+      "source_images": 7,
+      "published_body_images": 7,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 13,
+      "source_block_types": {
+        "text": 4,
+        "image": 3,
+        "gallery": 1,
+        "related": 1,
+        "code": 1
+      },
+      "chars_before_first_remaining_image": 286
+    },
+    {
+      "source": "HK01 娛樂",
+      "id": "6d37f02a65f7",
+      "source_images": 24,
+      "published_body_images": 22,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 32,
+      "source_block_types": {
+        "text": 19,
+        "gallery": 4,
+        "image": 13,
+        "table": 1,
+        "code": 1
+      },
+      "chars_before_first_remaining_image": 683
+    },
+    {
+      "source": "HK01 熱話",
+      "id": "aae8eadf4948",
+      "source_images": 9,
+      "published_body_images": 8,
+      "body_images_are_source_ordered_subsequence": false,
+      "source_text_blocks": 19,
+      "source_block_types": {
+        "related": 2,
+        "image": 9,
+        "text": 8
+      },
+      "chars_before_first_remaining_image": 117
+    },
+    {
+      "source": "HK01 深圳",
+      "id": "7b999b25c1af",
+      "source_images": 43,
+      "published_body_images": 43,
+      "body_images_are_source_ordered_subsequence": true,
+      "source_text_blocks": 47,
+      "source_block_types": {
+        "text": 19,
+        "gallery": 12,
+        "related": 3,
+        "summary": 5,
+        "code": 1
+      },
+      "chars_before_first_remaining_image": 153
+    }
+  ],
+  "issues": [
+    {
+      "kind": "invalid-thumbnail",
+      "id": "af43c7370b47",
+      "source": "TVB 新聞",
+      "value": "/_nuxt/default.R189UE3B.jpg"
+    },
+    {
+      "kind": "invalid-thumbnail",
+      "id": "7bd86660d030",
+      "source": "TVB 新聞",
+      "value": "/_nuxt/default.R189UE3B.jpg"
+    },
+    {
+      "kind": "invalid-thumbnail",
+      "id": "f562146358be",
+      "source": "TVB 新聞",
+      "value": "/_nuxt/default.R189UE3B.jpg"
+    },
+    {
+      "kind": "invalid-thumbnail",
+      "id": "2b8e855b9e10",
+      "source": "cnBeta",
+      "value": "//player.bilibili.com/player.html?bvid=BV1Xopf6mEm7&page=1\" frameborder=\"0\"></iframe></p><p>界面列出了游戏大小和评价，却没有显示价格。视频中可见《战地6》《007：初露锋芒》《极限竞速：地平线5》《黑神话：悟空》等作品。目前没有关于Overdrive技术原理的进一步信息。</p><p><img src=\"https://img.3dmgame.com/uploads/images/news/20261013/1791841197_953311_jpg_r.jpg"
+    },
+    {
+      "kind": "repeated-body-image-url",
+      "id": "2b8e855b9e10",
+      "source": "cnBeta",
+      "occurrences": 2
+    },
+    {
+      "kind": "repeated-body-image-url",
+      "id": "448b2d610abb",
+      "source": "cnBeta",
+      "occurrences": 1
+    },
+    {
+      "kind": "invalid-thumbnail",
+      "id": "9251b9591e6c",
+      "source": "TVB 新聞",
+      "value": "/_nuxt/default.R189UE3B.jpg"
+    },
+    {
+      "kind": "repeated-body-image-url",
+      "id": "1f9dae071acc",
+      "source": "HK01 深圳",
+      "occurrences": 1
+    }
+  ],
+  "source_totals": {
+    "RTHK 本地": {
+      "articles": 20,
+      "body_images": 0,
+      "no_image_anywhere": 3,
+      "short_under150": 1,
+      "no_sentences": 0
+    },
+    "明報 本地": {
+      "articles": 30,
+      "body_images": 0,
+      "no_image_anywhere": 1,
+      "short_under150": 17,
+      "no_sentences": 0
+    },
+    "am730": {
+      "articles": 40,
+      "body_images": 10,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 1
+    },
+    "東網 本地": {
+      "articles": 30,
+      "body_images": 30,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 1
+    },
+    "星島頭條": {
+      "articles": 100,
+      "body_images": 645,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "RTHK 國際": {
+      "articles": 20,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 2,
+      "no_sentences": 0
+    },
+    "RTHK 大中華": {
+      "articles": 12,
+      "body_images": 0,
+      "no_image_anywhere": 1,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "明報 國際": {
+      "articles": 17,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 16,
+      "no_sentences": 0
+    },
+    "明報 中國": {
+      "articles": 14,
+      "body_images": 0,
+      "no_image_anywhere": 1,
+      "short_under150": 11,
+      "no_sentences": 0
+    },
+    "東網 國際": {
+      "articles": 30,
+      "body_images": 30,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "明報 娛樂": {
+      "articles": 28,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 16,
+      "no_sentences": 0
+    },
+    "東網 娛樂": {
+      "articles": 30,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 2
+    },
+    "明報 消閒": {
+      "articles": 11,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 8,
+      "no_sentences": 0
+    },
+    "WeekendHK": {
+      "articles": 10,
+      "body_images": 26,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "GoTrip": {
+      "articles": 10,
+      "body_images": 10,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "cnBeta": {
+      "articles": 45,
+      "body_images": 46,
+      "no_image_anywhere": 0,
+      "short_under150": 1,
+      "no_sentences": 0
+    },
+    "HKEPC": {
+      "articles": 10,
+      "body_images": 0,
+      "no_image_anywhere": 10,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "Unwire": {
+      "articles": 10,
+      "body_images": 28,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "Yahoo 科技": {
+      "articles": 12,
+      "body_images": 45,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "9to5Mac": {
+      "articles": 21,
+      "body_images": 21,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "New MobileLife": {
+      "articles": 26,
+      "body_images": 73,
+      "no_image_anywhere": 0,
+      "short_under150": 2,
+      "no_sentences": 2
+    },
+    "法庭線": {
+      "articles": 9,
+      "body_images": 29,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 1
+    },
+    "The Collective HK": {
+      "articles": 8,
+      "body_images": 54,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "The Witness": {
+      "articles": 8,
+      "body_images": 10,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 突發": {
+      "articles": 17,
+      "body_images": 92,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 社會": {
+      "articles": 17,
+      "body_images": 69,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 國際": {
+      "articles": 20,
+      "body_images": 202,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 中國": {
+      "articles": 10,
+      "body_images": 60,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 娛樂": {
+      "articles": 10,
+      "body_images": 123,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 熱話": {
+      "articles": 8,
+      "body_images": 109,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HK01 深圳": {
+      "articles": 9,
+      "body_images": 225,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HuffPost 新聞": {
+      "articles": 15,
+      "body_images": 4,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HuffPost 娛樂": {
+      "articles": 0,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "HuffPost 生活": {
+      "articles": 2,
+      "body_images": 4,
+      "no_image_anywhere": 0,
+      "short_under150": 0,
+      "no_sentences": 0
+    },
+    "TVB 新聞": {
+      "articles": 30,
+      "body_images": 24,
+      "no_image_anywhere": 0,
+      "short_under150": 4,
+      "no_sentences": 2
+    },
+    "Now 新聞": {
+      "articles": 30,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 11,
+      "no_sentences": 1
+    },
+    "Now 國際": {
+      "articles": 30,
+      "body_images": 0,
+      "no_image_anywhere": 0,
+      "short_under150": 1,
+      "no_sentences": 0
+    }
+  },
+  "translated_marker_articles": [
+    {
+      "id": "f7bef5e0ede8",
+      "source": "9to5Mac",
+      "url": "https://9to5mac.com/2026/10/12/the-iphone-duos-cooling-system-hides-a-clever-trick-inside-its-hinge/"
+    }
+  ],
+  "cnbeta_traditional_text_match": {
+    "id": "caddbfd085f1",
+    "paragraphs": 51,
+    "matched": 50
+  }
+}

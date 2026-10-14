@@ -60,6 +60,8 @@ from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
 from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vault
 from src.source_health import check_source_health
+from src.media_fields import repair_thumbnail
+from src.media_qa import inventory as media_inventory, run_media_qa, notify_media_qa
 from src.trends_watch import sync_trending_keywords
 from src.daily_brief import generate_daily_brief
 from src.entity_digest import canonical_entity, generate_entity_digests
@@ -98,7 +100,7 @@ TOPIC_ALIASES = [
 
 # Fields not needed by the index view — kept out of articles.json to shrink
 # the metadata payload. Full content lives at data/content/{id}.json.
-_CONTENT_FIELDS = ("content", "rss_content")
+_CONTENT_FIELDS = ("content", "rss_content", "_unit_marker_repair_from")
 
 _UNCERTAINTY_PATTERNS = (
     (re.compile(r"據悉|消息指|消息人士|有傳|傳出|網傳|未證實|暫未證實|據報"), "消息未證實"),
@@ -763,6 +765,12 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     first_img = soup.find("img")
     if not first_img:
         return content, False
+    # Only a genuinely leading image may be represented by the separate hero.
+    # Removing the first image after editorial text would move it out of order.
+    preceding_text = ''.join(str(node) for node in first_img.previous_elements
+                             if getattr(node, 'name', None) is None)
+    if preceding_text.strip():
+        return content, False
     first_url = first_img.get("src") or first_img.get("data-src") or first_img.get("data-original")
     if not _images_match(first_url, thumbnail):
         return content, False
@@ -792,8 +800,10 @@ def _retain_verified_content(articles: list, old_articles: list) -> None:
         article["content"] = record["content"]
         article["content_quality"] = dict(quality)
         article["thumbnail"] = previous.get("thumbnail")
+        if record.get('content_capture'):
+            article['content_capture'] = record['content_capture']
         article["content_retention"] = {
-            "scraped_at": record.get("scraped_at"),
+            "scraped_at": (record.get('content_capture') or {}).get('observed_at') or record.get("scraped_at"),
             "latest_fallback": fallback or "unavailable",
             "latest_error": article.get("scrape_error"),
         }
@@ -808,6 +818,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
     deduped = 0
     for a in articles:
         content = a.get("content")
+        repair_thumbnail(a)
         old_record = _load_old_content_record(a["id"])
         # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
         # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
@@ -836,11 +847,15 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 minimal += 1
                 fallback = "minimal"
             a["content"] = content
+            previous_quality = a.get('content_quality') or {}
             a["content_quality"] = content_quality(
                 content,
                 source=a.get("source", ""),
                 fallback=fallback,
             )
+            for key in ('origin', 'completeness'):
+                if key in previous_quality:
+                    a['content_quality'][key] = previous_quality[key]
         cpath = CONTENT_DIR / f"{a['id']}.json"
         quality = a.get("content_quality") or {}
         if not quality and old_record:
@@ -885,6 +900,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 **provenance,
                 "scrape_error": a.get("scrape_error"),
                 "content_retention": a.get("content_retention"),
+                "content_capture": a.get("content_capture"),
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -1202,6 +1218,12 @@ async def main():
 
         _retain_verified_content(articles, old_articles)
 
+        for article in articles:
+            repair_thumbnail(article)
+        # Pure boundaries before any paid enrichment. Existing strict snapshot
+        # validation still checks final metadata/sidecars before publication.
+        media_inventory(articles)
+
         # --- translate English source bodies (hard cap 90s) ---
         # Must run before analyse: analyse's key_sentences are quoted verbatim
         # from article["content"], and the frontend highlights those quotes by
@@ -1249,6 +1271,14 @@ async def main():
 
     t = time.monotonic()
     _tlog("panel_digest start")
+    try:
+        await run_media_qa(articles)
+        mark_step("media_qa", seconds=time.monotonic() - t)
+        await asyncio.wait_for(notify_media_qa(), timeout=30)
+    except Exception as exc:
+        _tlog(f"media_qa: {exc!r}")
+        mark_step("media_qa", ok=False, error=repr(exc), seconds=time.monotonic() - t)
+    t = time.monotonic()
     try:
         await asyncio.wait_for(generate_panel_digests(articles), timeout=200)
         mark_step("panel_digest", seconds=time.monotonic() - t)

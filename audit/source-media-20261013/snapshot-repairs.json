@@ -1,0 +1,158 @@
+[
+  {
+    "id": "6d37f02a65f7",
+    "kinds": [
+      "approved-captured-original-parser-repair"
+    ]
+  },
+  {
+    "id": "47b9f09a024d",
+    "kinds": [
+      "approved-captured-original-parser-repair"
+    ]
+  },
+  {
+    "id": "edf3013227dc",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "af43c7370b47",
+    "kinds": [
+      "same-article-thumbnail-repair"
+    ]
+  },
+  {
+    "id": "d1ccf0639b4f",
+    "kinds": [
+      "approved-captured-original-parser-repair"
+    ]
+  },
+  {
+    "id": "7bd86660d030",
+    "kinds": [
+      "same-article-thumbnail-repair"
+    ]
+  },
+  {
+    "id": "f562146358be",
+    "kinds": [
+      "same-article-thumbnail-repair"
+    ]
+  },
+  {
+    "id": "9e0ceadde738",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "feb6b16eb9c1",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "2b8e855b9e10",
+    "kinds": [
+      "same-article-thumbnail-repair"
+    ]
+  },
+  {
+    "id": "9251b9591e6c",
+    "kinds": [
+      "same-article-thumbnail-repair"
+    ]
+  },
+  {
+    "id": "cbfa28cca7d2",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "9e187cf2975c",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "f7bef5e0ede8",
+    "kinds": [
+      "confirmed-unit-label-cleanup"
+    ]
+  },
+  {
+    "id": "85ef6d2fbe74",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "f70f0f5d54ec",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "46658142414f",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "e24cf0f9c378",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "8a5e76eb5efb",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "01a305d3f61e",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "5531b49772d9",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "e3b7ea87607c",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "97ca2af707a5",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "a7bb3e437c54",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "bce57dec72a8",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  },
+  {
+    "id": "3529836d9dcd",
+    "kinds": [
+      "public-api-completeness-label"
+    ]
+  }
+]

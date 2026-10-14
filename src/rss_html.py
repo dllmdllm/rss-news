@@ -6,7 +6,7 @@ from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from bs4 import BeautifulSoup, Comment
 
 RSS_HTML_VERSION = 1
-_ALLOWED = set('p h1 h2 h3 h4 h5 h6 ul ol li blockquote strong em b i br figure figcaption img a hr table thead tbody tr td th'.split())
+_ALLOWED = set('p h1 h2 h3 h4 h5 h6 ul ol li blockquote strong em b i br figure figcaption img a hr table caption thead tbody tr td th'.split())
 _DROP = set('script style iframe object embed form input button textarea select svg math template noscript head'.split())
 _BLOCKS = _ALLOWED - {'strong', 'em', 'b', 'i', 'br', 'img', 'a'}
 
@@ -50,7 +50,7 @@ def _image_url(tag, base_url):
     return None
 
 
-def sanitize_rss_html(raw: str, base_url: str = '') -> str:
+def sanitize_rss_html(raw: str, base_url: str = '', *, dedupe_images: bool = True) -> str:
     soup = BeautifulSoup(raw or '', 'html.parser')
     for comment in soup.find_all(string=lambda node: isinstance(node, Comment)):
         comment.extract()
@@ -78,7 +78,7 @@ def sanitize_rss_html(raw: str, base_url: str = '') -> str:
             # Resolve lazy attributes before emitting only an inert img src.
             probe = soup.new_tag('img', attrs=attrs)
             url = _image_url(probe, base_url)
-            if not url or url in seen_images:
+            if not url or (dedupe_images and url in seen_images):
                 tag.decompose()
                 continue
             seen_images.add(url)
@@ -95,6 +95,10 @@ def sanitize_rss_html(raw: str, base_url: str = '') -> str:
                 tag['href'] = url
                 tag['target'] = '_blank'
                 tag['rel'] = 'noopener noreferrer'
+        elif tag.name in {'td', 'th'}:
+            for key in ('rowspan', 'colspan'):
+                if str(attrs.get(key) or '').isdigit() and 1 <= int(attrs[key]) <= 100:
+                    tag[key] = str(attrs[key])
     return str(soup)
 
 

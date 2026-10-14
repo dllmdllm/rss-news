@@ -3,12 +3,13 @@ import json
 import re
 from datetime import datetime, timezone
 from html import escape as _html_escape
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 import trafilatura
 from src.rss_html import first_rss_image, safe_http_url, sanitize_rss_html
 from src.hk_text import from_simplified
+from src.media_fields import image_url, repair_thumbnail
 from src.public_http import UnsafeDestination, public_connector, public_get, read_public_body
 from bs4 import BeautifulSoup, Comment, NavigableString
 
@@ -173,7 +174,7 @@ def _build_hk01_content_from_data(data: dict) -> str | None:
         if not is_prefix:
             parts.append(f"<p>{_html_escape(lead_text)}</p>")
     def _emit_image(img: dict):
-        url = (img or {}).get("cdnUrl")
+        url = image_url((img or {}).get("cdnUrl"))
         if not url:
             return
         caption = (img or {}).get("caption") or ""
@@ -203,6 +204,16 @@ def _build_hk01_content_from_data(data: dict) -> str | None:
                 text = _hk01_tokens_to_text(para).strip()
                 if text:
                     parts.append(f"<p>{_html_escape(text)}</p>")
+        elif btype == "quote":
+            message = str(block.get('message') or '').strip()
+            author = str(block.get('author') or '').strip()
+            if message:
+                parts.append('<blockquote><p>' + _html_escape(message) + '</p>' +
+                             ('<p>' + _html_escape(author) + '</p>' if author else '') + '</blockquote>')
+        elif btype == "table":
+            table = BeautifulSoup(sanitize_rss_html(str(block.get('htmlString') or '')), 'html.parser').find('table')
+            if table:
+                parts.append(str(table))
         # related / code / video / ads → skipped on purpose
     if not parts:
         return None
@@ -1150,6 +1161,8 @@ def content_quality(content: str, *, source: str, fallback: str) -> dict:
         "images": images,
         "source": source,
         "fallback": fallback,
+        "origin": "article-html" if fallback == "none" else "rss" if fallback.startswith('rss-') else fallback,
+        "completeness": "extracted" if fallback == "none" else "unverified",
     }
 
 
@@ -1168,7 +1181,7 @@ def _split_fallback_text(text: str) -> list[str]:
 
 
 def _format_rss_fallback_html(rss: str, base_url: str = "") -> str:
-    safe = sanitize_rss_html(rss, base_url)
+    safe = sanitize_rss_html(rss, base_url, dedupe_images=False)
     soup = BeautifulSoup(safe, "html.parser")
     if soup.find(True):
         return safe if soup.get_text(strip=True) or soup.find("img") else ""
@@ -1183,7 +1196,7 @@ def _rss_fallback_content(
 ) -> str | None:
     """Preserve safe RSS text/media and mark it as partial source content."""
     rss = _format_rss_fallback_html(article.get("rss_content") or "", article.get("url") or "")
-    thumb = safe_http_url(article.get("thumbnail"), article.get("url") or "") or first_rss_image(rss)
+    thumb = image_url(article.get("thumbnail"), article.get("url") or "") or image_url(first_rss_image(rss))
     article["thumbnail"] = thumb
     inline_urls = {img.get("src") for img in BeautifulSoup(rss, "html.parser").find_all("img")}
     img_html = (
@@ -1212,6 +1225,9 @@ def _rss_fallback_content(
         source=article["source"],
         fallback=fallback,
     )
+    if article.get('collection_method') == 'wordpress-public-posts':
+        article['content_quality']['origin'] = 'wordpress-public-posts'
+        article['content_quality']['completeness'] = 'unverified'
     return content
 
 
@@ -1277,7 +1293,11 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     # HK01/TVB ship empty article bodies hydrated client-side; build from
     # __NEXT_DATA__ JSON to preserve image order and get full text.
     content: str | None = None
-    if _is_hk01_url(url):
+    if urlsplit(url).hostname in {'www.hkepc.com', 'hkepc.com'}:
+        source_body = BeautifulSoup(html, 'html.parser').select_one('#view.content')
+        if source_body:
+            content = sanitize_rss_html(str(source_body), url, dedupe_images=False)
+    elif _is_hk01_url(url):
         content = _build_hk01_content(html)
     elif _is_tvb_url(url):
         content = _build_tvb_content(html)
@@ -1330,6 +1350,7 @@ async def _scrape_one(
     article: dict,
     sem: asyncio.Semaphore,
 ) -> dict:
+    repair_thumbnail(article)
     # Already scraped in a previous build and restored via _merge_missing_sources
     if article.get("content"):
         return article
@@ -1368,7 +1389,7 @@ async def _scrape_one(
                 # og:image embedded in the article body — only the listing
                 # card (which reads thumbnail directly) showed an image.
                 if og_image and not article.get("thumbnail"):
-                    article["thumbnail"] = og_image
+                    article["thumbnail"] = image_url(og_image, article['url'])
 
                 if content:
                     content = _fix_graphic_tags(content)
