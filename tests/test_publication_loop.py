@@ -1,6 +1,7 @@
 """Deterministic deployment-loop regressions: no live HTTP or paid calls."""
 import asyncio
 import json
+import os
 import ssl
 import subprocess
 from pathlib import Path
@@ -18,6 +19,11 @@ def test_default_head_verification_survives_checkout_owner_mismatch_without_pers
     revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
     config_before = (repo / '.git/config').read_bytes()
     monkeypatch.setenv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1')
+    # Isolate only the fixture subprocesses from hosted image trust defaults.
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', os.devnull)
+    monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
+    monkeypatch.delenv('GIT_CONFIG_COUNT', raising=False)
+    monkeypatch.delenv('GIT_CONFIG_PARAMETERS', raising=False)
     naked = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True)
     assert naked.returncode != 0 and b'dubious ownership' in naked.stderr
 
