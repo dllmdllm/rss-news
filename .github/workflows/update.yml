@@ -100,9 +100,7 @@ jobs:
       - name: Verify prior publication before paid collection
         # Existing cycles resume public reads before enrichment; no AI retry.
         run: |
-          $priorRevision = git rev-parse HEAD
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/verify_publication.py --revision "$priorRevision" --result "$env:RUNNER_TEMP\rss-news-prior-publication-${{ github.run_id }}.json"
+          python tools/verify_publication.py --result "$env:RUNNER_TEMP\rss-news-prior-publication-${{ github.run_id }}.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           MINIMAX_API_KEY: ''
