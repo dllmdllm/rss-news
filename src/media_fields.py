@@ -1,5 +1,6 @@
 """Deterministic media boundaries; no networking or provider calls."""
 import re
+import hashlib
 from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from src.rss_html import safe_http_url
@@ -34,6 +35,43 @@ def repair_thumbnail(article):
                 break
     article['thumbnail'] = valid
     return valid
+
+
+def repair_inline_images(article):
+    """Omit rejected source image URLs before strict inventory; retain text/order.
+
+    No request, alternate route or fabricated replacement image is involved.
+    Leave unchanged bodies byte-identical, and disclose omissions in quality.
+    """
+    content = article.get('content')
+    if not content:
+        return 0
+    soup = BeautifulSoup(content, 'html.parser')
+    changed = False
+    omitted = 0
+    for tag in soup.find_all('img'):
+        # Publishers sometimes emit an unescaped space inside a filename.
+        # Encode that literal byte, then require the unchanged strict guard;
+        # never encode controls/quotes or accept a rejected destination.
+        candidate = str(tag.get('src') or '').replace(' ', '%20')
+        valid = image_url(candidate, article.get('url') or '')
+        if not valid:
+            tag.decompose()
+            omitted += 1
+            changed = True
+        elif tag.get('src') != valid:
+            tag['src'] = valid
+            changed = True
+    if changed:
+        article['content'] = str(soup)
+        if article.get('content_hash'):
+            article['content_hash'] = hashlib.sha256(article['content'].encode('utf-8')).hexdigest()
+    if omitted:
+        quality = dict(article.get('content_quality') or {})
+        quality['omitted_invalid_images'] = int(quality.get('omitted_invalid_images') or 0) + omitted
+        quality['images'] = len(soup.find_all('img'))
+        article['content_quality'] = quality
+    return omitted
 
 
 def clean_unit_markers(content):

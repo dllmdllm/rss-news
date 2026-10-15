@@ -19,6 +19,18 @@ def _article(article_id: str, content=None):
     }
 
 
+def test_image_only_rejection_uses_honest_minimal_body_without_weakening_gate():
+    from src.media_qa import inventory
+    row=_article('image-only','<figure><img src="https://127.0.0.1/private.png"></figure>')
+    row['content_quality']={'fallback':'none','images':1}
+    build._prepare_article_media(row)
+    assert row['content_quality']['fallback']=='minimal'
+    assert row['content_quality']['omitted_invalid_images']==1
+    assert row['content_quality']['images']==0
+    assert row['title'] in row['content'] and '127.0.0.1' not in row['content']
+    assert inventory([row])['records']==1
+
+
 def _topic_article(article_id: str, topic: str, now: datetime, hours_ago: int, source: str = "Test source"):
     article = _article(article_id, content="<p>full text</p>")
     article.update({
@@ -531,7 +543,7 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
         return ([_article("dryrun", content=None)], {"Test source": {"category": "Test", "count": 1}})
 
     async def fake_scrape_all(articles):
-        articles[0]["content"] = "<p>fresh full text</p><img src=\"https://example.com/a.jpg\">"
+        articles[0]["content"] = "<p>fresh full text</p><img src=\"https://example.com/a.jpg\"><img src=\"data:image/png;base64,AAAA\">"
         articles[0]["content_quality"] = {
             "score": 1,
             "chars": 15,
@@ -542,6 +554,8 @@ def test_main_dry_run_writes_expected_artifacts(tmp_path, monkeypatch):
         return articles
 
     async def fake_analyse_all(articles):
+        assert 'data:image' not in articles[0]['content']
+        assert articles[0]['content_quality']['omitted_invalid_images']==1
         articles[0].update({
             "summary": "summary",
             "score": 5,

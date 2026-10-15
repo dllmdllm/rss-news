@@ -143,6 +143,12 @@
         notice.textContent = "未取得全文：暫時未有可用正文，請查看原文。";
       }
     }
+    const omitted = Number(article.content_quality?.omitted_invalid_images || 0);
+    if (Number.isInteger(omitted) && omitted > 0) {
+      if (notice.hidden) notice.textContent = '';
+      notice.hidden = false;
+      notice.textContent += `${notice.textContent ? ' ' : ''}來源有 ${omitted} 張圖片網址無效，已略過；文字及其他圖片保留。`;
+    }
     document.querySelector('#articleTtsMode option[value="full"]').textContent = partial ? "現有內容" : "全文";
   }
 
