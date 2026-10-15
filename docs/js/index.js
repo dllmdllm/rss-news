@@ -539,6 +539,19 @@
     return [...rows.values()].sort((a, b) => b.count - a.count);
   }
 
+  // Three missed 20-minute publisher cycles: history counts do not prove current health.
+  function sourceObservation(info, now = Date.now()) {
+    const value = info?.checked_at ?? info?.observed_at;
+    const parts = typeof value === "string" && value.match(/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/i);
+    const validDay = parts && Number(parts[2]) >= 1 && Number(parts[2]) <= 12 && Number(parts[3]) >= 1 && Number(parts[3]) <= new Date(Date.UTC(Number(parts[1]), Number(parts[2]), 0)).getUTCDate();
+    const stamp = validDay ? Date.parse(value) : NaN;
+    if (!Number.isFinite(stamp)) return { status: "unknown", label: "檢查時間未提供或無效", time: "" };
+    const time = new Date(stamp).toLocaleString("zh-HK");
+    if (stamp > now + 5 * 60 * 1000) return { status: "unknown", label: "檢查時間在未來，狀態未確認", time };
+    if (now - stamp > 60 * 60 * 1000) return { status: "stale", label: "觀察已過期", time };
+    return { status: "fresh", label: "", time };
+  }
+
   function renderAiPanel(filteredList) {
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
@@ -586,15 +599,29 @@
         <span>${esc(row.outlet)}${row.feeds > 1 ? `<span class="side-health-sub">${row.feeds} 個版面</span>` : ""}</span>
         <span>${row.count} 篇</span>
       </div>`).join("");
-    const troubled = Object.entries(state.sources || {}).filter(([, info]) =>
-      info.error || info.fetch_status === "failed" ||
-      (info.fetch_status !== "not_modified" && !info.not_modified && Number(info.fresh_count ?? info.count ?? 0) === 0));
-    $("sideSourceHealth").innerHTML += troubled.map(([name, info]) => {
+    const observations = Object.entries(state.sources || {}).map(([name, info]) => {
+      const failed = !!info.error || info.fetch_status === "failed";
+      const zero = !failed && info.fetch_status !== "not_modified" && !info.not_modified && Number(info.fresh_count ?? info.count ?? 0) === 0;
+      return { name, info, failed, zero, observation: sourceObservation(info) };
+    });
+    const troubled = observations.filter(row => row.failed || row.zero);
+    const stale = observations.filter(row => row.observation.status === "stale");
+    const unknown = observations.filter(row => row.observation.status === "unknown");
+    $("sideSourceHealth").innerHTML += observations.map(({ name, info, failed, zero, observation }) => {
       const retained = Number(info.effective_count || 0);
       const link = /^https?:\/\//i.test(info.feed_url || "") ? `<a href="${esc(safeUrl(info.feed_url))}">RSS</a>` : "";
-      return `<div class="side-health-row" role="status"><span>${esc(name)}：${info.error || info.fetch_status === "failed" ? "最新抓取失敗" : "最新抓取 0 篇"}${retained ? `；保留 ${retained} 篇舊資料` : ""} ${link}${window.RssEventReading?.healthObservation(info) || ""}</span></div>`;
+      const outcome = failed ? "最近一次抓取失敗" : zero ? "最近一次抓取 0 篇" : "最近一次抓取成功";
+      const status = observation.status === "fresh" ? outcome : `${observation.label}；${outcome}`;
+      const history = retained && (failed || zero || observation.status !== "fresh") ? `；保留 ${retained} 篇歷史資料` : "";
+      const stamp = `<span class="reading-provenance">檢查時間 ${esc(observation.time || "未提供或無效")}</span>`;
+      const reason = String(info.error || "").replace(/\s+/g, " ").trim().slice(0, 140);
+      return `<div class="side-health-row" role="status"><span>${esc(name)}：${esc(status)}${history} ${link}${stamp}${reason ? `<span class="reading-provenance">原因：${esc(reason)}</span>` : ""}</span></div>`;
     }).join("");
-    $("sourceHealth").textContent = troubled.length ? `${troubled.length} 個 feed 需要檢查` : "來源正常";
+    const summary = [];
+    if (troubled.length) summary.push(`${troubled.length} 個 feed 需要檢查`);
+    if (stale.length) summary.push(`${stale.length} 個 feed 觀察已過期`);
+    if (unknown.length) summary.push(`${unknown.length} 個 feed 狀態未確認`);
+    $("sourceHealth").textContent = summary.join(" · ") || (observations.length ? "來源正常" : "來源狀態未確認");
   }
 
   function ensureFuse() {

@@ -173,3 +173,42 @@ def test_completed_queue_shows_last_segment_then_replays_only_on_click(browser, 
         assert page.locator('#articleTtsProgress').inner_text() == f'1 / {total} 段'
         assert page.evaluate('ttsCalls.length') == 1
         context.close()
+
+
+def test_two_tabs_sync_read_saved_labels_without_resetting_position_or_speech(browser, news_data):
+    with _static_server() as base:
+        context = browser.new_context(service_workers='block')
+        first, second = context.new_page(), context.new_page()
+        for page in (first, second):
+            _route_data(page, news_data)
+            _long_body(page)
+            _speech(page)
+            page.goto(base + '/article.html?id=a0')
+            page.locator('#content strong').wait_for()
+        first.locator('#articleTtsNext').click()
+        first.evaluate("scrollTo(0, document.querySelector('#content').offsetTop + 1500)")
+        first.wait_for_function("RssReaderState.articleState('a0').position > 0")
+        first.evaluate('window.didCancel=false')
+        scroll = first.evaluate('scrollY')
+        queue = first.locator('#articleTtsSeek').input_value()
+
+        second.locator('#readerRead').click()
+        first.wait_for_function("document.querySelector('#readerRead').getAttribute('aria-pressed') === 'true'")
+        assert first.locator('#readerRead').inner_text() == '標記未讀'
+        second.locator('#readerSaveLater').click()
+        first.wait_for_function("document.querySelector('#readerSaveLater').getAttribute('aria-pressed') === 'true'")
+        assert first.locator('#readerSaveLater').inner_text() == '已加入稍後閱讀'
+        assert first.evaluate('scrollY') == scroll
+        assert first.locator('#articleTtsSeek').input_value() == queue
+        assert first.evaluate('ttsCalls.length') == 0
+        assert not first.evaluate('didCancel')
+
+        first.locator('#readerRead').click()
+        second.wait_for_function("document.querySelector('#readerRead').getAttribute('aria-pressed') === 'false'")
+        assert second.locator('#readerRead').inner_text() == '標記已讀'
+        first.locator('#readerSaveLater').click()
+        second.wait_for_function("document.querySelector('#readerSaveLater').getAttribute('aria-pressed') === 'false'")
+        assert second.locator('#readerSaveLater').inner_text() == '稍後閱讀'
+        assert not second.evaluate("RssReaderState.articleState('a0').read")
+        assert not second.evaluate("RssReaderState.articleState('a0').saved")
+        context.close()
