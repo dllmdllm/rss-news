@@ -40,6 +40,11 @@ def test_inline_normalization_keeps_untouched_bytes_and_resolves_same_article_pa
     assert repair_inline_images(row)==0
     assert 'https://news.example.com/photo.jpg' in row['content']
     qa.inventory([row])
+    row['content']='<p>First</p><img src=" https://images.example.com/photo.jpg "><p>Last</p>'
+    assert repair_inline_images(row)==0
+    assert 'src="https://images.example.com/photo.jpg"' in row['content']
+    assert 'news.example.com/%20' not in row['content']
+    qa.inventory([row])
 
 
 def test_am730_literal_filename_space_is_encoded_without_losing_source_image():

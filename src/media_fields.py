@@ -53,7 +53,7 @@ def repair_inline_images(article):
         # Publishers sometimes emit an unescaped space inside a filename.
         # Encode that literal byte, then require the unchanged strict guard;
         # never encode controls/quotes or accept a rejected destination.
-        candidate = str(tag.get('src') or '').replace(' ', '%20')
+        candidate = str(tag.get('src') or '').strip().replace(' ', '%20')
         valid = image_url(candidate, article.get('url') or '')
         if not valid:
             tag.decompose()
