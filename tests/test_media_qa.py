@@ -7,9 +7,54 @@ import time
 import aiohttp
 import pytest
 from src import media_qa as qa
-from src.media_fields import image_url, repair_thumbnail, clean_unit_markers
+from src.media_fields import image_url, repair_thumbnail, repair_inline_images, clean_unit_markers
 from src.public_http import UnsafeDestination
 from src.scrape import SourceAccessDenied, SourceHTTPError, _process_html_sync, _build_hk01_content_from_data, _rss_fallback_content
+
+
+@pytest.mark.parametrize('bad', ['data:image/png;base64,AAAA', 'javascript:bad()',
+    'https://127.0.0.1/x.jpg', 'https://user:pass@images.example.com/x.jpg',
+    'https://images.example.com/_nuxt/default.a.jpg', 'https://images.example.com/player.html', ''])
+def test_invalid_inline_is_omitted_before_gate_without_text_or_analysis_change(bad):
+    from src.analyse import analysis_input_hash
+    import hashlib
+    content=f'<p>First text.</p><figure><img src="{bad}"><figcaption>Original caption.</figcaption></figure><img src="https://images.example.com/good.jpg"><p>Last text.</p><img src="https://images.example.com/good.jpg">'
+    row={'id':'bad','url':'https://news.example.com/a','content':content,'content_hash':hashlib.sha256(content.encode()).hexdigest(),'content_quality':{'fallback':'none','origin':'article-html'}}
+    before=analysis_input_hash(row)
+    with pytest.raises(ValueError,match='invalid inline image'):
+        qa.inventory([row])
+    assert repair_inline_images(row)==1
+    assert analysis_input_hash(row)==before
+    assert row['content'].count('good.jpg')==2
+    assert row['content'].index('First text.')<row['content'].index('Original caption.')<row['content'].index('good.jpg')<row['content'].index('Last text.')
+    assert row['content_quality']=={'fallback':'none','origin':'article-html','omitted_invalid_images':1,'images':2}
+    assert qa.inventory([row])['records']==1
+    result=copy.deepcopy(row)
+    assert repair_inline_images(row)==0 and row==result
+
+
+def test_inline_normalization_keeps_untouched_bytes_and_resolves_same_article_paths():
+    row={'id':'ok','url':'https://news.example.com/a','content':"<p>Text</p><img src='https://images.example.com/photo.jpg' alt='Caption'>"}
+    original=row['content'];assert repair_inline_images(row)==0 and row['content']==original
+    row['content']='<p>First</p><img src="/photo.jpg"><p>Last</p>'
+    assert repair_inline_images(row)==0
+    assert 'https://news.example.com/photo.jpg' in row['content']
+    qa.inventory([row])
+
+
+def test_am730_literal_filename_space_is_encoded_without_losing_source_image():
+    from src.analyse import analysis_input_hash
+    raw='https://cdn3.am730.com.hk/processed/2025-10/1058581/block/singleImage/3239326/df/yau lai est_0.jpg?updatedAt=1792038067'
+    row={'id':'d852b5bceb7a','url':'https://www.am730.com.hk/article','content':f'<p>新聞正文</p><img src="{raw}"><p>原文圖說</p>'}
+    before=analysis_input_hash(row)
+    with pytest.raises(ValueError,match='invalid inline image'):
+        qa.inventory([row])
+    assert repair_inline_images(row)==0
+    assert raw.replace(' ','%20') in row['content']
+    assert row['content'].count('<img')==1
+    assert analysis_input_hash(row)==before
+    assert qa.inventory([row])['records']==1
+    assert 'omitted_invalid_images' not in row.get('content_quality',{})
 
 
 @pytest.mark.parametrize('value', ['/_nuxt/default.R189UE3B.jpg', '//player.example.com/a.html?x="<p>', 'javascript:bad()', 'https://u:p@example.com/p.jpg', 'https://127.0.0.1/p.jpg', 'https://private.internal/p.jpg'])

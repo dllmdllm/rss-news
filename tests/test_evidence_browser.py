@@ -102,7 +102,7 @@ def test_inline_hero_after_text_and_editorial_table_survive(browser, news_data):
     import copy
     data=copy.deepcopy(news_data)
     data['articles'][0]['thumbnail']='https://images.example.com/cover.jpg'
-    data['articles'][0]['content_quality']={'fallback':'rss-blocked','origin':'wordpress-public-posts'}
+    data['articles'][0]['content_quality']={'fallback':'rss-blocked','origin':'wordpress-public-posts','omitted_invalid_images':2}
     body='<p>原文導言先出現。</p><img src="https://images.example.com/cover.jpg"><blockquote><p>來源引述</p></blockquote><table><caption>演員表</caption><tr><td colspan="2">角色名稱</td></tr></table>'
     with _static_server() as base:
         context=browser.new_context(viewport={'width':390,'height':900},service_workers='block')
@@ -114,5 +114,6 @@ def test_inline_hero_after_text_and_editorial_table_survive(browser, news_data):
         assert page.locator('#content table caption').inner_text()=='演員表'
         assert page.locator('#content td').get_attribute('colspan')=='2'
         assert '公開 WordPress API' in page.locator('#contentNotice').inner_text()
+        assert '2 張圖片網址無效，已略過' in page.locator('#contentNotice').inner_text()
         assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
         context.close()

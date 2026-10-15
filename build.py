@@ -60,7 +60,7 @@ from src.embed import compute_embeddings
 from src.breaking_alert import send_breaking_alerts
 from src.keyword_alert import send_keyword_alerts, sync_watch_keywords_from_vault
 from src.source_health import check_source_health
-from src.media_fields import repair_thumbnail
+from src.media_fields import repair_thumbnail, repair_inline_images
 from src.media_qa import inventory as media_inventory, run_media_qa, notify_media_qa
 from src.trends_watch import sync_trending_keywords
 from src.daily_brief import generate_daily_brief
@@ -809,6 +809,22 @@ def _retain_verified_content(articles: list, old_articles: list) -> None:
         }
 
 
+def _prepare_article_media(article):
+    omitted = repair_inline_images(article)
+    if omitted:
+        soup = BeautifulSoup(article.get('content') or '', 'html.parser')
+        if not soup.get_text(strip=True) and not soup.find('img'):
+            previous = article.get('content_quality') or {}
+            article['content'] = _minimal_content(article)
+            article['content_quality'] = content_quality(article['content'], source=article.get('source', ''), fallback='minimal')
+            for key in ('origin', 'completeness', 'omitted_invalid_images'):
+                if key in previous:
+                    article['content_quality'][key] = previous[key]
+            if article.get('content_hash'):
+                article['content_hash'] = hashlib.sha256(article['content'].encode('utf-8')).hexdigest()
+    repair_thumbnail(article)
+
+
 def _write_content_sidecars(articles: list) -> dict[str, int]:
     _retain_verified_content(articles, _load_old_articles())
     written = 0
@@ -817,8 +833,8 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
     minimal = 0
     deduped = 0
     for a in articles:
+        _prepare_article_media(a)
         content = a.get("content")
-        repair_thumbnail(a)
         old_record = _load_old_content_record(a["id"])
         # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
         # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
@@ -853,7 +869,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
                 source=a.get("source", ""),
                 fallback=fallback,
             )
-            for key in ('origin', 'completeness'):
+            for key in ('origin', 'completeness', 'omitted_invalid_images'):
                 if key in previous_quality:
                     a['content_quality'][key] = previous_quality[key]
         cpath = CONTENT_DIR / f"{a['id']}.json"
@@ -1219,7 +1235,7 @@ async def main():
         _retain_verified_content(articles, old_articles)
 
         for article in articles:
-            repair_thumbnail(article)
+            _prepare_article_media(article)
         # Pure boundaries before any paid enrichment. Existing strict snapshot
         # validation still checks final metadata/sidecars before publication.
         media_inventory(articles)
