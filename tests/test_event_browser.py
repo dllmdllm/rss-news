@@ -31,8 +31,8 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
         assert '共同事实' in page.locator('#eventReadingList').inner_text()
         assert '暫定' in page.locator('#eventReadingList').inner_text()
         health = page.locator('#sideSourceHealth').text_content()
-        assert '故障來源：最新抓取失敗' in health and '原因：503 <img' in health
-        assert '安靜來源：最新抓取 0 篇' in health
+        assert '故障來源：觀察已過期；最近一次抓取失敗' in health and '原因：503 <img' in health
+        assert '安靜來源：觀察已過期；最近一次抓取 0 篇' in health
         assert '檢查時間' in health
         assert page.locator('#sideSourceHealth img').count() == 0
         assert page.locator('#eventReadingList a[href^="article.html?id=a0&quote="]').count() == 1

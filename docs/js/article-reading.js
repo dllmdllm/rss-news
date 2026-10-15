@@ -66,6 +66,11 @@
     }
     saveLater.addEventListener('click', () => { reader.saveLater(article.id, !reader.articleState(article.id).saved); localUi(); });
     read.addEventListener('click', () => { reader.markRead(article.id, !reader.articleState(article.id).read); localUi(); });
+    // Storage/pageshow refreshes emit without an id; update labels only, leaving
+    // this tab's scroll position and speech queue under the user's control.
+    window.addEventListener('rss-reader-state', event => {
+      if (!event.detail?.id || event.detail.id === String(article.id)) localUi();
+    });
     resume.hidden = saved.position <= 0.01;
     resume.textContent = `繼續上次位置（${Math.round(saved.position * 100)}%）`;
     let moved = false, scrollTimer;

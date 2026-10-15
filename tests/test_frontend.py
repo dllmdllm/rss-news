@@ -1534,16 +1534,16 @@ def test_feed_health_identifies_failed_feed_despite_retained_articles():
       const elements = new Map();
       const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
       const state = {category:'全部',articles:[],topics:[],sources:{
-        '明報 國際':{count:0,fresh_count:0,effective_count:8,error:'parse failure',fetch_status:'failed',feed_url:'https://example.com/feed'},
-        '明報 中國':{count:2,fresh_count:2,effective_count:2,fetch_status:'success'}
+        '明報 國際':{count:0,fresh_count:0,effective_count:8,error:'parse failure',fetch_status:'failed',checked_at:new Date().toISOString(),feed_url:'https://example.com/feed'},
+        '明報 中國':{count:2,fresh_count:2,effective_count:2,fetch_status:'success',checked_at:new Date().toISOString()}
       }};
       let criticalShownIds;
       function criticalScore(){return 0;}
       function sortedArticles(a){return a;}
-    ''' + '\n'.join(_extract_js_function(source, name) for name in ['outletOf', 'groupSourcesByOutlet', 'renderAiPanel']) + '''
+    ''' + '\n'.join(_extract_js_function(source, name) for name in ['outletOf', 'groupSourcesByOutlet', 'sourceObservation', 'renderAiPanel']) + '''
       renderAiPanel([]);
       const result = $('sideSourceHealth').innerHTML;
-      if (!result.includes('明報 國際') || !result.includes('最新抓取失敗') || !result.includes('保留 8 篇舊資料') || !result.includes('https://example.com/feed')) throw Error(result);
+      if (!result.includes('明報 國際') || !result.includes('最近一次抓取失敗') || !result.includes('保留 8 篇歷史資料') || !result.includes('https://example.com/feed')) throw Error(result);
       if ($('sourceHealth').textContent !== '1 個 feed 需要檢查') throw Error('health masked failure');
     '''
     common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
@@ -1608,5 +1608,53 @@ def test_sw_content_freshness_and_offline_fallback():
         assert.equal((await request()).type,'error');
       })().catch(e=>{console.error(e);process.exitCode=1});
     '''
+    result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_source_health_ages_observations_without_discarding_history():
+    source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
+    common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
+    constants = common[common.index('const _ESC'):common.index('function esc')]
+    script = constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common, 'safeUrl') + """
+      const OUTLET_PREFIXES = [];
+      const now = Date.parse('2026-10-15T05:00:00Z');
+      Date.now = () => now;
+      const elements = new Map();
+      const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
+      const state = {category:'全部', articles:[], topics:[], sources:{}};
+      let criticalShownIds;
+      function criticalScore(){return 0;}
+      function sortedArticles(a){return a;}
+    """ + '\n'.join(_extract_js_function(source, name) for name in [
+        'outletOf', 'groupSourcesByOutlet', 'sourceObservation', 'renderAiPanel', 'renderMobileSideHealth'
+    ]) + """
+      const stamp = minutes => new Date(now - minutes * 60000).toISOString();
+      if (sourceObservation({checked_at:'2026-02-30T04:50:00Z'}).status !== 'unknown') throw Error('invalid calendar date');
+      const valid304 = {count:0, fresh_count:0, effective_count:12, fetch_status:'not_modified', checked_at:stamp(20), observed_at:stamp(2000)};
+      state.sources = {'304': valid304};
+      renderAiPanel([]);
+      if ($('sourceHealth').textContent !== '來源正常') throw Error('valid recent 304 must count as observation');
+      if (sourceObservation({checked_at:stamp(60)}).status !== 'fresh' || sourceObservation({checked_at:stamp(61)}).status !== 'stale') throw Error('three-cycle threshold');
+      state.sources = {
+        '舊成功':{count:9, effective_count:27, fetch_status:'success', checked_at:stamp(27*60)},
+        '304':valid304,
+        '缺時間':{count:3, fetch_status:'success'},
+        '壞時間':{count:3, checked_at:'bad', observed_at:stamp(1)},
+        '無時區':{count:3, checked_at:'2026-10-15T05:00:00'},
+        '未來':{count:3, checked_at:stamp(-10)},
+        '<img src=x onerror=evil()>':{count:0, fetch_status:'failed', checked_at:stamp(5), error:'<script>evil()</script>'},
+        '零篇':{count:0, checked_at:stamp(5)}
+      };
+      renderAiPanel([]); renderMobileSideHealth();
+      const summary = $('sourceHealth').textContent;
+      if (!summary.includes('1 個 feed 觀察已過期') || !summary.includes('4 個 feed 狀態未確認') || !summary.includes('2 個 feed 需要檢查')) throw Error(summary);
+      const html = $('sideSourceHealth').innerHTML;
+      if (!html.includes('保留 27 篇歷史資料') || !html.includes('觀察已過期；最近一次抓取成功') || !html.includes(new Date(stamp(27*60)).toLocaleString('zh-HK'))) throw Error('historical success and actual time missing');
+      if (html.includes('<script>') || html.includes('<img src=x') || !html.includes('&lt;script&gt;')) throw Error('unsafe source metadata');
+      if ($('mobileSideHealth').innerHTML !== html) throw Error('mobile copied health differs');
+      state.sources = {}; renderAiPanel([]);
+      if ($('sourceHealth').textContent === '來源正常') throw Error('empty source health is unknown');
+    """
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
