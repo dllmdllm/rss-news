@@ -1,6 +1,7 @@
 """Deterministic deployment-loop regressions: no live HTTP or paid calls."""
 import asyncio
 import json
+import os
 import ssl
 import subprocess
 from pathlib import Path
@@ -8,6 +9,37 @@ from pathlib import Path
 import pytest
 
 from tools import verify_publication as V
+
+
+def test_default_head_verification_survives_checkout_owner_mismatch_without_persistent_trust(tmp_path, monkeypatch):
+    repo = tmp_path / 'checkout'
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                    'commit', '--allow-empty', '-qm', 'fixture'], check=True)
+    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    config_before = (repo / '.git/config').read_bytes()
+    monkeypatch.setenv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1')
+    # Isolate only the fixture subprocesses from hosted image trust defaults.
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', os.devnull)
+    monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
+    monkeypatch.delenv('GIT_CONFIG_COUNT', raising=False)
+    monkeypatch.delenv('GIT_CONFIG_PARAMETERS', raising=False)
+    naked = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True)
+    assert naked.returncode != 0 and b'dubious ownership' in naked.stderr
+
+    async def checked(selected, exact):
+        assert selected == repo.resolve() and exact == revision
+        return {'status': 'verified', 'revision': exact, 'attempts': 1, 'checked_files': []}
+
+    monkeypatch.setattr(V, 'verify_publication', checked)
+    out = tmp_path / 'verification.json'
+    monkeypatch.setattr(V.sys, 'argv', ['verify_publication', '--repo', str(repo), '--result', str(out)])
+    assert V.main() == 0
+    assert json.loads(out.read_text(encoding='utf-8'))['revision'] == revision
+    assert (repo / '.git/config').read_bytes() == config_before
+    workflow = Path('.github/workflows/update.yml').read_text(encoding='utf-8')
+    prior = workflow.split('- name: Verify prior publication before paid collection', 1)[1].split('- name:', 1)[0]
+    assert 'git rev-parse' not in prior and 'python tools/verify_publication.py --result' in prior
 
 
 class Clock:

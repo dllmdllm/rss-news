@@ -185,13 +185,16 @@ async def verify_publication(repo, revision):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
-    parser.add_argument("--revision", required=True)
+    parser.add_argument("--revision", default="HEAD", help="full commit SHA; defaults to the selected checkout HEAD")
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
     repo, out = args.repo.resolve(), args.result.resolve()
     if out.is_relative_to(repo / "docs"):
         parser.error("verification report must remain outside published docs")
     try:
+        if args.revision == "HEAD":
+            args.revision = subprocess.check_output(_git(repo) + ["rev-parse", "HEAD"],
+                                                    timeout=20, stderr=subprocess.DEVNULL).decode("ascii").strip()
         result = asyncio.run(verify_publication(repo, args.revision))
     except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as exc:
         result = {"status": "unverified", "revision": args.revision,
