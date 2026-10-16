@@ -1,4 +1,6 @@
-# synced 2026-10-16T10:37:33.355276+08:00
+# synced 2026-10-16T10:57:33.325192+08:00
+tsla
+尹景順
 鄧兆尊
 超級 市場
 活期存款
@@ -7,4 +9,3 @@ tesla roadster
 dodgers
 mlb
 coreweave
-台日電梯
