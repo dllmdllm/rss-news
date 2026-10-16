@@ -1,4 +1,5 @@
-# synced 2026-10-16T11:17:30.553869+08:00
+# synced 2026-10-16T11:37:31.055486+08:00
+道奇
 tsla
 尹景順
 鄧兆尊
@@ -8,4 +9,3 @@ tsla
 tesla roadster
 dodgers
 mlb
-coreweave
