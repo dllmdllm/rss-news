@@ -1,4 +1,4 @@
-# synced 2026-10-18T04:37:28.790633+08:00
+# synced 2026-10-18T04:57:28.171794+08:00
 yandex
 巴塞隆拿
 laliga
@@ -7,5 +7,5 @@ la liga
 西甲
 意甲
 拜仁慕尼黑對萊比錫rb
-法甲
 india vs west indies
+betis vs barcelona
