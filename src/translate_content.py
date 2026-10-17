@@ -302,10 +302,22 @@ async def translate_english_content(articles: list) -> None:
     save_lock = asyncio.Lock()
     counter = [0]
     async with aiohttp.ClientSession() as session:
-        results = await asyncio.gather(
-            *[_translate_article(session, a, sem, cache, save_lock, counter) for a in pending],
-            return_exceptions=True,
-        )
+        tasks = [asyncio.create_task(_translate_article(session, a, sem, cache, save_lock, counter))
+                 for a in pending]
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            # The build deadline must retain completed paid work, including
+            # the tail below SAVE_CACHE_EVERY. Settle writers before saving.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            active_ids = {a["id"] for a in articles}
+            try:
+                save_cache({k: v for k, v in cache.items() if k in active_ids})
+            except Exception as exc:
+                print(f"[translate] cancelled cache flush failed: {exc!r}")
+            raise
     for a, r in zip(pending, results):
         if isinstance(r, BaseException):
             print(f"[translate] {a.get('id')} crashed: {r!r}")

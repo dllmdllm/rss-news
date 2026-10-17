@@ -687,11 +687,25 @@ async def analyse_all(articles: list) -> list:
     save_lock = asyncio.Lock()
     counter   = [0]
     async with aiohttp.ClientSession() as session:
-        tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
+        tasks = [asyncio.create_task(_analyse_batch(session, b, sem, cache, save_lock, counter))
+                 for b in batches]
         # return_exceptions=True so one batch's crash doesn't cancel siblings
         # mid-flight (default gather() cancels all on first exception, silently
         # losing successful work that hasn't yet flushed to cache).
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            # Retain completed paid results below the incremental flush size;
+            # no child may still mutate the cache after the final snapshot.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            active_ids = {a["id"] for a in articles}
+            try:
+                save_cache({k: v for k, v in cache.items() if k in active_ids})
+            except Exception as exc:
+                print(f"[analyse] cancelled cache flush failed: {exc!r}")
+            raise
     for r in results:
         if isinstance(r, BaseException):
             print(f"[WARN] analyse batch crashed: {r!r}")
