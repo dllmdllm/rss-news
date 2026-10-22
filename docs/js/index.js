@@ -122,8 +122,15 @@
 
   function pointsHtml(article, limit = 5) {
     const points = summaryPoints(article, limit);
-    if (points.length) return points.map((point) => `<li>${esc(point)}</li>`).join("");
+    if (points.length) return points.map((point) => `<li>${summaryPointHtml(article, point)}</li>`).join("");
     return summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
+  }
+
+  function summaryPointHtml(article, point) {
+    const helper = window.RssSourceEvidence;
+    const support = helper?.summarySupport(article, point);
+    const linked = support && helper.href(article, support.quote, 'summary');
+    return `<span class="summary-point">${esc(point)}</span>` + (linked ? '' : ' <span class="summary-unverified" title="未有可核對的原文段落">未核實</span>');
   }
 
   function summarySentencesHtml(article) {
@@ -162,10 +169,10 @@
     if (!points.length) return '';
     const helper = window.RssSourceEvidence;
     const scope = helper?.scope(article);
-    return `<details class="source-point-links"><summary>AI 摘要依據</summary><p>${esc(scope?.label || '原文段落未能核對')}</p><ul>${points.map(point => {
+    return `<details class="source-point-links"><summary>查看依據</summary><p>${esc(scope?.label || '原文段落未能核對')}。依據只供對照原文，不代表已核實摘要的解讀或事實。</p><ul>${points.map((point, index) => {
       const support = helper?.summarySupport(article, point);
       const link = support && helper.href(article, support.quote, 'summary');
-      return `<li>${esc(point)} ${link ? `<a href="${esc(link)}">查看原文段落</a>` : '<span class="ai-note">未有可核對的原文段落</span>'}</li>`;
+      return `<li>重點 ${index + 1}：${link ? `<a href="${esc(link)}">查看原文段落</a><blockquote>${esc(support.quote)}</blockquote>` : '<span class="ai-note">未有可核對的原文段落</span>'}</li>`;
     }).join('')}</ul></details>`;
   }
 
@@ -337,10 +344,9 @@
           <h1>${esc(lead.title || "")}</h1>
           <span class="ai-note">AI 摘要</span>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
-          ${window.RssEventReading?.provenance(lead) || ""}
           <span>${window.RssReaderState?.articleState(lead.id)?.read ? "已讀" : "未讀"}</span>
         </div>
-      </a>${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
+      </a>${window.RssEventReading?.provenance(lead) || ""}${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
   }
 
   function briefItem(article, label) {
@@ -370,7 +376,7 @@
   function cardSummaryBlock(article) {
     const points = summaryPoints(article, 5);
     if (points.length) {
-      return `<ul class="card-points">${points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+      return `<ul class="card-points">${points.map((p) => `<li>${summaryPointHtml(article, p)}</li>`).join("")}</ul>`;
     }
     return `<p class="card-summary">${summarySentencesHtml(article)}</p>`;
   }
@@ -394,9 +400,8 @@
         <h3>${esc(article.title || "")}</h3>
         <span class="ai-note">AI 摘要</span>
         ${cardSummaryBlock(article)}
-        ${window.RssEventReading?.provenance(article) || ""}
       </div>
-    </a>${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
+    </a>${window.RssEventReading?.provenance(article) || ""}${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
   }
 
   const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
