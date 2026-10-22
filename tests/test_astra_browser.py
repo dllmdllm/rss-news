@@ -86,8 +86,9 @@ def test_bad_sidecar_preserves_metadata_with_clear_body_failure(browser, news_da
         assert '第一個重點' in page.locator('#summaryBox').inner_text()
         assert 'Wrong body' not in page.locator('#content').inner_text()
         assert page.locator('#sourceLink').get_attribute('href') == 'https://example.com/news'
-        page.locator('#readerSaveLater').click()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        page.locator('#readerRead').click()
+        assert page.locator('#readerRead').get_attribute('aria-pressed') == 'true'
+        assert page.locator('#readerSaveLater').count() == 0
         page.close()
 
 
@@ -127,8 +128,9 @@ def test_crypto_verification_failure_preserves_metadata_fail_closed(browser, new
         page.locator('#content .error').wait_for()
         assert page.locator('#title').inner_text() == '測試新聞 0'
         assert page.locator('#sourceLink').get_attribute('href') == 'https://example.com/news'
-        page.locator('#readerSaveLater').click()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        page.locator('#readerRead').click()
+        assert page.locator('#readerRead').get_attribute('aria-pressed') == 'true'
+        assert page.locator('#readerSaveLater').count() == 0
         page.close()
 
 

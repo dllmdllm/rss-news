@@ -52,19 +52,15 @@
     const count = highlightKeySentences(root, article.key_sentences);
     const reader = window.RssReaderState;
     const saved = reader.articleState(article.id);
-    const saveLater = document.getElementById('readerSaveLater');
     const read = document.getElementById('readerRead');
     const resume = document.getElementById('readerResume');
     const localStatus = document.getElementById('readerLocalStatus');
     function localUi() {
       const state = reader.articleState(article.id);
-      saveLater.setAttribute('aria-pressed', String(state.saved));
-      saveLater.textContent = state.saved ? '已加入稍後閱讀' : '稍後閱讀';
       read.setAttribute('aria-pressed', String(state.read));
       read.textContent = state.read ? '標記未讀' : '標記已讀';
       localStatus.textContent = reader.isPersistent() ? '記錄只保留在此裝置' : '儲存被封鎖，記錄只保留在本次頁面';
     }
-    saveLater.addEventListener('click', () => { reader.saveLater(article.id, !reader.articleState(article.id).saved); localUi(); });
     read.addEventListener('click', () => { reader.markRead(article.id, !reader.articleState(article.id).read); localUi(); });
     // Storage/pageshow refreshes emit without an id; update labels only, leaving
     // this tab's scroll position and speech queue under the user's control.

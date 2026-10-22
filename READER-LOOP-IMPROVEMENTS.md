@@ -2,8 +2,8 @@
 
 The default feed, search and key-sentence player show the latest24hours. The
 publisher retains its30hour overlap so a successful bounded batch cannot erase
-previously seen news. The explicit Read Later filter can still show retained
-older saved articles; device saved/read/position records are untouched.
+previously seen news. Read Later controls are no longer displayed; existing
+device saved/read/position records and article aliases are untouched.
 
 | Behavior | Implementation and limits |
 |---|---|
@@ -33,8 +33,10 @@ Schema2 metadata/index add the24h display/30h retention policy and projected
 source evidence/status fields. The validator accepts the prior published index
 while source-only rollout is pending; new writer output requires the entire
 projection and all original metadata/sidecar/body hash checks. Service worker
-v289 includes the new functional modules. Layout structure, AI entry points,
-Read Later, existing schedules, PR27/PR3 and subscription infrastructure remain.
+v291 includes the functional modules and removal of Read Later controls. Layout
+structure, AI entry points, stored reader data, existing schedules, PR27/PR3 and
+subscription infrastructure remain. Mobile search retains the visible anchor
+plus a result-page buffer during explicit refresh to prevent scroll clamping.
 
 Coverage is limited by public source interfaces, finite requests/time/bytes and
 normal scheduled progress. This is not an unlimited archive or a guarantee of

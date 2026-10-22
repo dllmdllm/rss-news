@@ -1407,7 +1407,7 @@
       .mobile-tabs { display: grid; }
     }
   </style>
-<style>.reading-card{min-width:0}.reading-card .card{height:auto}.save-later{font:inherit;margin:4px 0 12px;max-width:100%;padding:5px 10px;border-radius:6px;cursor:pointer}.reading-provenance{display:block;font-size:.75rem;line-height:1.5;color:var(--muted,#888);overflow-wrap:anywhere}.event-reading{margin:12px 0;padding:12px;border:1px solid var(--line,#666);border-radius:10px;overflow-wrap:anywhere}.event-reading summary{cursor:pointer;font-weight:600}.event-reading h4{margin:12px 0 6px}.event-reading ul{padding-left:20px}.event-reading blockquote{margin:6px 0;padding-left:8px;border-left:2px solid #888}.event-reading a{color:inherit;text-decoration:underline}.event-unavailable{font-size:.85rem;opacity:.8}#readingStatus{max-width:100%;font:inherit}</style></head>
+<style>.reading-card{min-width:0}.reading-card .card{height:auto}.reading-provenance{display:block;font-size:.75rem;line-height:1.5;color:var(--muted,#888);overflow-wrap:anywhere}.event-reading{margin:12px 0;padding:12px;border:1px solid var(--line,#666);border-radius:10px;overflow-wrap:anywhere}.event-reading summary{cursor:pointer;font-weight:600}.event-reading h4{margin:12px 0 6px}.event-reading ul{padding-left:20px}.event-reading blockquote{margin:6px 0;padding-left:8px;border-left:2px solid #888}.event-reading a{color:inherit;text-decoration:underline}.event-unavailable{font-size:.85rem;opacity:.8}#readingStatus{max-width:100%;font:inherit}</style></head>
 <body>
   <div class="app">
     <aside class="side">
@@ -1461,11 +1461,11 @@
       </aside>
 
       <div class="content-head">
-        <label for="readingStatus">閱讀狀態 <select id="readingStatus"><option value="all">全部</option><option value="unread">未讀</option><option value="read">已讀</option><option value="saved">稍後閱讀</option></select></label>
+        <label for="readingStatus">閱讀狀態 <select id="readingStatus"><option value="all">全部</option><option value="unread">未讀</option><option value="read">已讀</option></select></label>
         <h2 id="feedTitle">重點新聞流</h2>
         <span id="resultCount"></span>
       </div>
-      <p class="ai-note" id="collectionWindowNote">目前新聞：過去24小時；收錄受來源索引及每輪請求預算限制，未收齊會標示待續抓。稍後閱讀保留已儲存資料。</p>
+      <p class="ai-note" id="collectionWindowNote">目前新聞：過去24小時；收錄受來源索引及每輪請求預算限制，未收齊會標示待續抓。</p>
       <span class="ai-note" id="updateCheckStatus" role="status"></span>
       <section class="summary-player" id="summaryPlayer" role="tabpanel" aria-labelledby="summaryPlayTab" hidden>
         <div class="summary-controls">
@@ -1677,7 +1677,7 @@
   <script src="js/reader-updates.js"></script>
   <script src="js/source-evidence.js"></script>
   <script src="js/summary-player.js"></script>
-  <script src="js/index.js?v=20260718-topicfix"></script>
+  <script src="js/index.js?v=20261022-reader-controls"></script>
 </body>
 </html>
 

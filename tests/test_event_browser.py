@@ -14,6 +14,7 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
     with _static_server() as base:
         context = browser.new_context(viewport={'width':width,'height':900},service_workers='block')
         page = context.new_page()
+        page.set_default_timeout(5000)
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         support_hash = 'a' * 64
@@ -37,7 +38,9 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
         assert page.locator('#sideSourceHealth img').count() == 0
         assert page.locator('#eventReadingList a[href^="article.html?id=a0&quote="]').count() == 1
         page.evaluate("RssReaderState.saveLater('a1',true);RssReaderState.markRead('a0',true)")
-        page.locator('#readingStatus').select_option('saved')
+        assert page.locator('option[value="saved"], [data-save-later]').count() == 0
+        assert page.evaluate("RssReaderState.get('a1').saved") is True
+        page.locator('#readingStatus').select_option('read')
         assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
         assert page.locator('#feed a.card').count() == 0
         page.locator('#readingStatus').select_option('unread')
@@ -47,8 +50,9 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
         page.locator('#readingStatus').select_option('read')
         assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
         page.reload(wait_until='domcontentloaded')
-        page.locator('#readingStatus').select_option('saved')
+        page.locator('#readingStatus').select_option('read')
         assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
+        assert page.evaluate("RssReaderState.get('a1').saved") is True
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         support_hash = 'b' * 64
         page.reload(wait_until='domcontentloaded')

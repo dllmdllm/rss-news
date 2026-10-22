@@ -261,6 +261,15 @@ def test_fetch_oncc_daily_keeps_all_in_window_metadata_after_merging_days(monkey
     from datetime import timedelta, timezone
     from src import fetch as F
 
+    # Noon HKT makes this a two-calendar-day case. Before06:00 HKT, the
+    # production30h overlap correctly needs three dates instead.
+    now = datetime(2026, 10, 22, 4, tzinfo=timezone.utc)
+    class FrozenClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz) if tz else now.replace(tzinfo=None)
+    monkeypatch.setattr(F, 'datetime', FrozenClock)
+
     max_items = 20
     calls = {"n": 0}
 
@@ -279,13 +288,12 @@ def test_fetch_oncc_daily_keeps_all_in_window_metadata_after_merging_days(monkey
     def fake_parse(data, feed_info, cutoff):
         calls["n"] += 1
         base = calls["n"] * 1000
-        now = datetime.now(timezone.utc)
         return [
             {
                 "id": f"oncc{base + i}",
                 "title": f"文章 {base + i}",
                 "url": f"https://hk.on.cc/x/{base + i}",
-                "date": (now - timedelta(minutes=base + i)).isoformat(),
+                "date": (now - timedelta(minutes=calls['n'] + i)).isoformat(),
                 "source": feed_info["name"],
                 "category": feed_info["category"],
                 "content": None,
@@ -298,7 +306,7 @@ def test_fetch_oncc_daily_keeps_all_in_window_metadata_after_merging_days(monkey
     monkeypatch.setattr(F, "_parse_oncc_dailylist", fake_parse)
     session = SimpleNamespace(get=fake_get)
     feed_info = {"name": "東網 娛樂", "category": "娛樂", "oncc_section": "entertainment", "max_items": max_items}
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=30)
+    cutoff = now - timedelta(hours=30)
 
     articles, error, _not_modified = asyncio.run(F._fetch_oncc_daily(session, feed_info, cutoff))
 
