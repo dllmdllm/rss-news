@@ -1427,7 +1427,7 @@
     <main class="main">
       <div class="topbar">
         <div class="topbar-left">
-          <input class="search" id="search" type="search" placeholder="搜尋標題、摘要、來源">
+          <input class="search" id="search" type="search" aria-label="搜尋目前已收錄的標題、摘要、來源及標籤" placeholder="搜尋標題、摘要、來源、標籤">
           <div class="font-tools" id="fontTools" aria-label="font size">
             <button data-font="small" type="button">細</button>
             <button data-font="normal" type="button" class="active">中</button>
@@ -1479,7 +1479,7 @@
 
       <section class="search-stage" id="searchStage" aria-label="搜尋面板">
         <section class="ai-block">
-          <h2>最近搜尋 <span id="searchRecentClear" style="cursor:pointer; display:none;">清空</span></h2>
+          <h2>最近搜尋 <button type="button" id="searchRecentClear" style="display:none;">清空</button></h2>
           <div class="chip-cloud" id="searchRecentChips"></div>
         </section>
         <section class="ai-block">
@@ -1491,7 +1491,7 @@
           <div class="chip-cloud" id="searchTagChips"></div>
         </section>
         <section class="ai-block">
-          <h2 id="searchResultTitle">建議閱讀</h2>
+          <h2 id="searchResultTitle" role="status" aria-live="polite">正在準備搜尋</h2>
           <div class="search-result-list" id="searchResultList"></div>
         </section>
       </section>

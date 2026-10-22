@@ -11,6 +11,18 @@ from tools.validate_publication import validate_site
 
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Construct internally consistent bodies; individual corruption tests
+    # explicitly supply a bad hash rather than accidentally breaking fixtures.
+    if path.parent.name == 'content' and isinstance(data, dict) and 'content_hash' not in data and isinstance(data.get('content'), str):
+        data = dict(data, content_hash=hashlib.sha256(data['content'].encode()).hexdigest())
+        for filename in ('articles.json', 'articles_index.json'):
+            target = path.parent.parent / filename
+            if target.exists():
+                payload = json.loads(target.read_text(encoding='utf-8'))
+                for article in payload['articles']:
+                    if article['id'] == path.stem:
+                        article['content_hash'] = data['content_hash']
+                target.write_text(json.dumps(payload), encoding='utf-8')
     path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
 
 
@@ -32,7 +44,10 @@ def snapshot(tmp_path):
 def mutate(docs, filename, callback):
     path = docs/'data'/filename
     data = json.loads(path.read_text(encoding="utf-8"))
+    before = copy.deepcopy(data)
     callback(data)
+    if filename.startswith('content/') and data.get('content') != before.get('content'):
+        data.pop('content_hash', None)
     save(path, data)
 
 
@@ -40,6 +55,22 @@ def test_valid_current_partial_content_and_unknown_times_are_accepted(snapshot):
     validate_site(snapshot, require_current=True)
     record = json.loads((snapshot/'data/content/a_1.json').read_text(encoding="utf-8"))
     assert record['fetched_at'] is None and record['content_updated_at'] is None
+
+
+@pytest.mark.parametrize('failure', ['sidecar-hash', 'metadata-hash-missing', 'index-title', 'index-hash'])
+def test_publication_and_media_gates_reject_cross_file_corruption(snapshot, failure):
+    from tools.check_media_inventory import check
+    filename = 'content/a_1.json' if failure == 'sidecar-hash' else ('articles.json' if failure == 'metadata-hash-missing' else 'articles_index.json')
+    path = snapshot/'data'/filename
+    data = json.loads(path.read_text(encoding='utf-8'))
+    if failure == 'sidecar-hash': data['content_hash'] = '0'*64
+    elif failure == 'metadata-hash-missing': data['articles'][0].pop('content_hash')
+    elif failure == 'index-title': data['articles'][0]['title'] = 'Wrong generation'
+    else: data['articles'][0]['content_hash'] = '0'*64
+    path.write_text(json.dumps(data), encoding='utf-8')
+    for gate in (validate_site, check):
+        with pytest.raises(ValueError, match='hash|index title'):
+            gate(snapshot)
 
 
 def test_legacy_absent_evidence_and_schema_are_available_for_review(snapshot):

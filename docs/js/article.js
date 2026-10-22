@@ -58,21 +58,10 @@
     }
   }
 
-  // 用嚟比對 hero thumbnail 同 content 第一張圖係咪同一張。各家來源嘅
-  // size variant URL 唔同寫法，依次 strip 走：
-  //   1. dimension suffix「_1200x630.jpg」（TVB / 部分 CMS）
-  //   2. single letter size suffix「_01s.jpg」/「_01p.jpg」（東網 on.cc）
-  // 再剝走 query string 以後就可以匹配同一張原圖。
+  // Only exact normalized URLs establish image identity. Query parameters,
+  // basenames and letter/size suffixes may identify different editorial assets.
   function imageSignature(url) {
-    try {
-      const parsed = new URL(String(url || ""), location.href);
-      let path = parsed.pathname;
-      path = path.replace(/[_-]\d+x\d+(\.[a-z]+)$/i, "$1");
-      path = path.replace(/(\d)[a-z](\.[a-z]+)$/i, "$1$2");
-      return parsed.origin + path;
-    } catch {
-      return String(url || "").trim().replace(/\?.*$/, "");
-    }
+    return url ? canonicalImageUrl(url) : '';
   }
 
   function sanitizeHtml(html, heroImage = "") {
@@ -101,7 +90,8 @@
     const firstImage = doc.querySelector("img");
     const beforeImage = firstImage ? document.createRange() : null;
     if (beforeImage) { beforeImage.selectNodeContents(doc.body); beforeImage.setEndBefore(firstImage); }
-    if (firstImage && !beforeImage.toString().trim() && heroSig && imageSignature(firstImage.getAttribute("src")) === heroSig) {
+    const caption = firstImage?.closest('figure')?.querySelector('figcaption')?.textContent.trim();
+    if (firstImage && !caption && !beforeImage.toString().trim() && heroSig && imageSignature(firstImage.getAttribute("src")) === heroSig) {
       firstImage.remove();
     }
     doc.querySelectorAll("img").forEach((img) => {
@@ -335,7 +325,7 @@
 
   async function load() {
     bindToolbar();
-    const id = new URLSearchParams(location.search).get("id");
+    let id = new URLSearchParams(location.search).get("id");
     // cache: "no-cache" 行 ETag revalidation（304 唔使重新下載）；
     // 舊做法 ?Date.now() + no-store 每次都全量拉成個 articles.json。
     // panel_digests 係 optional enrichment——fetch 失敗唔可以拖冧成頁。
@@ -346,8 +336,10 @@
     // finding）。
     const data = await readJson('data/articles.json');
     if (!data) throw new Error("讀取文章列表失敗");
-    const article = (data.articles || []).find((row) => row.id === id);
+    window.RssReaderState?.registerAliases(data.articles);
+    const article = (data.articles || []).find((row) => row.id === id || (row.id_aliases || []).includes(id));
     if (!article) throw new Error("搵唔到呢篇文章");
+    id = article.id;
     // Metadata is useful even while the independently bounded body is pending.
     $('title').textContent = article.title || '';
     $('summaryBox').textContent = summaryPoints(article, 5).join('；');
@@ -391,6 +383,9 @@
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">正文暫不可用或版本不符，請稍後重新載入；可繼續查看摘要及原文。</div>`;
+    if ([...$('content').querySelectorAll('img')].some(img => imageSignature(img.getAttribute('src')) === imageSignature(article.thumbnail))) {
+      $('hero').innerHTML = '';
+    }
     showContentAvailability(article);
     window.RssArticleReading.init(article);
     const sourceUrl = safeArticleUrl(article.url);

@@ -6,6 +6,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "docs" / "data"
 
 
+def test_current_publication_cross_file_contract():
+    from tools.validate_publication import validate_site
+    validate_site(ROOT/'docs', require_current=True)
+
+
 def _load_articles():
     return json.loads((DATA_DIR / "articles.json").read_text(encoding="utf-8"))["articles"]
 

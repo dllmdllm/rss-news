@@ -38,17 +38,17 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
         assert page.locator('#eventReadingList a[href^="article.html?id=a0&quote="]').count() == 1
         page.evaluate("RssReaderState.saveLater('a1',true);RssReaderState.markRead('a0',true)")
         page.locator('#readingStatus').select_option('saved')
-        assert page.locator('#resultCount').inner_text() == '1 篇'
+        assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
         assert page.locator('#feed a.card').count() == 0
         page.locator('#readingStatus').select_option('unread')
-        assert page.locator('#resultCount').inner_text() == '2 篇'
+        assert page.locator('#resultCount').inner_text() == '2 篇匹配報道 · 2 張卡'
         assert page.locator('#leadStory a').first.get_attribute('href') == 'article.html?id=a1'
         assert page.locator('#feed a.card').count() == 1
         page.locator('#readingStatus').select_option('read')
-        assert page.locator('#resultCount').inner_text() == '1 篇'
+        assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
         page.reload(wait_until='domcontentloaded')
         page.locator('#readingStatus').select_option('saved')
-        assert page.locator('#resultCount').inner_text() == '1 篇'
+        assert page.locator('#resultCount').inner_text() == '1 篇匹配報道 · 1 張卡'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         support_hash = 'b' * 64
         page.reload(wait_until='domcontentloaded')

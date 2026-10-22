@@ -19,7 +19,9 @@ def image_url(value, base_url=''):
     except UnsafeDestination:
         return None
     path = urlsplit(url).path.lower()
-    if '/_nuxt/default.' in path or path.endswith(('.html', '.htm', '.php')):
+    host = (urlsplit(url).hostname or '').removeprefix('www.')
+    if ('/_nuxt/default.' in path or path.endswith(('.html', '.htm', '.php'))
+            or (host in {'weekendhk.com', 'gotrip.hk'} and path.endswith('/theme-content/images/default.jpg'))):
         return None
     return url
 

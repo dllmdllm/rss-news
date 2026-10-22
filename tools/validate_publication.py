@@ -10,10 +10,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.article_urls import valid_article_url
+from src.index_projection import project_article
 
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 SENTIMENTS = {"positive", "negative", "neutral"}
-TIMES = ("date", "published_at", "fetched_at", "content_updated_at")
+TIMES = ("date", "published_at", "source_modified_at", "fetched_at", "content_updated_at")
 
 
 def source_outlet(source):
@@ -134,6 +135,9 @@ def validate_site(docs: Path, require_current=False):
             raise ValueError(f"{label}: unsupported schema_version {version}")
     if set(articles) != set(indexed):
         raise ValueError("full/index article IDs differ")
+    for field in ('updated', 'sources', 'trending_topics'):
+        if full.get(field) != index.get(field):
+            raise ValueError(f'full/index {field} contract mismatch')
     if require_current and not articles:
         raise ValueError("production snapshot has zero articles")
     for aid, article in articles.items():
@@ -169,6 +173,8 @@ def validate_site(docs: Path, require_current=False):
         timestamps(record, f"sidecar/{aid}")
         bodies[aid] = text
         hashes[aid] = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if record.get('content_hash') != hashes[aid] or articles[aid].get('content_hash') != hashes[aid]:
+            raise ValueError(f'{aid}: metadata/sidecar content_hash must equal actual body SHA256')
         quality = record.get("quality")
         fallbacks[aid] = quality.get("fallback") if isinstance(quality, dict) else None
     for aid, article in articles.items():
@@ -188,6 +194,10 @@ def validate_site(docs: Path, require_current=False):
             if item.get("article_id", aid) != aid:
                 raise ValueError(f"{aid}: summary evidence must reference its own article")
             quote_supported(item.get("quote"), aid, bodies, f"{aid}/summary_evidence", fallbacks)
+    for aid, article in articles.items():
+        for key, value in project_article(article).items():
+            if indexed[aid].get(key, 'unavailable' if key == 'summary_evidence_status' else None) != value:
+                raise ValueError(f'{aid}: index {key} contract mismatch')
     panel_path = data / "panel_digests.json"
     if panel_path.exists():
         panels = read_json(panel_path)

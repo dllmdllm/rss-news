@@ -7,6 +7,9 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
+from src.publisher_identity import identity_key, reconcile
+from src.index_projection import project_article
+from src.fetch import commit_feed_http_cache
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from pathlib import Path
@@ -656,28 +659,14 @@ def save_json(articles: list, source_stats: dict):
         "updated": payload["updated"],
         "sources": source_stats,
         "trending_topics": payload["trending_topics"],
-        "articles": [
-            {"id": a["id"], "title": a.get("title"), "source": a.get("source"),
-             "date": a.get("date"), "category": a.get("category"),
-             "thumbnail": a.get("thumbnail"), "summary": a.get("summary"),
-             "score": a.get("score"), "tags": a.get("tags"), "sentiment": a.get("sentiment"),
-             "topic": a.get("topic"), "cluster_size": a.get("cluster_size"), "cluster_id": a.get("cluster_id"),
-             "event_type": a.get("event_type"),
-             "duplicate_of": a.get("duplicate_of"), "duplicate_count": a.get("duplicate_count"),
-             "headline_fit": a.get("headline_fit"),
-             "published_at": a.get("published_at"), "fetched_at": a.get("fetched_at"),
-             "content_updated_at": a.get("content_updated_at"), "content_hash": a.get("content_hash"),
-             "evidence_status": a.get("evidence_status"), "content_quality": a.get("content_quality"),
-             "scrape_error": a.get("scrape_error"), "content_retention": a.get("content_retention"),
-             "summary_evidence_status": a.get("summary_evidence_status", "unavailable")}
-            for a in articles
-        ],
+        "articles": [project_article(a) for a in articles],
     }
     tmp = index_path.with_suffix(index_path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(index_payload, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, index_path)
     print(f"[build] articles_index.json {index_path.stat().st_size // 1024} KB")
+    commit_feed_http_cache(articles, data_dir=DATA_DIR)
 
     dropped = _prune_stale_content(active_ids={a["id"] for a in articles})
     print(
@@ -732,44 +721,10 @@ def _canonical_image_url(url: str | None) -> str:
     return absolute
 
 
-# Distinctive last-path-segment match: many CDNs (e.g. hkhl.hk for 星島頭條,
-# mingpao) serve the same source image at multiple resolutions / signed paths,
-# so the URLs differ but the trailing filename is identical. Treat anything
-# with the same non-trivial filename as the same image. Common generic
-# names ("logo.png", "image.jpg") and bare-index stems ("1.jpg") are filtered
-# out to avoid false positives.
-_GENERIC_IMAGE_NAMES = {
-    "image.jpg", "image.png", "image.jpeg", "image.webp",
-    "cover.jpg", "cover.png", "default.jpg",
-    "logo.jpg", "logo.png", "thumb.jpg",
-}
-
-
-def _image_basename(url: str) -> str:
-    if not url:
-        return ""
-    path = urlparse(url).path
-    name = path.rsplit("/", 1)[-1].lower()
-    if not name or "." not in name:
-        return ""
-    if name in _GENERIC_IMAGE_NAMES:
-        return ""
-    stem = name.rsplit(".", 1)[0]
-    # Block bare numeric / one-char stems ("1.jpg", "a.png") that often
-    # repeat across articles. "0_2", "1aa", and so on are fine.
-    if len(stem) < 2 or stem.isdigit():
-        return ""
-    return name
-
-
 def _images_match(url_a: str | None, url_b: str | None) -> bool:
     if not url_a or not url_b:
         return False
-    if _canonical_image_url(url_a) == _canonical_image_url(url_b):
-        return True
-    base_a = _image_basename(url_a)
-    base_b = _image_basename(url_b)
-    return bool(base_a) and base_a == base_b
+    return _canonical_image_url(url_a) == _canonical_image_url(url_b)
 
 
 def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> tuple[str, bool]:
@@ -790,6 +745,10 @@ def remove_duplicate_leading_thumbnail(content: str, thumbnail: str | None) -> t
     if not _images_match(first_url, thumbnail):
         return content, False
     figure_parent = first_img.find_parent("figure")
+    # Preserve the editorial figure as a unit. The reader hides its separate
+    # hero when the first body figure already supplies that image and caption.
+    if figure_parent and figure_parent.get_text(strip=True):
+        return content, False
     first_img.decompose()
     if figure_parent is not None and not figure_parent.get_text(strip=True) and not figure_parent.find(["img", "video", "audio"]):
         figure_parent.decompose()
@@ -804,7 +763,7 @@ def _retain_verified_content(articles: list, old_articles: list) -> None:
         if article.get("content") and not (fallback.startswith("rss-") or fallback == "minimal"):
             continue
         previous = old_by_id.get(article["id"])
-        if not previous or not article.get("url") or previous.get("url") != article["url"]:
+        if not previous or not article.get("url") or identity_key(previous) != identity_key(article):
             continue
         record = _load_old_content_record(article["id"])
         quality = (record or {}).get("quality") or {}
@@ -1061,10 +1020,10 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
 
 
 def _merge_missing_sources(articles: list, old_articles: list, source_stats: dict) -> list:
-    """If a source/category produced 0 articles this run (fetch failed),
-    fall back to its articles from the previous build to avoid blank categories."""
+    """Merge every still-active record; a bounded batch is not a deletion list."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
-    new_sources = {a["source"] for a in articles}
+    articles = reconcile(articles, old_articles)
+    existing_keys = {identity_key(a) for a in articles}
     old_by_source: dict[str, list] = defaultdict(list)
     for a in old_articles:
         old_by_source[a["source"]].append(a)
@@ -1072,10 +1031,8 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
     existing_ids = {a["id"] for a in articles}
     added_by_source: dict[str, int] = defaultdict(int)
     for source, old_arts in old_by_source.items():
-        if source in new_sources:
-            continue
         for a in old_arts:
-            if a["id"] in existing_ids:
+            if a["id"] in existing_ids or identity_key(a) in existing_keys:
                 continue
             date_str = a.get("date")
             if not date_str:
@@ -1093,22 +1050,23 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
             # docs/data/content/*.json), so the key is usually absent here —
             # ensure it's explicitly present (None) even if hydration misses,
             # so downstream code that does `a["content"]` doesn't KeyError.
+            a = dict(a)
             if not a.get("content"):
                 record = _load_old_content_record(a["id"])
                 if record and record.get("content"):
                     a["content"] = record["content"]
                 else:
                     a["content"] = None
-            stats = source_stats.get(source) or {}
-            if stats.get("fetch_status") in {"success", "not_modified"}:
-                a["fetched_at"] = stats.get("observed_at") or a.get("fetched_at")
+            # A feed 304 is a source observation, not a fresh observation of
+            # every retained article (some are already absent from that feed).
             articles.append(a)
             existing_ids.add(a["id"])
+            existing_keys.add(identity_key(a))
             added_by_source[source] += 1
 
     if added_by_source:
         total = sum(added_by_source.values())
-        print(f"[build] Merged {total} articles from {len(added_by_source)} missing sources")
+        print(f"[build] Retained {total} in-window articles from {len(added_by_source)} sources")
         for src, n in added_by_source.items():
             # source_stats can be {} entirely (fetch_all's outer 150s
             # timeout fires before any per-feed bookkeeping runs) — gating

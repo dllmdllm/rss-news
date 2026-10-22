@@ -4,6 +4,15 @@
   const MAX_ARTICLES = 500;
   const memoryPreferences = new Map();
   let records = Object.create(null), persistent = true;
+  const aliases = new Map(), aliasGroups = new Map();
+  function registerAliases(articles) {
+    aliases.clear(); aliasGroups.clear();
+    for (const article of articles || []) {
+      const ids = [article.id, ...(article.id_aliases || [])].filter(id => typeof id === 'string' && id);
+      aliasGroups.set(article.id, ids);
+      ids.forEach(id => aliases.set(id, article.id));
+    }
+  }
   try {
     const value = JSON.parse(localStorage.getItem(KEY) || '{}');
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -21,12 +30,22 @@
         index: Math.max(0, Math.min(10000, Math.floor(Number(row.tts?.index) || 0))) },
     };
   }
-  function articleState(id) { return clean(records[String(id)] || {}); }
+  function articleState(id) {
+    const key = aliases.get(String(id)) || String(id);
+    const rows = (aliasGroups.get(key) || [key]).map(alias => records[alias]).filter(Boolean);
+    const latest = [...rows].sort((a, b) => b.updated - a.updated)[0] || {};
+    return clean({...latest, read: rows.some(row => row.read), saved: rows.some(row => row.saved)});
+  }
   function set(id, patch) {
     if (!id || typeof patch !== 'object' || !patch) return articleState(id);
-    const key = String(id);
+    const key = aliases.get(String(id)) || String(id);
     const previous = articleState(key);
     records[key] = clean({ ...previous, ...patch, updated: Date.now() });
+    // Explicit state changes apply to aliases of this same publisher article;
+    // no unrelated duplicate-source membership is marked read or unsaved.
+    for (const alias of aliasGroups.get(key) || []) {
+      if (records[alias]) records[alias] = records[key];
+    }
     const entries = Object.entries(records).sort((a, b) => a[1].updated - b[1].updated).slice(-MAX_ARTICLES);
     records = Object.assign(Object.create(null), Object.fromEntries(entries));
     try { localStorage.setItem(KEY, JSON.stringify(records)); } catch (_) { persistent = false; }
@@ -71,5 +90,5 @@
   }
   window.addEventListener?.('pageshow', refresh);
   window.addEventListener?.('storage', event => { if (event.key === KEY || event.key === null) refresh(); });
-  window.RssReaderState = { refresh, isPersistent: () => persistent, articleState, get: articleState, set, saveLater, markRead, filter, preference, setPreference };
+  window.RssReaderState = { registerAliases, refresh, isPersistent: () => persistent, articleState, get: articleState, set, saveLater, markRead, filter, preference, setPreference };
 }());

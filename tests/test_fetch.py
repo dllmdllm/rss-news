@@ -493,7 +493,7 @@ def test_rss_media_migration_fetches_once_then_restores_conditionals(monkeypatch
     seen = []
     async def read(session, url, headers, **kwargs):
         seen.append(dict(headers))
-        return 200, b'<rss version="2.0"><channel><item><title>News</title><link>https://example.com/a</link><description>Text</description></item></channel></rss>', {'ETag':'new'}
+        return 200, b'<rss version="2.0"><channel><item><title>News</title><link>https://example.com/a</link><pubDate>Thu, 22 Oct 2026 10:00:00 GMT</pubDate><description>Text</description></item></channel></rss>', {'ETag':'new'}
     monkeypatch.setattr(fetch, '_read_feed_with_tls_fallback', read)
     info = {'name':'法庭線','url':'https://example.com/feed','category':'網媒','rss_media':True}
     cache = {info['url']:{'etag':'old'}}
