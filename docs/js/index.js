@@ -44,7 +44,6 @@
 
   const state = {
     articles: [],
-    allArticles: [],
     loaded: false,
     loadFailed: false,
     topics: [],
@@ -234,9 +233,6 @@
 
   function filteredArticles() {
     const terms = RssSearch.tokens(state.query);
-    // Saved history is an explicit reader view. Its records are never erased
-    // by the current-news24h eligibility policy or a refresh.
-    const universe = state.readingStatus === 'saved' ? state.allArticles : state.articles;
     // 實體篩選靠 entities.json 記低嘅 article_ids——AI 抽到嘅實體名唔一定
     // 逐字出現喺標題／摘要，自己夾字會漏一大截。
     const entityEntry = state.entity && state.entityIndex
@@ -249,7 +245,7 @@
       ? state.topics.find((topic) => topic.topic === state.topic)
       : null;
     const topicIds = new Set((selectedTopic && selectedTopic.article_ids) || []);
-    const matched = universe.filter((article) => {
+    const matched = state.articles.filter((article) => {
       if (state.topic) {
         const inTopic = topicIds.size
           ? topicIds.has(article.id)
@@ -269,7 +265,7 @@
       return membership ? {...article, metadata_source: article.source, source: membership.source, category: membership.category} : article;
     });
     state.matchCount = matched.length;
-    return sortedArticles(RssSearch.collapse(sortedArticles(matched), universe));
+    return sortedArticles(RssSearch.collapse(sortedArticles(matched), state.articles));
   }
 
   function renderNav() {
@@ -344,7 +340,7 @@
           ${window.RssEventReading?.provenance(lead) || ""}
           <span>${window.RssReaderState?.articleState(lead.id)?.read ? "已讀" : "未讀"}</span>
         </div>
-      </a><button type="button" class="save-later" data-save-later="${esc(lead.id)}" aria-pressed="${!!window.RssReaderState?.articleState(lead.id)?.saved}">${window.RssReaderState?.articleState(lead.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
+      </a>${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
   }
 
   function briefItem(article, label) {
@@ -393,14 +389,14 @@
           ${revisionLabel(article)}
           ${priorityBadge(article)}
           ${clickbaitBadge(article)}
-          <span>${window.RssReaderState?.articleState(article.id)?.read ? "已讀" : "未讀"}${window.RssReaderState?.articleState(article.id)?.saved ? " · 稍後閱讀" : ""}</span>
+          <span>${window.RssReaderState?.articleState(article.id)?.read ? "已讀" : "未讀"}</span>
         </div>
         <h3>${esc(article.title || "")}</h3>
         <span class="ai-note">AI 摘要</span>
         ${cardSummaryBlock(article)}
         ${window.RssEventReading?.provenance(article) || ""}
       </div>
-    </a><button type="button" class="save-later" data-save-later="${esc(article.id)}" aria-pressed="${!!window.RssReaderState?.articleState(article.id)?.saved}">${window.RssReaderState?.articleState(article.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
+    </a>${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
   }
 
   const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
@@ -1118,7 +1114,6 @@
     });
     $("readingStatus")?.addEventListener("change", event => { state.readingStatus = event.target.value; renderAll(); });
     window.addEventListener("rss-reader-state", event => { if (event.detail?.statusChanged !== false) renderAll(); });
-    document.addEventListener("click", event => { const button = event.target.closest("[data-save-later]"); if (!button || !window.RssReaderState) return; const id = button.dataset.saveLater; window.RssReaderState.saveLater(id, !window.RssReaderState.articleState(id).saved); });
     applyFontSize(storageGet("rss_font_size") || storageGet("rss_home_font_size") || "normal");
     $("categoryNav").addEventListener("click", (event) => {
       const sourceButton = event.target.closest("button[data-source]");
@@ -1656,7 +1651,6 @@
     const data = await fetchArticleData();
     const articles = data.articles || [];
     if (!Array.isArray(data.articles)) throw new Error('文章資料格式不符');
-    state.allArticles = articles;
     state.articles = eligibleArticles(articles);
     window.RssReaderState?.registerAliases(articles);
     state.topics = data.trending_topics || [];
@@ -1717,7 +1711,6 @@
         state.restoringSnapshot = true;
         const overflowAnchor = document.documentElement.style.overflowAnchor;
         document.documentElement.style.overflowAnchor = 'none';
-        state.allArticles = snapshot.articles;
         state.articles = eligibleArticles(snapshot.articles);
         window.RssReaderState?.registerAliases(snapshot.articles);
         state.sources = snapshot.sources;

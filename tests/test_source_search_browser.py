@@ -1,6 +1,7 @@
 """Desktop/mobile result and source-order behavior with deterministic fixtures."""
 import copy
 import hashlib
+import json
 
 import pytest
 from test_browser_smoke import browser, news_data, _route_data, _static_server
@@ -42,22 +43,26 @@ def test_all_search_matches_are_reachable_and_same_token_rules_apply(browser, ne
         page.close()
 
 
-def test_mobile_filters_before_pagination_and_never_loses_late_saved_match(browser, news_data):
+def test_mobile_filters_before_pagination_and_never_loses_late_unread_match(browser, news_data):
     data = large_snapshot(news_data)
     with _static_server() as base:
         page = browser.new_page(viewport={'width':390,'height':900}, service_workers='block')
         _route_data(page, data)
-        page.add_init_script("localStorage.setItem('rss_reader_state_v1',JSON.stringify({a78:{saved:true,read:false,updated:1}}))")
+        records = {f'a{i}': {'saved': i == 78, 'read': i < 78, 'updated': 1} for i in range(79)}
+        raw = json.dumps(records)
+        page.add_init_script('localStorage.setItem("rss_reader_state_v1",'+json.dumps(raw)+')')
         page.goto(base+'/index.html')
         page.locator('#feed a.card').first.wait_for()
         # The existing reading filter is on the latest-news view. Carry the
         # selection into search; do not add a new layout to this bug repair.
-        page.locator('#readingStatus').select_option('saved')
+        page.locator('#readingStatus').select_option('unread')
         page.locator('#mobileTabs [data-view="search"]').click()
         page.locator('#search').fill('蘋果')
         page.wait_for_function("document.querySelector('#searchResultTitle').textContent.includes('1 篇匹配報道')")
         assert page.locator('#searchResultList > a').count() == 1
         assert page.locator('#searchResultList > a').get_attribute('href') == 'article.html?id=a78'
+        assert page.evaluate('localStorage.getItem("rss_reader_state_v1")') == raw
+        assert page.evaluate('RssReaderState.get("a78").saved') is True
         page.close()
 
 

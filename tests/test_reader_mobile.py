@@ -21,6 +21,14 @@ def _speech(page):
     ''')
 
 
+def _seed_saved(page):
+    """A device's existing data survives even though its save controls are gone."""
+    page.add_init_script('''
+      if(localStorage.getItem('rss_reader_state_v1')===null)
+        localStorage.setItem('rss_reader_state_v1',JSON.stringify({a0:{saved:true,read:false,updated:1}}));
+    ''')
+
+
 @pytest.mark.parametrize('width', [390, 1280])
 def test_local_status_preferences_and_manual_resume_without_autoplay(browser, news_data, width):
     with _static_server() as base:
@@ -29,9 +37,11 @@ def test_local_status_preferences_and_manual_resume_without_autoplay(browser, ne
         _route_data(page, news_data)
         _long_body(page, news_data)
         _speech(page)
+        _seed_saved(page)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
-        page.locator('#readerSaveLater').click()
+        assert page.locator('#readerSaveLater').count() == 0
+        assert page.evaluate("RssReaderState.articleState('a0').saved")
         page.locator('#readerRead').click()
         page.locator('#fontSmall').click()
         page.locator('#highlightToggle').click()
@@ -41,7 +51,7 @@ def test_local_status_preferences_and_manual_resume_without_autoplay(browser, ne
         position = page.evaluate("RssReaderState.articleState('a0').position")
         page.reload()
         page.locator('#readerResume').wait_for()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        assert page.evaluate("RssReaderState.articleState('a0').saved")
         assert page.locator('#readerRead').get_attribute('aria-pressed') == 'true'
         assert page.locator('#fontSmall').get_attribute('aria-pressed') == 'true'
         assert page.locator('#highlightToggle').get_attribute('aria-pressed') == 'false'
@@ -50,8 +60,8 @@ def test_local_status_preferences_and_manual_resume_without_autoplay(browser, ne
         assert page.evaluate("RssReaderState.articleState('a0').position") == position
         page.locator('#readerResume').click()
         assert page.evaluate('scrollY') > 1000
-        page.locator('#readerSaveLater').click()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'false'
+        assert page.locator('#readerSaveLater').count() == 0
+        assert page.evaluate("RssReaderState.articleState('a0').saved")
         context.close()
 
 
@@ -103,14 +113,13 @@ def test_denied_storage_keeps_current_page_state_and_discloses_limit(browser, ne
         page.add_init_script("Storage.prototype.getItem=Storage.prototype.setItem=()=>{throw new DOMException('blocked','SecurityError')}")
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
-        page.locator('#readerSaveLater').click()
         page.locator('#readerRead').click()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        assert page.locator('#readerSaveLater').count() == 0
         assert page.evaluate("RssReaderState.articleState('a0').read")
         assert '本次頁面' in page.locator('#readerLocalStatus').inner_text()
         page.reload()
         page.locator('#content strong').wait_for()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'false'
+        assert not page.evaluate("RssReaderState.articleState('a0').read")
         assert page.evaluate('ttsCalls.length') == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         context.close()
@@ -122,10 +131,10 @@ def test_loaded_reader_keeps_local_actions_offline_and_isolates_articles(browser
         page = context.new_page()
         _route_data(page, news_data)
         _speech(page)
+        _seed_saved(page)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
         context.set_offline(True)
-        page.locator('#readerSaveLater').click()
         page.locator('#readerRead').click()
         page.locator('#articleTts').click()
         page.evaluate('window.oldUtterance = currentUtterance')
@@ -133,17 +142,18 @@ def test_loaded_reader_keeps_local_actions_offline_and_isolates_articles(browser
         page.locator('#articleTts').click()
         page.evaluate('oldUtterance.onend()')
         assert page.evaluate('ttsCalls.length') == 1
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        assert page.evaluate("RssReaderState.articleState('a0').saved")
+        assert page.locator('#readerSaveLater').count() == 0
         context.set_offline(False)
         page.goto(base + '/article.html?id=a1')
         page.locator('#content strong').wait_for()
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'false'
+        assert not page.evaluate("RssReaderState.articleState('a1').saved")
         assert page.locator('#readerRead').get_attribute('aria-pressed') == 'false'
         assert page.evaluate('ttsCalls.length') == 0
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
         assert page.locator('#readerRead').get_attribute('aria-pressed') == 'true'
-        assert page.locator('#readerSaveLater').get_attribute('aria-pressed') == 'true'
+        assert page.evaluate("RssReaderState.articleState('a0').saved")
         assert page.evaluate('ttsCalls.length') == 0
         context.close()
 
@@ -177,7 +187,7 @@ def test_completed_queue_shows_last_segment_then_replays_only_on_click(browser, 
         context.close()
 
 
-def test_two_tabs_sync_read_saved_labels_without_resetting_position_or_speech(browser, news_data):
+def test_two_tabs_sync_read_state_preserve_saved_data_position_and_speech(browser, news_data):
     with _static_server() as base:
         context = browser.new_context(service_workers='block')
         first, second = context.new_page(), context.new_page()
@@ -197,9 +207,11 @@ def test_two_tabs_sync_read_saved_labels_without_resetting_position_or_speech(br
         second.locator('#readerRead').click()
         first.wait_for_function("document.querySelector('#readerRead').getAttribute('aria-pressed') === 'true'")
         assert first.locator('#readerRead').inner_text() == '標記未讀'
-        second.locator('#readerSaveLater').click()
-        first.wait_for_function("document.querySelector('#readerSaveLater').getAttribute('aria-pressed') === 'true'")
-        assert first.locator('#readerSaveLater').inner_text() == '已加入稍後閱讀'
+        # An older cached tab can still use the retained state API. The new UI
+        # observes its saved flag without recreating a bookmark control.
+        second.evaluate("RssReaderState.saveLater('a0',true)")
+        first.wait_for_function("RssReaderState.articleState('a0').saved")
+        assert first.locator('#readerSaveLater').count() == 0
         assert first.evaluate('scrollY') == scroll
         assert first.locator('#articleTtsSeek').input_value() == queue
         assert first.evaluate('ttsCalls.length') == 0
@@ -208,9 +220,9 @@ def test_two_tabs_sync_read_saved_labels_without_resetting_position_or_speech(br
         first.locator('#readerRead').click()
         second.wait_for_function("document.querySelector('#readerRead').getAttribute('aria-pressed') === 'false'")
         assert second.locator('#readerRead').inner_text() == '標記已讀'
-        first.locator('#readerSaveLater').click()
-        second.wait_for_function("document.querySelector('#readerSaveLater').getAttribute('aria-pressed') === 'false'")
-        assert second.locator('#readerSaveLater').inner_text() == '稍後閱讀'
+        first.evaluate("RssReaderState.saveLater('a0',false)")
+        second.wait_for_function("!RssReaderState.articleState('a0').saved")
+        assert second.locator('#readerSaveLater').count() == 0
         assert not second.evaluate("RssReaderState.articleState('a0').read")
         assert not second.evaluate("RssReaderState.articleState('a0').saved")
         context.close()

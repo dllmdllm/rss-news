@@ -4,7 +4,7 @@
 //   - images, js, css : stale-while-revalidate
 
 const CACHE_PREFIX = "rss-news-";
-const CACHE   = "rss-news-v290";
+const CACHE   = "rss-news-v291";
 const SHELL   = [
   "./",
   "./index.html",
