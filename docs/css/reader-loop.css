@@ -1,8 +1,14 @@
 /* Preserve the reading layout; only functional status/disclosure controls. */
 .revision-label { font-size: .75rem; color: var(--accent, #208d83); border: 1px solid currentColor; border-radius: .25rem; padding: .1rem .3rem; }
-.story-group, .source-point-links { padding: .5rem .75rem; overflow-wrap: anywhere; font-size: .86rem; }
-.story-group summary, .source-point-links summary { cursor: pointer; }
+.story-group { padding: .5rem .75rem; overflow-wrap: anywhere; font-size: .86rem; }
+.source-point-links, .article-details { padding: .25rem .75rem; overflow-wrap: anywhere; font-size: .86rem; }
+.story-group summary { cursor: pointer; }
+.source-point-links summary, .article-details summary { cursor: pointer; min-height: 1.5rem; padding-block: .2rem; }
+.source-point-links summary:focus-visible, .article-details summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .story-group ul, .source-point-links ul { padding-inline-start: 1.2rem; }
+.source-point-links blockquote { margin: .3rem 0 .65rem; padding-inline-start: .6rem; border-inline-start: 2px solid var(--muted, #888); }
+.reading-warning { display: block; padding: .25rem .75rem; font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.summary-unverified { display: inline-block; font-size: .75em; font-weight: normal; border: 1px solid currentColor; border-radius: .2rem; padding-inline: .2rem; }
 .snapshot-update-prompt:not([hidden]) { position: fixed; right: 1rem; bottom: 1rem; z-index: 80; max-width: min(36rem, calc(100vw - 2rem)); display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .7rem; border: 1px solid var(--border, #777); border-radius: .5rem; background: var(--panel, #20272d); color: var(--text, #fff); box-shadow: 0 .2rem 1rem #0003; }
 .snapshot-update-prompt button { cursor: pointer; padding: .4rem .6rem; }
 @media (max-width: 900px) { .snapshot-update-prompt:not([hidden]) { bottom: calc(5rem + env(safe-area-inset-bottom)); } }

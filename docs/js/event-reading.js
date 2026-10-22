@@ -26,8 +26,16 @@
   function provenance(article) {
     const stamp = value => value && !Number.isNaN(Date.parse(value)) ? new Date(value).toLocaleString('zh-HK') : '未提供';
     const fallback = article.content_quality?.fallback || article.evidence_status?.fallback;
-    const partial = (fallback && fallback !== 'none') || article.evidence_status === 'partial';
-    return `<span class="reading-provenance">發布 ${esc(stamp(article.published_at || article.date))} · 抓取 ${esc(stamp(article.fetched_at))} · 正文更新 ${esc(stamp(article.content_updated_at))}${partial ? ' · 部分正文，證據可能不完整' : ''}${article.scrape_error ? ' · 最新正文抓取失敗' : ''}${article.content_retention ? ' · 使用已保存正文' : ''}</span>`;
+    const partial = (fallback && !['none', 'unknown'].includes(fallback)) || article.evidence_status === 'partial'
+      || ['partial', 'pending-budget'].includes(article.body_status);
+    const unknown = fallback === 'unknown' || article.evidence_status === 'unknown'
+      || !article.content_hash || article.content_quality?.origin === 'wordpress-public-posts';
+    const failed = article.scrape_error || article.content_retention?.latest_error || article.body_status === 'failed';
+    const warning = failed ? `最新正文抓取失敗${partial ? '，正文未完整' : ''}；摘要可能未反映更新。`
+      : partial ? '正文未完整，摘要可能有遺漏。'
+      : article.content_retention ? '使用已保存正文，最新更新未核實。'
+      : unknown ? '正文完整性未核實，摘要可能有遺漏。' : '';
+    return `${warning ? `<span class="reading-warning">⚠ ${warning}</span>` : ''}<details class="article-details"><summary>資料詳情</summary><span class="reading-provenance">發布 ${esc(stamp(article.published_at || article.date))} · 抓取 ${esc(stamp(article.fetched_at))} · 正文更新 ${esc(stamp(article.content_updated_at))}${article.content_retention ? ' · 使用已保存正文' : ''}</span></details>`;
   }
   function render(topics, articles, panels) {
     const byId = new Map(articles.map(a => [a.id, a]));
