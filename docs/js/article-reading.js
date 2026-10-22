@@ -122,8 +122,17 @@
       status.textContent = '呢個瀏覽器未支援朗讀';
       return;
     }
-    let chunks = [], index = saved.tts.mode === mode.value ? saved.tts.index : 0, active = false, paused = false, generation = 0, utterance = null, browserDefault = false, completed = false;
+    let chunks = [], index = saved.tts.mode === mode.value ? saved.tts.index : 0, active = false, paused = false, generation = 0, utterance = null, browserDefault = false, completed = false, startTimer, started = false;
+    function watchStart(token, current) {
+      clearTimeout(startTimer);
+      startTimer = setTimeout(() => {
+        if (active && !paused && !started && token === generation && utterance === current) {
+          stop('語音未能開始，請檢查裝置語音支援後再試');
+        }
+      }, 5000);
+    }
     function stop(message = '') {
+      clearTimeout(startTimer);
       generation++;
       active = false;
       paused = false;
@@ -152,9 +161,18 @@
         utterance.rate = Number(rate.value);
         status.dataset.voice = useDefault ? 'browser-default' : (voice?.name || 'zh-HK (browser selection)');
         const current = utterance;
-        utterance.onend = () => { if (utterance === current && token === generation) { index++; if (index < chunks.length) updateQueue(); next(token); } };
+        started = false;
+        status.textContent = '正在啟動朗讀';
+        utterance.onstart = () => {
+          if (utterance === current && token === generation && active) {
+            clearTimeout(startTimer); started = true;
+            status.textContent = paused ? '已暫停' : '朗讀中';
+          }
+        };
+        utterance.onend = () => { if (utterance === current && token === generation) { clearTimeout(startTimer); index++; if (index < chunks.length) updateQueue(); next(token); } };
         utterance.onerror = event => {
           if (token !== generation || utterance !== current) return;
+          clearTimeout(startTimer);
           const error = event?.error || '';
           status.dataset.error = error;
           // Only retry unavailable language/voice, once, with browser default.
@@ -168,6 +186,7 @@
           const selected = status.dataset.voice;
           stop(error ? `朗讀失敗（${error}；語音：${selected}），請檢查瀏覽器語音支援後再試` : '朗讀失敗，請再試');
         };
+        watchStart(token, current);
         try { synth.speak(utterance); }
         catch (_) { utterance.onerror({error: 'synthesis-failed'}); }
       }
@@ -199,9 +218,12 @@
       play.textContent = '⏹ 停止';
       play.setAttribute('aria-pressed', 'true');
       pause.disabled = false;
-      status.textContent = '朗讀中';
+      status.textContent = '正在啟動朗讀';
       browserDefault = false;
       delete status.dataset.error;
+      // cancel()/speak() preserve the global engine's paused state. Resume
+      // only inside this explicit Play gesture, before scheduling a new queue.
+      if (synth.paused) synth.resume();
       next(++generation);
     }
     function move(nextIndex) {
@@ -225,8 +247,10 @@
       if (!active) return;
       paused = !paused;
       if (paused) synth.pause(); else synth.resume();
+      if (paused) clearTimeout(startTimer);
+      else if (!started) watchStart(generation, utterance);
       pause.textContent = paused ? '繼續' : '暫停';
-      status.textContent = paused ? '已暫停' : '朗讀中';
+      status.textContent = paused ? '已暫停' : (started ? '朗讀中' : '正在啟動朗讀');
     });
     mode.addEventListener('change', () => { stop(); completed = false; index = 0; reader.setPreference('rss_tts_mode', mode.value); prepareQueue(); });
     rate.addEventListener('change', () => { stop(); reader.setPreference('rss_tts_rate', rate.value); });

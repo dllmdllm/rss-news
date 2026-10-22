@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from test_browser_smoke import browser, news_data, _route_data, _static_server
+from test_browser_smoke import _body_record, browser, news_data, _route_data, _static_server
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'docs/js/article-evidence.js'
@@ -104,10 +104,11 @@ def test_inline_hero_after_text_and_editorial_table_survive(browser, news_data):
     data['articles'][0]['thumbnail']='https://images.example.com/cover.jpg'
     data['articles'][0]['content_quality']={'fallback':'rss-blocked','origin':'wordpress-public-posts','omitted_invalid_images':2}
     body='<p>原文導言先出現。</p><img src="https://images.example.com/cover.jpg"><blockquote><p>來源引述</p></blockquote><table><caption>演員表</caption><tr><td colspan="2">角色名稱</td></tr></table>'
+    record = _body_record(data, {'content':body,'quality':data['articles'][0]['content_quality']})
     with _static_server() as base:
         context=browser.new_context(viewport={'width':390,'height':900},service_workers='block')
         page=context.new_page();_route_data(page,data)
-        page.route('**/data/content/a0.json',lambda route:route.fulfill(json={'version':1,'content':body,'quality':data['articles'][0]['content_quality']}))
+        page.route('**/data/content/a0.json*',lambda route:route.fulfill(json=record))
         page.route('https://images.example.com/**',lambda route:route.abort())
         page.goto(base+'/article.html?id=a0');page.locator('#content table').wait_for()
         assert page.locator('#content img').count()==1

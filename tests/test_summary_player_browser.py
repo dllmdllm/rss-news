@@ -87,7 +87,7 @@ def test_slim_metadata_retry_stale_guard_and_sentence_search(browser, player_dat
         row.pop('key_sentences', None)
         row['content_hash'] = 'current'
     full = copy.deepcopy(player_data)
-    for row in full['articles']: row['content_hash'] = 'current'
+    for row in full['articles']: row['content_hash'] = row['key_sentences_content_hash'] = 'current'
     full['articles'][0]['content_hash'] = 'stale'
     full['articles'][1]['key_sentences'] = ['唯一可搜尋句', '唯一可搜尋句', '', None]
     with _static_server() as base:

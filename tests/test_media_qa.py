@@ -158,13 +158,14 @@ def test_rotation_limits_atomic_checkpoint_and_removed_sources(monkeypatch,tmp_p
     assert set(state['sources'])=={'0','1'} and all(r['status']=='unverified'for r in state['sources'].values())
 
 
-def test_notifications_acknowledge_only_success_and_dedupe(tmp_path):
+def test_notifications_acknowledge_only_success_and_dedupe(tmp_path, monkeypatch):
     path=tmp_path/'state.json'
     row=qa.fold({}, {'status':'failed','problem':'bad','article_id':'a','body_hash':'h','checked_at':'now'},100)
     qa.atomic_save(path,{'version':1,'sources':{'Source':row}});calls=[]
     async def failed(message):calls.append(message);return False
     assert asyncio.run(qa.notify_media_qa(path=path,sender=failed))==[]
     assert not qa.load_state(path)['sources']['Source'].get('acknowledged')
+    monkeypatch.setattr(qa.time, 'time', lambda: 10 ** 12)
     async def okay(message):calls.append(message);return True
     assert asyncio.run(qa.notify_media_qa(path=path,sender=okay))==['Source']
     assert asyncio.run(qa.notify_media_qa(path=path,sender=okay))==[]

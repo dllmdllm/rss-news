@@ -17,7 +17,7 @@ def save(path, data):
 @pytest.fixture
 def snapshot(tmp_path):
     docs = tmp_path / 'docs'
-    article = dict(id='a_1', summary='• Genuine summary point', score=5, tags=['topic'],
+    article = dict(id='a_1', url='https://example.com/news', summary='• Genuine summary point', score=5, tags=['topic'],
                    sentiment='neutral', date='2026-10-12T12:00:00+08:00',
                    summary_evidence=[dict(point='Genuine summary point', quote='Exact inline quote',
                                           article_id='a_1', verified=True)])

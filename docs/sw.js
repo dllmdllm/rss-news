@@ -3,7 +3,8 @@
 //   - HTML / docs data JSON : network-first (fall back to cache when offline)
 //   - images, js, css : stale-while-revalidate
 
-const CACHE   = "rss-news-v286";
+const CACHE_PREFIX = "rss-news-";
+const CACHE   = "rss-news-v287";
 const SHELL   = [
   "./",
   "./index.html",
@@ -14,6 +15,7 @@ const SHELL   = [
   "./js/index.js",
   "./js/summary-player.js",
   "./css/summary-player.css",
+  "./css/categories.css",
   "./js/article.js",
   "./js/article-reading.js",
   "./js/reader-state.js",
@@ -23,33 +25,31 @@ const SHELL   = [
 
 self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => null)
+    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+      Promise.all(keys.filter(k => k.startsWith(CACHE_PREFIX) && k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 function cacheKey(req) {
   const url = new URL(req.url);
-  url.search = "";
+  // Query parameters include immutable content generations; retain identity.
   return url.toString();
 }
 
-function networkFirst(req) {
+function networkFirst(req, event) {
   const key = cacheKey(req);
   return fetch(req)
     .then(res => {
       if (res && res.ok) {
         const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
+        event.waitUntil(caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null));
         return res;
       }
       // Reachable network but a non-OK status (e.g. a transient 5xx from a
@@ -62,13 +62,13 @@ function networkFirst(req) {
     .catch(async () => (await caches.match(key)) || Response.error());
 }
 
-function staleWhileRevalidate(req) {
+function staleWhileRevalidate(req, event) {
   const key = cacheKey(req);
   return caches.match(key).then(cached => {
     const network = fetch(req).then(res => {
       if (res && res.ok) {
         const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null);
+        return caches.open(CACHE).then(c => c.put(key, clone)).catch(() => null).then(() => res);
       }
       return res;
     // A resource with no cache entry yet (first-ever view) whose network
@@ -76,6 +76,7 @@ function staleWhileRevalidate(req) {
     // event.respondWith(undefined) is a spec violation that surfaces as a
     // hard network error instead of a normal failed response.
     }).catch(() => cached || Response.error());
+    event.waitUntil(network.then(() => {}));
     return cached || network;
   });
 }
@@ -120,8 +121,8 @@ self.addEventListener("fetch", event => {
     && url.pathname.endsWith(".json");
 
   if (isHtml || isDataJson) {
-    event.respondWith(networkFirst(req));
+    event.respondWith(networkFirst(req, event));
   } else if (url.origin === location.origin) {
-    event.respondWith(staleWhileRevalidate(req));
+    event.respondWith(staleWhileRevalidate(req, event));
   }
 });

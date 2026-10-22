@@ -1,12 +1,12 @@
 """Local fixtures, mocked browser speech; no network TTS or production data."""
 import pytest
-from test_browser_smoke import browser, news_data, _route_data, _static_server
+from test_browser_smoke import _body_record, browser, news_data, _route_data, _static_server
 
 
-def _long_body(page):
-    page.route('**/data/content/**', lambda route: route.fulfill(json={
-        'content': '<p>今日有<strong>重要</strong>消息。</p>' +
-                   ''.join(f'<p>第{i}段。' + '長文章內容。' * 30 + '</p>' for i in range(40))}))
+def _long_body(page, news_data):
+    record = _body_record(news_data, {
+        "content": "<p>今日有<strong>重要</strong>消息。</p>" + "".join(f"<p>第{i}段。" + "長文章內容。" * 30 + "</p>" for i in range(40))})
+    page.route('**/data/content/**', lambda route: route.fulfill(json=record))
 
 
 def _speech(page):
@@ -25,7 +25,7 @@ def test_local_status_preferences_and_manual_resume_without_autoplay(browser, ne
         context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
         page = context.new_page()
         _route_data(page, news_data)
-        _long_body(page)
+        _long_body(page, news_data)
         _speech(page)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
@@ -59,7 +59,7 @@ def test_chunk_seek_pause_navigation_and_saved_queue_are_silent_on_reload(browse
         context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
         page = context.new_page()
         _route_data(page, news_data)
-        _long_body(page)
+        _long_body(page, news_data)
         _speech(page)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
@@ -151,7 +151,7 @@ def test_completed_queue_shows_last_segment_then_replays_only_on_click(browser, 
         context = browser.new_context(service_workers='block')
         page = context.new_page()
         _route_data(page, news_data)
-        _long_body(page)
+        _long_body(page, news_data)
         _speech(page)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
@@ -181,7 +181,7 @@ def test_two_tabs_sync_read_saved_labels_without_resetting_position_or_speech(br
         first, second = context.new_page(), context.new_page()
         for page in (first, second):
             _route_data(page, news_data)
-            _long_body(page)
+            _long_body(page, news_data)
             _speech(page)
             page.goto(base + '/article.html?id=a0')
             page.locator('#content strong').wait_for()

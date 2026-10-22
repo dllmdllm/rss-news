@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiohttp
+from src.article_evidence import source_outlet
+from src.event_dates import event_identity
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -68,7 +70,19 @@ def detect_breaking_clusters(articles: list) -> list[dict]:
                     recent.append(m)
             except Exception:
                 pass
-        sources = {m["source"] for m in recent if m.get("source")}
+        # A topic association is not event corroboration. Require an explicit
+        # equivalent event title across independent publisher families.
+        events = {}
+        for row in recent:
+            key = event_identity(row.get('title') or '')
+            if key:
+                events.setdefault(key, []).append(row)
+        candidates = [rows for rows in events.values()
+                      if len({source_outlet(m['source']) for m in rows if m.get('source')}) >= BREAKING_MIN_SOURCES]
+        if not candidates:
+            continue
+        recent = max(candidates, key=lambda rows: max(m.get('score') or 0 for m in rows))
+        sources = {source_outlet(m["source"]) for m in recent if m.get("source")}
         if len(sources) >= BREAKING_MIN_SOURCES:
             # 揀「best」一定要喺 recent（真正觸發 breaking 嘅新鮮 member）
             # 入面揀，唔可以係 members（cluster 全部歷史，可達

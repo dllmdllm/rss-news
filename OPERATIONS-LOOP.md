@@ -44,7 +44,7 @@ flowchart LR
   Poll the index first; once current, compare 14 core paths and up to five
   deterministic newest/evidence/partial-body sidecars. This is selected transport
   verification, alongside the full prepublication integrity gate.
-- Public verification has a 90-second overall polling budget, six attempts,
+- Public verification has a 90-second overall polling budget, at most twelve attempts,
   5/10/15-second capped backoff, eight-second requests, six parallel connections,
   guarded redirects/DNS/TLS and 8 MiB responses. Expected bytes use two bounded
   Git reads (20 seconds each). A denial, unsafe destination or TLS failure stops

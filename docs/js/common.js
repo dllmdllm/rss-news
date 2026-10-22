@@ -8,8 +8,15 @@ function esc(s) {
 }
 
 function safeUrl(u) {
-  const s = String(u ?? "").trim();
-  return /^https?:\/\//i.test(s) ? s : "#";
+  return safeArticleUrl(u) || '#';
+}
+
+function safeArticleUrl(value) {
+  if (typeof value !== 'string' || /[\u0000-\u0020\u007f\\]/.test(value) || /^https?:\/\/[^/?#]*@/i.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.hostname && !url.username && !url.password ? url.href : null;
+  } catch (_) { return null; }
 }
 
 // localStorage access itself (not just writes) can throw SecurityError under

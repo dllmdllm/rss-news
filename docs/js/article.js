@@ -323,6 +323,16 @@
     }
   }
 
+  async function readJson(url, milliseconds = 8000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), milliseconds);
+    try {
+      const response = await fetch(url, {cache: 'no-cache', signal: controller.signal});
+      return response.ok ? await response.json() : null;
+    } catch (_) { return null; }
+    finally { clearTimeout(timer); }
+  }
+
   async function load() {
     bindToolbar();
     const id = new URLSearchParams(location.search).get("id");
@@ -334,34 +344,29 @@
     // 會冧晒，連本身已經攞到嘅文章標題/meta 都跌落「載入失敗」畫面——
     // 本來應該可以優雅降級做「暫時未有全文內容」（2026-07-21 audit
     // finding）。
-    const [metaRes, contentRes, panelRes, similarRes] = await Promise.all([
-      fetch("data/articles.json", { cache: "no-cache" }),
-      fetch(`data/content/${encodeURIComponent(id)}.json`, { cache: "no-cache" }).catch(() => null),
-      fetch("data/panel_digests.json", { cache: "no-cache" }).catch(() => null),
-      // similar.json 同 panel_digests 一樣係 optional enrichment——fetch
-      // 失敗就淨用下面嗰個 tag/topic heuristic，唔可以拖冧成頁。
-      fetch("data/similar.json", { cache: "no-cache" }).catch(() => null),
-    ]);
-    if (!metaRes.ok) throw new Error("讀取文章列表失敗");
-    const data = await metaRes.json();
+    const data = await readJson('data/articles.json');
+    if (!data) throw new Error("讀取文章列表失敗");
     const article = (data.articles || []).find((row) => row.id === id);
     if (!article) throw new Error("搵唔到呢篇文章");
-    if (contentRes && contentRes.ok) {
-      const contentData = await contentRes.json();
-      if (contentData && contentData.content) {
-        article.content = contentData.content;
-        if (contentData.quality) article.content_quality = contentData.quality;
-      }
+    // Metadata is useful even while the independently bounded body is pending.
+    $('title').textContent = article.title || '';
+    $('summaryBox').textContent = summaryPoints(article, 5).join('；');
+    const hash = article.content_hash;
+    const contentData = await readJson(`data/content/${encodeURIComponent(id)}.json?content_hash=${encodeURIComponent(hash || 'unknown')}`);
+    // Never join a cached body from another generation to current metadata.
+    article.content = null;
+    if (contentData?.version === 1 && typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash)
+        && contentData.content_hash === hash && typeof contentData.content === 'string') {
+      try {
+        const bytes = new TextEncoder().encode(contentData.content);
+        const actual = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
+        if (actual === hash) {
+          article.content = contentData.content;
+          if (contentData.quality) article.content_quality = contentData.quality;
+        }
+      } catch (_) { /* Verification unavailable: keep metadata and no body. */ }
     }
-
-    let panelMap = null;
-    if (panelRes && panelRes.ok) {
-      try { panelMap = await panelRes.json(); } catch (_) {}
-    }
-    let similarMap = null;
-    if (similarRes && similarRes.ok) {
-      try { similarMap = await similarRes.json(); } catch (_) {}
-    }
+    let panelMap = null, similarMap = null;
 
     document.title = `${article.title || "新聞"} · 新聞控制台`;
     $("updated").textContent = data.updated || "";
@@ -385,10 +390,12 @@
       ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
       : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
-    $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">暫時未有全文內容。</div>`;
+    $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">正文暫不可用或版本不符，請稍後重新載入；可繼續查看摘要及原文。</div>`;
     showContentAvailability(article);
     window.RssArticleReading.init(article);
-    $("sourceLink").href = article.url || "#";
+    const sourceUrl = safeArticleUrl(article.url);
+    if (sourceUrl) $('sourceLink').href = sourceUrl;
+    else { $('sourceLink').removeAttribute('href'); $('sourceLink').setAttribute('aria-disabled', 'true'); }
 
     const plain = stripHtml(article.content || "");
     const mins = Math.max(1, Math.ceil(plain.length / 550));
@@ -422,15 +429,21 @@
     renderPanelDigest(panelMap, article);
     renderNextArticle(article, data.articles || []);
 
-    const facts = (article.key_sentences && article.key_sentences.length)
-      ? article.key_sentences
-      : summaryPoints(article, 5);
+    const normalise = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const body = normalise(stripHtml(article.content || ''));
+    const facts = (article.key_sentences || []).filter(q => typeof q === 'string' && normalise(q).length >= 8 && body.includes(normalise(q)));
     const factItems = facts.slice(0, 5).filter((fact) => String(fact || "").trim());
     $("facts").innerHTML = factItems.map((fact) => `<li>${esc(fact)}</li>`).join("");
     // 冇關鍵句就唔好留個空框喺 AI 摘要同正文之間。
     $("keyFacts").hidden = !factItems.length;
     $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, similarMap).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;
     window.RssArticleEvidence?.init(article);
+    // Enrichment cannot gate primary rendering, and parsing/body reads share
+    // the deadline. Rejection, invalid JSON and stalls leave heuristics intact.
+    readJson('data/panel_digests.json').then(value => renderPanelDigest(value, article));
+    readJson('data/similar.json').then(value => {
+      if (value) $('relatedList').innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, value).map(renderMiniArticle).join('') || `<span class="ai-note">暫時未有相關新聞</span>`;
+    });
   }
 
   load().catch((err) => {

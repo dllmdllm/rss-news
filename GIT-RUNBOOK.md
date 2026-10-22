@@ -57,7 +57,7 @@ invent it. Physical Cantonese audio needs an actual device check.
 The existing update job now records the actual pushed/no-change SHA and checks
 the public index, core reader assets, metadata and up to five body sidecars.
 Its report proves only those selected files; strict prepublication validation
-still checks the whole generated snapshot. The check polls at most six times
+still checks the whole generated snapshot. The check polls at most twelve times
 within 90 seconds and never repeats paid analysis, sends messages, dispatches a
 job or rolls back. Failure after push means "publication unverified", not
 "nothing was published". Inspect the failed stage/report and let the existing

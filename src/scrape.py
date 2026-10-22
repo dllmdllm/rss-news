@@ -438,20 +438,58 @@ _NUXT_REACTIVE_MARKERS = {"ShallowReactive", "Reactive", "Ref", "ShallowRef"}
 
 
 def _nuxt_deref(raw: list, i, depth: int = 0):
-    if depth > 40 or not isinstance(i, int) or i < 0 or i >= len(raw):
-        return i
-    val = raw[i]
-    if val is None or isinstance(val, (str, int, float, bool)):
-        return val
-    if isinstance(val, list):
-        if val and isinstance(val[0], str) and val[0] in _NUXT_REACTIVE_MARKERS:
-            return _nuxt_deref(raw, val[1], depth + 1)
-        if val and isinstance(val[0], str) and val[0] == "Set":
-            return [_nuxt_deref(raw, j, depth + 1) for j in val[1:]]
-        return [_nuxt_deref(raw, j, depth + 1) for j in val]
-    if isinstance(val, dict):
-        return {k: _nuxt_deref(raw, v, depth + 1) for k, v in val.items()}
-    return val
+    memo, active = {}, set()
+    work, size = 0, 0
+
+    def resolve(ref, level):
+        nonlocal work, size
+        work += 1
+        if work > 20000 or level > 40:
+            raise ValueError('Nuxt expansion budget exceeded')
+        if type(ref) is not int or ref < 0 or ref >= len(raw):
+            return ref
+        if ref in active:
+            raise ValueError('cyclic Nuxt data')
+        if ref in memo:
+            return memo[ref]
+        active.add(ref)
+        val = raw[ref]
+        if isinstance(val, str):
+            size += len(val)
+            result = val
+        elif isinstance(val, list):
+            if val and isinstance(val[0], str) and val[0] in _NUXT_REACTIVE_MARKERS:
+                result = resolve(val[1], level + 1)
+            else:
+                refs = val[1:] if val and val[0] == 'Set' else val
+                result = [resolve(j, level + 1) for j in refs]
+        elif isinstance(val, dict):
+            size += sum(len(k) for k in val)
+            result = {k: resolve(v, level + 1) for k, v in val.items()}
+        else:
+            result = val
+        if size > 2 * 1024 * 1024:
+            raise ValueError('Nuxt output budget exceeded')
+        active.remove(ref)
+        memo[ref] = result
+        return result
+
+    return resolve(i, depth)
+
+
+def _nuxt_container(raw, ref):
+    """Unwrap only container aliases, without expanding unrelated state."""
+    seen = set()
+    for _ in range(40):
+        if type(ref) is not int or not 0 <= ref < len(raw) or ref in seen:
+            raise ValueError('invalid Nuxt container')
+        seen.add(ref)
+        value = raw[ref]
+        if isinstance(value, list) and value and isinstance(value[0], str) and value[0] in _NUXT_REACTIVE_MARKERS:
+            ref = value[1]
+        else:
+            return value
+    raise ValueError('Nuxt container depth exceeded')
 
 
 def _build_tvb_content(html: str) -> str | None:
@@ -476,14 +514,24 @@ def _build_tvb_content(html: str) -> str | None:
         raw = json.loads(m.group(1))
         if not isinstance(raw, list) or len(raw) < 2:
             return None
-        state = _nuxt_deref(raw, 1)
-        data_obj = state.get("data") if isinstance(state, dict) else None
+        state = _nuxt_container(raw, 1)
+        data_obj = _nuxt_container(raw, state.get('data')) if isinstance(state, dict) else None
         if not isinstance(data_obj, dict):
             return None
-        article = next(
-            (v for k, v in data_obj.items() if "article" in k and isinstance(v, dict)),
-            None,
-        )
+        ref = None
+        for key, candidate in list(data_obj.items())[:40]:
+            if 'article' not in key:
+                continue
+            try:
+                container = _nuxt_container(raw, candidate)
+            except (ValueError, IndexError):
+                continue
+            if isinstance(container, dict):
+                ref = candidate
+                break
+        article = _nuxt_deref(raw, ref)
+        if not isinstance(article, dict):
+            return None
     except Exception:
         return None
     if not article:
