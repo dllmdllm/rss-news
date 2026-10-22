@@ -1,4 +1,7 @@
-# synced 2026-10-22T09:57:34.915879+08:00
+# synced 2026-10-22T10:17:31.051558+08:00
+恆生指數
+hsi
+湖人對勇士
 澳洲
 lakers vs warriors
 php 漏洞
@@ -6,6 +9,3 @@ teams
 nba直播
 php 問題
 meta stock
-meta
-吳業坤
-星島日報
