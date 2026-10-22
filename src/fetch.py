@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import unquote, urljoin
 from src.public_http import public_connector, public_get, public_url, read_public_body
+from src.article_urls import valid_article_url
 
 import aiohttp
 import feedparser
@@ -167,9 +168,10 @@ def _clean_url(url: str) -> str:
     """Trim garbage past the first unsafe char. Some feeds (e.g. 明報 娛樂)
     concatenate `<link>` with `" target="blank"` into the URL, breaking
     every downstream parser. First whitespace/quote/angle-bracket wins."""
-    if not url:
+    if not url or re.search(r'[\x00-\x1f\x7f]', url):
         return ""
-    return re.split(r'[\s"<>]', url, maxsplit=1)[0].strip()
+    candidate = re.split(r'[\s"<>]', url, maxsplit=1)[0].strip()
+    return candidate if valid_article_url(candidate) else ''
 
 
 def _map_category_for_url(article_url: str, feed_info: dict) -> str:
@@ -425,7 +427,7 @@ def _parse_oncc_index(html: str, feed_info: dict, cutoff: datetime) -> list[dict
     seen: set[str] = set()
 
     for anchor in soup.find_all("a", href=True):
-        article_url = urljoin(base_url, anchor.get("href", ""))
+        article_url = _clean_url(urljoin(base_url, anchor.get("href", "")))
         if "hk.on.cc/hk/bkn/cnt/" not in article_url:
             continue
         if section and f"/cnt/{section}/" not in article_url:
@@ -1199,6 +1201,10 @@ async def fetch_all() -> tuple[list, dict]:
             batch, error, not_modified = [], str(result), False
         else:
             batch, error, not_modified = result
+        accepted = [row for row in batch if valid_article_url(row.get('url'))]
+        if len(accepted) != len(batch):
+            error = error or 'publisher supplied invalid article URL'
+        batch = accepted
         source_stats[feed_info["name"]] = {
             "category":     feed_info["category"],
             "count":        len(batch),

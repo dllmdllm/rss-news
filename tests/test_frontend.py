@@ -74,7 +74,7 @@ def test_network_first_falls_back_to_cache_on_http_error():
         }
         (async () => {
           const req = { url: "https://example.com/data/articles.json" };
-          const result = await networkFirst(req);
+          const result = await networkFirst(req, {waitUntil(p){p.catch(()=>{});}});
           if (result !== cachedResponse) {
             throw new Error("did not fall back to cache on HTTP error: " + JSON.stringify(result));
           }
@@ -112,7 +112,7 @@ def test_stale_while_revalidate_never_responds_with_undefined():
         const Response = { error: () => ({ _tag: "network-error-response" }) };
         (async () => {
           const req = { url: "https://example.com/data/content/x.json" };
-          const result = await staleWhileRevalidate(req);
+          const result = await staleWhileRevalidate(req, {waitUntil(p){p.catch(()=>{});}});
           if (result === undefined) {
             throw new Error("staleWhileRevalidate resolved to undefined");
           }
@@ -804,7 +804,8 @@ def test_article_text_only_mode_applies_body_class():
 
 def test_article_share_uses_original_source_url():
     source = (ROOT / "docs/js/article.js").read_text(encoding="utf-8")
-    assert '$("sourceLink").href = article.url' in source
+    assert 'safeArticleUrl(article.url)' in source
+    assert "$('sourceLink').href = sourceUrl" in source
 
 
 def test_article_page_has_related_section():
@@ -915,7 +916,7 @@ def test_ai_rank_score_prioritises_importance_cluster_and_recency():
     assert result.returncode == 0, result.stderr
 
 
-def test_service_worker_cache_key_strips_query_string():
+def test_service_worker_cache_key_preserves_generation_query():
     node = _require_node()
     js = textwrap.dedent(
         """
@@ -940,7 +941,7 @@ def test_service_worker_cache_key_strips_query_string():
         };
         vm.runInNewContext(code, context);
         const key = context.cacheKey({ url: "https://example.com/data/articles.json?12345" });
-        if (key !== "https://example.com/data/articles.json") {
+        if (key !== "https://example.com/data/articles.json?12345") {
           throw new Error("unexpected cache key: " + key);
         }
         """
@@ -1548,7 +1549,7 @@ def test_feed_health_identifies_failed_feed_despite_retained_articles():
     '''
     common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
     constants = common[common.index('const _ESC'):common.index('function esc')]
-    script = 'const OUTLET_PREFIXES = ["明報"];\n' + constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common, 'safeUrl') + '\n' + script
+    script = 'const OUTLET_PREFIXES = ["明報"];\n' + constants + _extract_js_function(common, 'esc') + '\n' + (_extract_js_function(common, 'safeArticleUrl') + '\n' + _extract_js_function(common, 'safeUrl')) + '\n' + script
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
@@ -1597,7 +1598,7 @@ def test_sw_content_freshness_and_offline_fallback():
         fetch:async()=>{if(offline)throw Error('offline');return new Response('new-body', {status:unavailable ? 503 : 200});}};
       vm.createContext(context);
     ''' + 'vm.runInContext(' + __import__('json').dumps(source) + ''',context);
-      async function request(){let result;handler({request:new Request('https://example.com/data/content/a.json',{cache:'no-cache'}),respondWith(p){result=p;}});return result;}
+      async function request(){let result;handler({request:new Request('https://example.com/data/content/a.json',{cache:'no-cache'}),respondWith(p){result=p;},waitUntil(p){p.catch(()=>{});}});return result;}
       (async()=>{
         assert.equal(await (await request()).text(),'new-body');
         unavailable=true;
@@ -1616,7 +1617,7 @@ def test_source_health_ages_observations_without_discarding_history():
     source = (ROOT / 'docs/js/index.js').read_text(encoding="utf-8")
     common = (ROOT / 'docs/js/common.js').read_text(encoding="utf-8")
     constants = common[common.index('const _ESC'):common.index('function esc')]
-    script = constants + _extract_js_function(common, 'esc') + '\n' + _extract_js_function(common, 'safeUrl') + """
+    script = constants + _extract_js_function(common, 'esc') + '\n' + (_extract_js_function(common, 'safeArticleUrl') + '\n' + _extract_js_function(common, 'safeUrl')) + """
       const OUTLET_PREFIXES = [];
       const now = Date.parse('2026-10-15T05:00:00Z');
       Date.now = () => now;

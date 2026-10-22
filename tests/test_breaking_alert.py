@@ -71,11 +71,11 @@ def test_detect_breaking_clusters_includes_thumbnail_of_best_article():
     now = datetime.now(timezone.utc).isoformat()
     articles = [
         {"id": "a", "cluster_id": "c1", "source": "A", "date": now, "score": 5,
-         "title": "低分", "thumbnail": "https://example.com/low.jpg", "url": "https://example.com/low"},
+         "title": "同一事件：最新消息", "thumbnail": "https://example.com/low.jpg", "url": "https://example.com/low"},
         {"id": "b", "cluster_id": "c1", "source": "B", "date": now, "score": 9,
-         "title": "高分", "thumbnail": "https://example.com/high.jpg", "url": "https://example.com/high"},
+         "title": "同一事件最新消息", "thumbnail": "https://example.com/high.jpg", "url": "https://example.com/high"},
         {"id": "c", "cluster_id": "c1", "source": "C", "date": now, "score": 3,
-         "title": "都係呢單", "thumbnail": ""},
+         "title": "同一事件，最新消息", "thumbnail": ""},
     ]
     breaking = detect_breaking_clusters(articles)
     assert len(breaking) == 1
@@ -99,16 +99,16 @@ def test_detect_breaking_clusters_picks_best_from_recent_not_full_history():
          "title": "舊文高分", "url": "https://example.com/old"},
         # 3 個新 source 先真正觸發 breaking。
         {"id": "b", "cluster_id": "c1", "source": "B", "date": fresh, "score": 5,
-         "title": "新報導B", "url": "https://example.com/b"},
+         "title": "同一新事件：消息", "url": "https://example.com/b"},
         {"id": "c", "cluster_id": "c1", "source": "C", "date": fresh, "score": 6,
-         "title": "新報導C", "url": "https://example.com/c"},
+         "title": "同一新事件消息", "url": "https://example.com/c"},
         {"id": "d", "cluster_id": "c1", "source": "D", "date": fresh, "score": 4,
-         "title": "新報導D", "url": "https://example.com/d"},
+         "title": "同一新事件，消息", "url": "https://example.com/d"},
     ]
     breaking = detect_breaking_clusters(articles)
     assert len(breaking) == 1
     assert breaking[0]["article_id"] == "c"   # fresh 入面分數最高嗰篇（6），唔係「old」
-    assert breaking[0]["headline"] == "新報導C"
+    assert breaking[0]["headline"] == "同一新事件消息"
 
 
 def test_format_alert_text_includes_summary_bullets_and_sources_last():

@@ -339,11 +339,24 @@ async def notify_media_qa(*, path=STATE_PATH, sender=None):
             acknowledged = row.get('acknowledged')
             if fingerprint_value == acknowledged or (event['status'] == 'verified' and not acknowledged):
                 continue
+            if time.time() < row.get('notification_retry_at', 0):
+                continue
             message = ('RSS 圖文 QA：問題 ' if event['status'] == 'failed' else 'RSS 圖文 QA：抽樣恢復 ') + name + '\n' + str(event.get('problem') or '公開原文／抽樣圖片已驗證')
-            success = await sender(message) if sender else await _send_telegram(session, message)
+            try:
+                result = await sender(message) if sender else await _send_telegram(session, message)
+                success = result is True or type(result) is int and 200 <= result < 300
+            except Exception:
+                success = False
             if success:
                 row['acknowledged'] = fingerprint_value
                 row['pending_event'] = None
+                row.pop('notification_retry_at', None)
+                row.pop('notification_attempts', None)
                 atomic_save(path, state)
                 sent.append(name)
+            else:
+                attempts = min(7, row.get('notification_attempts', 0) + 1)
+                row['notification_attempts'] = attempts
+                row['notification_retry_at'] = time.time() + min(3600, 60 * 2 ** (attempts - 1))
+                atomic_save(path, state)
     return sent

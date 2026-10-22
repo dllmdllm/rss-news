@@ -1597,7 +1597,8 @@
   function keySentencePoints(article) {
     const record = keySentenceRecords.get(article.id);
     if (!record || record.title !== article.title || record.source !== article.source || record.date !== article.date ||
-        (article.content_hash && record.content_hash !== article.content_hash) || !Array.isArray(record.key_sentences)) return [];
+        (article.content_hash && record.content_hash !== article.content_hash) ||
+        !record.content_hash || record.key_sentences_content_hash !== record.content_hash || !Array.isArray(record.key_sentences)) return [];
     return [...new Set(record.key_sentences.filter(text => typeof text === 'string' && text.trim()).map(text => text.trim()))];
   }
   function loadKeySentences() {

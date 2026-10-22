@@ -124,9 +124,9 @@ async function kvKey(endpoint) {
 // Exact/provider suffix checks deliberately exclude arbitrary HTTPS endpoints.
 function validEndpoint(endpoint) {
   try {
-    if (typeof endpoint !== "string" || endpoint.length > 2048) return false;
+    if (typeof endpoint !== "string" || endpoint.length > 2048 || /[\u0000-\u0020\u007f\\]/.test(endpoint)) return false;
     const u = new URL(endpoint);
-    return u.protocol === "https:" && !u.username && !u.password &&
+    return u.href === endpoint && !endpoint.includes('#') && u.protocol === "https:" && !u.username && !u.password &&
       (!u.port || u.port === "443") && !u.hash && (
         u.hostname === "fcm.googleapis.com" ||
         u.hostname === "updates.push.services.mozilla.com" ||
@@ -136,13 +136,16 @@ function validEndpoint(endpoint) {
   } catch { return false; }
 }
 
-function validSubscription(sub) {
+async function validSubscription(sub) {
   if (!validEndpoint(sub?.endpoint)) return false;
   try {
     const p = sub?.keys?.p256dh, a = sub?.keys?.auth;
     if (typeof p !== "string" || typeof a !== "string" ||
         !/^[A-Za-z0-9_-]{87}$/.test(p) || !/^[A-Za-z0-9_-]{22}$/.test(a)) return false;
-    return b64ToU8(p).length === 65 && b64ToU8(p)[0] === 4 && b64ToU8(a).length === 16;
+    if (b64ToU8(p).length !== 65 || b64ToU8(p)[0] !== 4 || b64ToU8(a).length !== 16) return false;
+    // Correct length/prefix does not prove a valid point on the P-256 curve.
+    await crypto.subtle.importKey('raw', b64ToU8(p), {name: 'ECDH', namedCurve: 'P-256'}, false, []);
+    return true;
   } catch { return false; }
 }
 
@@ -170,7 +173,7 @@ async function requestTooLarge(request) {
 /* ── Send one push ─────────────────────────────────────────────────── */
 
 async function sendOne(sub, payload, env) {
-  if (!validSubscription(sub)) throw new Error("Invalid stored subscription");
+  if (!await validSubscription(sub)) throw new Error("Invalid stored subscription");
   const auth = await vapidHeader(sub.endpoint, env.VAPID_PRIVATE_KEY, env.VAPID_PUBLIC_KEY, env.VAPID_SUBJECT);
   const body = await encryptPayload(sub.keys, payload);
 
@@ -225,7 +228,7 @@ export default {
     if (pathname === "/subscribe" && request.method === "POST") {
       try {
         const sub = await request.json();
-        if (!validSubscription(sub))
+        if (!await validSubscription(sub))
           return new Response("Invalid subscription", { status: 400, headers: CORS });
         const key = await kvKey(sub.endpoint);
         // KV is eventually consistent: this is bounded admission, not an atomic

@@ -25,14 +25,14 @@ from src.public_http import MAX_RESPONSE_BYTES, UnsafeDestination, public_connec
 from tools.site_snapshot import _files, _git
 
 SITE = "https://dllmdllm.github.io/rss-news/"
-MAX_ATTEMPTS = 6
+MAX_ATTEMPTS = 12
 BUDGET_SECONDS = 90
 REQUEST_SECONDS = 8
 CONCURRENCY = 6
 INDEX = "data/articles_index.json"
 CORE_PATHS = (
     "index.html", "article.html", "sw.js", "css/categories.css",
-    "js/common.js", "js/index.js", "js/article.js", "js/article-reading.js",
+    "js/common.js", "js/index.js", "js/summary-player.js", "css/summary-player.css", "js/article.js", "js/article-reading.js",
     "js/article-evidence.js", "js/reader-state.js", "js/event-reading.js",
     "data/articles.json", INDEX, "data/build_status.json",
 )
@@ -169,7 +169,10 @@ async def verify(expected, fetch, *, budget=BUDGET_SECONDS, clock=time.monotonic
         remaining = budget - (clock() - started)
         if attempts >= MAX_ATTEMPTS or remaining <= 0:
             break
-        await sleep(min(5 * attempts, 15, remaining))
+        # Poll more often near the deadline; starting the final observation
+        # just 10ms before expiry leaves no time to read the remaining assets.
+        interval = 5 if remaining <= 2 * REQUEST_SECONDS else min(5 * attempts, 15)
+        await sleep(min(interval, remaining))
     return {"status": "unverified", "attempts": attempts, "checked_files": [], "reason": reason}
 
 

@@ -6,6 +6,10 @@ import re
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.article_urls import valid_article_url
 
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 SENTIMENTS = {"positive", "negative", "neutral"}
@@ -133,6 +137,10 @@ def validate_site(docs: Path, require_current=False):
     if require_current and not articles:
         raise ValueError("production snapshot has zero articles")
     for aid, article in articles.items():
+        if (require_current or 'url' in article) and not valid_article_url(article.get('url')):
+            raise ValueError(f'{aid}: invalid article URL')
+        if 'url' in indexed[aid] and not valid_article_url(indexed[aid]['url']):
+            raise ValueError(f'{aid}: invalid index article URL')
         if type(article.get("score")) is not int or not isinstance(article.get("tags"), list) or article.get("sentiment") not in SENTIMENTS:
             raise ValueError(f"{aid}: invalid score/tags/sentiment analysis contract")
         if not all(isinstance(tag, str) for tag in article["tags"]):
@@ -164,6 +172,10 @@ def validate_site(docs: Path, require_current=False):
         quality = record.get("quality")
         fallbacks[aid] = quality.get("fallback") if isinstance(quality, dict) else None
     for aid, article in articles.items():
+        for quote in article.get('key_sentences') or []:
+            quote_supported(quote, aid, bodies, f'{aid}/key_sentences', fallbacks)
+        if article.get('key_sentences') and article.get('key_sentences_content_hash') != hashes[aid]:
+            raise ValueError(f'{aid}: key sentences require current body hash')
         if "summary_evidence" not in article:
             continue
         evidence = article["summary_evidence"]

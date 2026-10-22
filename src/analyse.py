@@ -182,7 +182,7 @@ def _normalise_entities(raw) -> dict:
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _normalise_key_sentences(raw) -> list[str]:
+def _normalise_key_sentences(raw, article=None) -> list[str]:
     """Verbatim quotes used by the article view to wrap <mark> highlights.
     Reject anything that's clearly not a real sentence (too short, too long,
     or contains line breaks — line breaks would never survive a verbatim
@@ -197,6 +197,8 @@ def _normalise_key_sentences(raw) -> list[str]:
     for item in raw:
         text = re.sub(r"\s+", " ", str(item or "")).strip().strip('"\u201c\u201d「」『』')
         if not (8 <= len(text) <= 120):
+            continue
+        if article is not None and not verified_quote(text, article, limit=120):
             continue
         if text in seen:
             continue
@@ -425,6 +427,8 @@ async def _apply_results(
     other coroutines; the lock only serializes the sync disk write."""
     for a, p in zip(batch, parsed):
         p = dict(p, input_hash=analysis_input_hash(a))
+        p['key_sentences'] = _normalise_key_sentences(p.get('key_sentences'), a)
+        p['key_sentences_content_hash'] = hashlib.sha256((a.get('content') or '').encode('utf-8')).hexdigest()
         p["upcoming_events"] = _validated_events(a, p.get("upcoming_events"))
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
         a["analysis_input_hash"] = p["input_hash"]
@@ -669,7 +673,9 @@ async def analyse_all(articles: list) -> list:
             a["topic"]     = c.get("topic", "")
             a["event_type"] = c.get("event_type", "")
             a["entities"]   = _normalise_entities(c.get("entities"))
-            a["key_sentences"]   = _normalise_key_sentences(c.get("key_sentences"))
+            c['key_sentences'] = _normalise_key_sentences(c.get('key_sentences'), a)
+            a["key_sentences"] = c['key_sentences']
+            a['key_sentences_content_hash'] = hashlib.sha256((a.get('content') or '').encode('utf-8')).hexdigest()
             a["upcoming_events"] = _validated_events(a, c.get("upcoming_events"))
         else:
             cache.pop(aid, None)

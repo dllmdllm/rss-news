@@ -140,6 +140,19 @@ def detect_duplicates(articles: list, *, threshold: float = 0.82) -> list:
         bigrams.append(_title_bigrams(a.get("title", "")))
 
     parent = list(range(len(articles)))
+    members = {i: {i} for i in parent}
+
+    def same_identity(i, j):
+        a, b = articles[i], articles[j]
+        # Explicit programme parts are identities, never fuzzy title noise.
+        pattern = r'(?:[（(]([一二三四五六七八九十0-9IVXivx]+)[）)]|第\s*([一二三四五六七八九十0-9]+)\s*[集部期]|\b(?:part|episode)\s*([0-9ivx]+)\b)'
+        parts = [re.findall(pattern, row.get('title', ''), re.I) for row in (a, b)]
+        if parts[0] != parts[1] and any(parts):
+            return False
+        if a.get('url') and a.get('url') == b.get('url'):
+            return True
+        texts = [re.sub(r'\s+', ' ', BeautifulSoup(row.get('content') or '', 'html.parser').get_text('', strip=False)).strip() for row in (a, b)]
+        return len(texts[0]) >= 80 and texts[0] == texts[1]
 
     def find(x: int) -> int:
         while parent[x] != x:
@@ -149,8 +162,10 @@ def detect_duplicates(articles: list, *, threshold: float = 0.82) -> list:
 
     def union(a: int, b: int) -> None:
         ra, rb = find(a), find(b)
-        if ra != rb:
+        # Complete-link identity prevents a fuzzy A~B~C chain hiding A/C.
+        if ra != rb and all(same_identity(i, j) for i in members[ra] for j in members[rb]):
             parent[ra] = rb
+            members[rb].update(members.pop(ra))
 
     n = len(articles)
     # Inverted index: bigram -> list of article indices that contain it.
@@ -884,6 +899,8 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
             )
         a["content_quality"] = quality
         provenance = update_provenance(a, old_record, now=datetime.now(timezone.utc).isoformat())
+        a['key_sentences'] = _normalise_key_sentences(a.get('key_sentences'), a)
+        a['key_sentences_content_hash'] = a.get('content_hash')
         a["summary_evidence"] = validate_summary_evidence(a, a.get("summary_evidence"))
         a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
         # Skip rewriting identical files to keep git diffs minimal and
@@ -1035,7 +1052,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
                     a[field] = src[field]
             for field, normaliser in structured_normalisers.items():
                 if src.get(field) is not None:
-                    a[field] = normaliser(src[field])
+                    a[field] = normaliser(src[field], a) if field == 'key_sentences' else normaliser(src[field])
             a["summary_evidence"] = validate_summary_evidence(a, src.get("summary_evidence"))
             restored += 1
     if restored:

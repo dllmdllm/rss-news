@@ -1,3 +1,4 @@
+import hashlib
 import contextlib
 import functools
 import http.server
@@ -51,6 +52,14 @@ def browser():
         instance.close()
 
 
+def _body_record(data, record):
+    record = dict(record, version=1)
+    record['content_hash'] = hashlib.sha256(record['content'].encode('utf-8')).hexdigest()
+    for row in data['articles']:
+        row['content_hash'] = record['content_hash']
+    return record
+
+
 @pytest.fixture
 def news_data():
     from datetime import datetime, timedelta, timezone
@@ -59,7 +68,7 @@ def news_data():
         "id": f"a{i}", "title": f"測試新聞 {i}", "source": "測試來源", "category": "新聞",
         "date": (now - timedelta(hours=i)).isoformat(), "summary": "・第一個重點\n・第二個重點",
         "score": 8, "tags": ["測試"], "sentiment": "neutral", "topic": f"測試話題{i}",
-        "url": "https://example.com/news", "key_sentences": ["今日有重要消息。"],
+        "key_sentences_content_hash": hashlib.sha256("<p>今日有<strong>重要</strong>消息。</p><p>其他內容。</p>".encode()).hexdigest(), "content_hash": hashlib.sha256("<p>今日有<strong>重要</strong>消息。</p><p>其他內容。</p>".encode()).hexdigest(), "url": "https://example.com/news", "key_sentences": ["今日有重要消息。"],
     } for i in range(3)]
     return {"updated": "測試快照", "sources": {"測試來源": {"count": 3, "effective_count":3}},
             "trending_topics": [], "articles": articles}
@@ -72,7 +81,7 @@ def _route_data(page, data):
         if path.endswith(('articles.json', 'articles_index.json')):
             route.fulfill(json=data)
         elif '/content/' in path:
-            route.fulfill(json={"version":1, "content":"<p>今日有<strong>重要</strong>消息。</p><p>其他內容。</p>"})
+            route.fulfill(json={"version":1, "content_hash": data["articles"][0]["content_hash"], "content":"<p>今日有<strong>重要</strong>消息。</p><p>其他內容。</p>"})
         else:
             route.fulfill(status=404, body='')
     page.route('**/data/**', respond)
@@ -147,8 +156,9 @@ def test_partial_rss_content_notice(browser, news_data, has_image):
         content = '<p>來源提供的短摘要。</p>'
         if has_image:
             content += '<figure><img src="/rss-test.svg"><figcaption>來源圖片說明</figcaption></figure>'
-        page.route('**/data/content/**', lambda route: route.fulfill(json={
-            'version': 1, 'content': content, 'quality': {'fallback': 'rss-blocked'}}))
+        record = _body_record(news_data, {
+            'version': 1, 'content': content, 'quality': {'fallback': 'rss-blocked'}})
+        page.route('**/data/content/**', lambda route: route.fulfill(json=record))
         page.route('**/rss-test.svg', lambda route: route.fulfill(content_type='image/svg+xml',
             body='<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="blue"/></svg>'))
         page.goto(base_url + '/article.html?id=a0')
@@ -176,9 +186,10 @@ def test_retained_full_content_and_interpunct_summary(browser, news_data, width)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         _route_data(page, news_data)
-        page.route('**/data/content/**', lambda route: route.fulfill(json={
+        record = _body_record(news_data, {
             'version': 1, 'quality': {'fallback': 'none'},
-            'content': '<p>Last verified complete body.</p><img src="/retained.svg">'}))
+            'content': '<p>Last verified complete body.</p><img src="/retained.svg">'})
+        page.route('**/data/content/**', lambda route: route.fulfill(json=record))
         page.route('**/retained.svg', lambda route: route.fulfill(content_type='image/svg+xml',
             body='<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="blue"/></svg>'))
         page.goto(base_url + '/index.html')
@@ -210,8 +221,9 @@ def test_reader_allowlist_blocks_control_character_url_protocol(browser, news_da
     with _static_server() as base_url:
         page = browser.new_page(service_workers='block')
         _route_data(page, news_data)
-        page.route('**/data/content/**', lambda route: route.fulfill(json={
-            'version':1, 'content':'<p>Safe <strong>text</strong><a href="java\nscript:void(0)">invalid URL</a><a href="https://example.com/valid">source</a></p><img src="data:text/html,benign" onerror="void(0)"><svg><a href="https://example.com">foreign</a></svg>'}))
+        record = _body_record(news_data, {
+            'version':1, 'content':'<p>Safe <strong>text</strong><a href="java\nscript:void(0)">invalid URL</a><a href="https://example.com/valid">source</a></p><img src="data:text/html,benign" onerror="void(0)"><svg><a href="https://example.com">foreign</a></svg>'})
+        page.route('**/data/content/**', lambda route: route.fulfill(json=record))
         page.goto(base_url + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
         assert page.locator('#content a').first.get_attribute('href') is None
@@ -338,8 +350,9 @@ def test_article_images_preserve_alt_and_use_publisher_caption(browser, news_dat
         context = browser.new_context(service_workers='block')
         page = context.new_page()
         _route_data(page, news_data)
-        page.route('**/data/content/**', lambda route: route.fulfill(json={
-            'content': '<figure><img src="/one.png"><figcaption>來源提供的圖片說明</figcaption></figure><img src="/two.png" alt="既有替代文字"><img src="/three.png">'}))
+        record = _body_record(news_data, {
+            'content': '<figure><img src="/one.png"><figcaption>來源提供的圖片說明</figcaption></figure><img src="/two.png" alt="既有替代文字"><img src="/three.png">'})
+        page.route('**/data/content/**', lambda route: route.fulfill(json=record))
         page.route('**/*.png', lambda route: route.fulfill(status=404, body=''))
         page.goto(base_url + '/article.html?id=a0')
         page.locator('#content img').first.wait_for()
