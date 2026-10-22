@@ -204,6 +204,7 @@ def test_index_bootstrap_renders_articles_without_runtime_error():
         """
         const fs = require("fs");
         const vm = require("vm");
+        Date.now = () => Date.parse('2026-05-22T11:00:00Z');
 
         class El {
           constructor(id) {
@@ -1534,7 +1535,7 @@ def test_feed_health_identifies_failed_feed_despite_retained_articles():
       const window = {};
       const elements = new Map();
       const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
-      const state = {category:'全部',articles:[],topics:[],sources:{
+      const state = {query:'',readingStatus:'all',category:'全部',articles:[],topics:[],sources:{
         '明報 國際':{count:0,fresh_count:0,effective_count:8,error:'parse failure',fetch_status:'failed',checked_at:new Date().toISOString(),feed_url:'https://example.com/feed'},
         '明報 中國':{count:2,fresh_count:2,effective_count:2,fetch_status:'success',checked_at:new Date().toISOString()}
       }};
@@ -1623,7 +1624,7 @@ def test_source_health_ages_observations_without_discarding_history():
       Date.now = () => now;
       const elements = new Map();
       const $ = id => { if (!elements.has(id)) elements.set(id, {innerHTML:'',textContent:''}); return elements.get(id); };
-      const state = {category:'全部', articles:[], topics:[], sources:{}};
+      const state = {query:'', readingStatus:'all', category:'全部', articles:[], topics:[], sources:{}};
       let criticalShownIds;
       function criticalScore(){return 0;}
       function sortedArticles(a){return a;}

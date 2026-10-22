@@ -59,8 +59,8 @@ RSS_FEEDS = [
     # sitemap」都救唔返 —— 唔係 parser 壞，係個 source 冇咗新聞。
     # 想翻查舊 code（_fetch_skypost / _build_skypost_content）就睇 git history。
     # 科技
-    # 30 小時窗口內有 109 篇（2026-07-25 實測），畀 45 係想科技版厚啲，
-    # 但唔想佢一個 source 就食晒成版——同 TVB 一樣刻意寫死唔跟預設 cap。
+    # max_items is the legacy paid-enrichment budget, not collection eligibility.
+    # The bounded provided RSS response is scanned for every in-window article.
     {"name": "cnBeta",            "url": "https://rss.cnbeta.com.tw/",                                            "category": "科技", "max_items": 45},
     {"name": "HKEPC",             "url": "https://www.hkepc.com/feed",                                            "category": "科技"},
     {"name": "Unwire",            "url": "https://unwire.hk/feed/",                                               "category": "科技"},
@@ -93,27 +93,23 @@ RSS_FEEDS = [
     # ⚠️ HuffPost 個 /section/front-page/feed 同 /section/style/feed 都係
     # HTTP 200 但 0 個 <item>（2026-07-30 實測）——揀 section 一定要真係數
     # entries，唔可以見到 200 就當得。呢種空殼正正係「靜默 0 篇」嘅來源。
-    # max_items 收細：us-news 一個 feed 就 50 條，多數係美國內政，冇 cap
-    # 會浸過本地新聞。
+    # Keep the previous paid-enrichment budgets as collection expands. Additional
+    # in-window metadata is retained with honest pending enrichment status.
     {"name": "HuffPost 新聞",      "url": "https://www.huffpost.com/section/us-news/feed",                        "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
     {"name": "HuffPost 娛樂",      "url": "https://www.huffpost.com/section/entertainment/feed",                  "category": "外媒", "max_items": 15, "headers": RSS_CLIENT_HEADERS},
     {"name": "HuffPost 生活",      "url": "https://www.huffpost.com/section/life/feed",                           "category": "外媒", "max_items": 8, "headers": RSS_CLIENT_HEADERS, "rss_media": True},
     # 電視台新聞
-    # ⚠️ TVB 個 sitemap 30 小時窗口內有 245 篇（2026-07-25 實測）——冇呢個
-    # override 就會浸曬新聞版。刻意寫死，唔好跟 MAX_ITEMS_PER_FEED 走。
+    # Preserve the prior paid-enrichment allowance; the whole bounded sitemap
+    # now supplies metadata instead of treating30 as an article eligibility cap.
     {"name": "TVB 新聞",           "url": "https://news.tvb.com/sitemap.xml",                                      "category": "新聞", "fetcher": "tvb", "max_items": 30},
     {"name": "Now 新聞",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=119&pageNo=1&pageSize=30", "category": "新聞", "fetcher": "nowtv"},
     # 中國版（category=122）2026-07 起 API 回傳空，probe 過 121-130 都冇——121 係財經
     {"name": "Now 國際",           "url": "https://newsapi1.now.com/pccw-news-api/api/getNewsListv2?category=120&pageNo=1&pageSize=30", "category": "國際", "fetcher": "nowtv"},
 ]
 
-# 2026-07-25：20 → 30。之前 13 個 source 啱啱好停喺 20，即係俾 cap 截住而唔係
-# 冇料（實測 30 小時窗口內：明報本地 34、東網本地 36、Now 新聞 30）。呢個 cap
-# 一提高，新聞版嘅 source 分佈就平均啲——星島佔比由 28% 跌到約 24%。
-# ⚠️ 唔可以無腦再調高：TVB（245 篇）同 cnBeta（109 篇）係消防喉，各自有
-# max_items override 擋住，見上面 RSS_FEEDS。星島（100）同 am730（40）唔郁
-# ——佢哋係跨分類 feed，靠 url_category 拆去 4 個分類，攤開之後同其他 source
-# 差唔多，唔係霸位。
+# Legacy per-source paid-enrichment allowance and public API page sizing only.
+# Collection uses the30h internal time window (the UI exposes24h) and explicit
+# response/request/time budgets. It never silently drops eligible metadata at30.
 MAX_ITEMS_PER_FEED = 30
 SCRAPE_CONCURRENCY = 15
 

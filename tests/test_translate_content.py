@@ -1,5 +1,8 @@
 import asyncio
 import json
+import hashlib
+
+import pytest
 
 from src import translate_content as TC
 
@@ -284,3 +287,238 @@ def test_translation_units_include_list_parent_text_once():
     for unit, text in zip(units, ['父項。', '子項。', '結尾。']):
         TC._replace_tag_text(unit, text)
     assert str(soup) == '<ul><li>父項。<ul><li>子項。</li></ul>結尾。</li></ul>'
+
+
+@pytest.mark.parametrize('completed_count', [1, 4])
+def test_cancelled_stage_flushes_completed_tail_and_next_cycle_reuses_it(monkeypatch, tmp_path, completed_count):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    calls = []
+
+    def original(index):
+        return _article(id=f'article-{index}', content=f'<p>Story {index}.</p><img src="https://example.com/photo.jpg">')
+
+    async def run():
+        blocked = asyncio.Event()
+        drained = asyncio.Event()
+
+        async def fake_post(session, **kwargs):
+            calls.append(kwargs['user_text'])
+            assert kwargs['max_tokens'] <= TC.MAX_TRANSLATION_OUTPUT_TOKENS
+            if f'Story {completed_count}.' in kwargs['user_text'] and not drained.is_set():
+                blocked.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    drained.set()
+            return json.dumps(['已翻譯的段落。']), {}, 200
+
+        monkeypatch.setattr(TC, 'post_messages', fake_post)
+        articles = [original(i) for i in range(completed_count+1)]
+        pending_original = articles[-1]['content']
+        pending_hash = hashlib.sha256(pending_original.encode()).hexdigest()
+        task = asyncio.create_task(TC.translate_english_content(articles))
+        await asyncio.wait_for(blocked.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert drained.is_set(), 'cancelled provider child must finish before cache flush'
+        cache = json.loads(TC.CACHE_PATH.read_text(encoding='utf-8'))
+        assert set(cache) == {f'article-{i}' for i in range(completed_count)}
+        assert all(articles[i]['translation_status']=='translated' for i in range(completed_count))
+        assert articles[-1]['content'] == pending_original
+        assert hashlib.sha256(articles[-1]['content'].encode()).hexdigest() == pending_hash
+        assert articles[-1]['translation_status']=='deferred'
+        assert articles[-1]['translation_reason']=='stage-cancelled'
+
+        second = [original(i) for i in range(completed_count+1)]
+        result = await TC.translate_english_content(second)
+        assert result['ok'] and result['cached']==completed_count and result['translated']==1
+        for i in range(completed_count):
+            assert sum(f'Story {i}.' in call for call in calls)==1
+        assert sum(f'Story {completed_count}.' in call for call in calls)==2
+        assert all('https://example.com/photo.jpg' in a['content'] for a in second)
+
+    asyncio.run(run())
+
+
+def test_cancelled_stage_never_checkpoints_unfinished_article(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+
+    async def run():
+        started = asyncio.Event()
+        drained = asyncio.Event()
+        async def fake_post(*args, **kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                drained.set()
+        monkeypatch.setattr(TC, 'post_messages', fake_post)
+        article = _article()
+        original = article['content']
+        task = asyncio.create_task(TC.translate_english_content([article]))
+        await asyncio.wait_for(started.wait(),timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert drained.is_set()
+        assert json.loads(TC.CACHE_PATH.read_text(encoding='utf-8'))=={}
+        assert article['content']==original
+        assert article['translation_status']=='deferred'
+
+    asyncio.run(run())
+
+
+def test_individual_failure_reports_failed_without_caching_or_replacing_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    async def fake_post(*args, **kwargs):
+        return '', {'type':'invalid_request_error'}, 400
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    article = _article()
+    original = article['content']
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['status']=='failed' and result['ok'] is False
+    assert result['failed']==1 and result['translated']==0
+    assert article['content']==original
+    assert article['translation_status']=='failed'
+    assert article['translation_reason']=='api-error-400'
+    assert json.loads(TC.CACHE_PATH.read_text(encoding='utf-8'))=={}
+
+
+def test_invalid_translation_output_is_failed_instead_of_successful_step(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    monkeypatch.setattr(TC, 'TRANSLATE_MAX_ATTEMPTS', 1)
+    async def fake_post(*args, **kwargs):
+        return json.dumps(['too few translated units']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    article = _article()
+    original = article['content']
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['failed']==1 and result['ok'] is False
+    assert article['content']==original and article['translation_reason']=='invalid-output'
+
+
+def test_long_article_is_deferred_whole_without_provider_request(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('oversized article must not create a paid request')
+    monkeypatch.setattr(TC, 'post_messages', forbidden)
+    content = ''.join('<p>'+('English text. '*80)+'</p>' for _ in range(10))+'<img src="https://example.com/full.jpg">'
+    article = _article(content=content)
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['deferred']==1 and result['ok'] is False
+    assert article['translation_status']=='deferred' and article['translation_reason']=='input-budget'
+    assert article['content']==content
+    assert not TC.CACHE_PATH.exists()
+
+
+def test_valid_long_translation_cache_precedes_input_and_collection_budget(monkeypatch):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    content = ''.join('<p>'+('English text. '*80)+'</p>' for _ in range(10))+'<img src="https://example.com/new.jpg">'
+    texts = [t.get_text(' ',strip=True) for t in TC._translation_units(content)[1]]
+    cached = {'eng1':{'version':TC.TRANSLATE_VERSION,'source_hash':TC._source_hash(texts),'content':'<p>已翻譯。</p>'*10}}
+    monkeypatch.setattr(TC,'load_cache',lambda:cached)
+    async def forbidden(*args,**kwargs): raise AssertionError('valid cache must be reused without paid refresh')
+    monkeypatch.setattr(TC,'post_messages',forbidden)
+    article = _article(content=content,_paid_enrichment_deferred=True)
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['ok'] and result['cached']==1 and result['deferred']==0
+    assert '已翻譯。' in article['content'] and 'https://example.com/new.jpg' in article['content']
+
+
+def test_collection_budget_preserves_uncached_source_and_reports_deferral(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    async def forbidden(*args, **kwargs): raise AssertionError('collection cannot expand paid translation quota')
+    monkeypatch.setattr(TC, 'post_messages', forbidden)
+    article = _article(_paid_enrichment_deferred=True)
+    original = article['content']
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['deferred']==1 and article['translation_reason']=='collection-budget'
+    assert article['content']==original
+
+
+def test_guarded_untranslated_source_blocks_keep_partial_status(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    async def fake_post(*args, **kwargs): return json.dumps(['已翻譯。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    long_text = 'x'*(TC._MAX_PARAGRAPH_CHARS+1)
+    article = _article(content='<p>Short.</p><p>'+long_text+'</p>')
+    result = asyncio.run(TC.translate_english_content([article]))
+    assert result['translated']==1 and result['partial']==1 and result['status']=='partial'
+    assert long_text in article['content']
+    assert article['translation_status']=='partial' and article['translation_reason']=='unsupported-text-blocks'
+
+
+def test_source_paid_limit_counts_only_uncached_admitted_jobs_and_backlog_advances(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    monkeypatch.setattr(TC, 'legacy_source_limit', lambda source: 2)
+    cached_original = _article(id='cached',content='<p>Previously translated source.</p>')
+    cache = {'cached':{'version':TC.TRANSLATE_VERSION,
+        'source_hash':TC._source_hash(['Previously translated source.']),
+        'content':'<p>已有譯文。</p>'}}
+    TC.save_cache(cache)
+    calls = []
+    async def fake_post(session, **kwargs):
+        calls.append(kwargs['user_text'])
+        return json.dumps(['新譯文。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    oversized = ''.join('<p>'+('Long prose. '*100)+'</p>' for _ in range(10))
+
+    def batch():
+        return [dict(cached_original), _article(id='long',content=oversized),
+                *[_article(id=f'new-{i}',content=f'<p>New source {i}.</p>') for i in range(3)]]
+
+    first = batch()
+    report = asyncio.run(TC.translate_english_content(first))
+    assert report['cached']==1 and report['translated']==2 and report['deferred']==2
+    assert len(calls)==2
+    assert first[1]['translation_reason']=='input-budget'
+    assert first[-1]['translation_reason']=='collection-budget'
+    assert first[-1]['content']=='<p>New source 2.</p>'
+
+    second = batch()
+    report = asyncio.run(TC.translate_english_content(second))
+    assert report['cached']==3 and report['translated']==1 and report['deferred']==1
+    assert len(calls)==3
+    assert 'New source 2.' in calls[-1]
+
+
+@pytest.mark.parametrize('values', [[None, '第二段。'], ['', '第二段。'], ['第一段。', {'text':'第二段。'}]])
+def test_missing_or_nontext_translation_units_never_create_completed_checkpoint(monkeypatch, tmp_path, values):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    monkeypatch.setattr(TC, 'TRANSLATE_MAX_ATTEMPTS', 1)
+    async def fake_post(*args, **kwargs): return json.dumps(values), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    article = _article()
+    original = article['content']
+    report = asyncio.run(TC.translate_english_content([article]))
+    assert not report['ok'] and report['failed']==1
+    assert article['content']==original
+    assert json.loads(TC.CACHE_PATH.read_text(encoding='utf-8'))=={}
+
+
+def test_partial_provider_failure_does_not_hide_behind_successful_sibling(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path/'translations.json')
+    async def fake_post(*args, **kwargs):
+        if 'Failure article.' in kwargs['user_text']:
+            return '', {'type':'invalid_request_error'}, 400
+        return json.dumps(['完成的文章。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', fake_post)
+    good = _article(id='good',content='<p>Success article.</p>')
+    bad = _article(id='bad',content='<p>Failure article.</p>')
+    report = asyncio.run(TC.translate_english_content([good,bad]))
+    assert report['status']=='partial' and not report['ok']
+    assert report['translated']==1 and report['failed']==1
+    assert good['translation_status']=='translated' and bad['translation_status']=='failed'
+    assert bad['content']=='<p>Failure article.</p>'
+    assert set(json.loads(TC.CACHE_PATH.read_text(encoding='utf-8')))=={'good'}

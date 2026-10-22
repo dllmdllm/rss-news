@@ -9,6 +9,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 from src.event_dates import EVENT_DATE_VERSION, validate_event
 from src.article_evidence import validate_summary_evidence, body_text, normalise_text, verified_quote
+from src.enrichment_budget import legacy_source_limit
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -433,6 +434,8 @@ async def _apply_results(
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
+        a['analysis_status'] = 'available'
+        a.pop('_paid_enrichment_deferred', None)
         a["summary"]   = p["summary"]
         a["summary_evidence"] = p["summary_evidence"]
         a["score"]     = p["score"]
@@ -642,6 +645,8 @@ async def analyse_all(articles: list) -> list:
 
     # Hydrate cached articles up front; collect the rest for batched calls.
     pending: list = []
+    admitted_by_source = {}
+    cached_count = 0
     for a in articles:
         aid = a["id"]
         original = a.pop('_unit_marker_repair_from', None)
@@ -662,6 +667,9 @@ async def analyse_all(articles: list) -> list:
                 continue
         if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
+            cached_count += 1
+            a['analysis_status'] = 'available'
+            a.pop('_paid_enrichment_deferred', None)
             a["analysis_input_hash"] = c["input_hash"]
             a["analysis_version"] = ANALYSIS_VERSION
             a["summary"]   = c.get("summary", "")
@@ -682,9 +690,21 @@ async def analyse_all(articles: list) -> list:
             # A failed refresh must not restore analysis of a corrected input.
             for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
                 a.pop(field, None)
+            source = a.get('source', '')
+            if (a.get('content_quality') or {}).get('fallback') == 'minimal':
+                a['analysis_status'] = 'pending-source'
+                a['_paid_enrichment_deferred'] = True
+                continue
+            admitted = admitted_by_source.get(source, 0)
+            if admitted >= legacy_source_limit(source):
+                a['analysis_status'] = 'pending-budget'
+                a['_paid_enrichment_deferred'] = True
+                continue
+            admitted_by_source[source] = admitted + 1
+            a['analysis_status'] = 'pending'
+            a.pop('_paid_enrichment_deferred', None)
             pending.append(a)
 
-    cached_count = len(articles) - len(pending)
     print(f"[analyse] {cached_count} cached, {len(pending)} to generate (batch={BATCH_SIZE})")
 
     batches = [pending[i:i + BATCH_SIZE] for i in range(0, len(pending), BATCH_SIZE)]
@@ -714,5 +734,8 @@ async def analyse_all(articles: list) -> list:
     # Safety net: articles that failed analysis (API timeout / no content) get
     # minimal defaults so downstream steps and tests never see missing fields.
     _ensure_analysis_defaults(articles)
+    for article in pending:
+        if article.get('analysis_status') == 'pending':
+            article['analysis_status'] = 'failed'
 
     return articles

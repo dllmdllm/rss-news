@@ -34,6 +34,7 @@ CORE_PATHS = (
     "index.html", "article.html", "sw.js", "css/categories.css",
     "js/common.js", "js/index.js", "js/summary-player.js", "css/summary-player.css", "js/article.js", "js/article-reading.js",
     "js/article-evidence.js", "js/reader-state.js", "js/event-reading.js",
+    "js/story-groups.js", "js/reader-updates.js", "js/source-evidence.js", "css/reader-loop.css",
     "data/articles.json", INDEX, "data/build_status.json",
 )
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")

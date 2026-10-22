@@ -254,12 +254,9 @@ def test_fetch_nowtv_skips_malformed_item_without_losing_others():
     assert [a["title"] for a in articles] == ["正常文章一", "正常文章三"]
 
 
-def test_fetch_oncc_daily_recaps_after_merging_two_days(monkeypatch):
-    # 2026-07-21 audit finding：今日/尋日兩個 dailyList 各自內部已經
-    # cap 咗 max_items，但 merge 之後冇再 re-cap，實際可以攞到接近雙倍
-    # max_items（東網娛樂）。呢個 test 唔理會真實 HTTP/JSON 細節，直接
-    # stub `_parse_oncc_dailylist` 每次 call 都返 max_items 個 article，
-    # 淨係驗證 merge 完之後嘅結果仲係尊重 max_items。
+def test_fetch_oncc_daily_keeps_all_in_window_metadata_after_merging_days(monkeypatch):
+    # The bounded calendar requests are the budget. Legacy max_items is no
+    # longer an article eligibility cap, so neither day's valid rows vanish.
     import asyncio
     from datetime import timedelta, timezone
     from src import fetch as F
@@ -306,7 +303,7 @@ def test_fetch_oncc_daily_recaps_after_merging_two_days(monkeypatch):
     articles, error, _not_modified = asyncio.run(F._fetch_oncc_daily(session, feed_info, cutoff))
 
     assert calls["n"] == 2          # 今日 + 尋日各 call 一次
-    assert len(articles) == max_items   # 之前呢度會係 max_items*2（40）
+    assert len(articles) == max_items * 2
 
 
 def test_nowtv_category_slug_matches_real_site_paths():
