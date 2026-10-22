@@ -29,8 +29,8 @@ def test_source_link_verifies_current_body_and_unique_cross_inline_paragraph(bro
         supported(page)
         assert page.locator('#content > p').first.get_attribute('id') == 'source-p1'
         assert page.locator('#content strong mark').inner_text() == '新的交通安排'
-        assert 'AI 摘要' in page.locator('.source-evidence-status').inner_text()
-        assert page.locator('.summary-source-link').get_attribute('href') == '#source-p1'
+        assert page.locator('.summary-integrity-warning').count() == 0
+        assert page.locator('.summary-source-link, #source-evidence').count() == 0
         assert page.locator('#content').inner_text() == before
         assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
     finally: context.close()
@@ -45,8 +45,8 @@ def test_repeated_literal_quote_is_explicitly_ambiguous(browser, mode):
         page.evaluate("history.replaceState(null,'','?id=a&quote='+encodeURIComponent("+repr(QUOTE)+"))")
         supported(page,content=content,content_hash=hashlib.sha256(content.encode()).hexdigest())
         assert page.locator('.summary-source-link').count() == 0
-        assert '多個相同段落' in page.locator('.summary-source-status').first.inner_text()
-        assert '未能唯一定位' in page.locator('.source-evidence-status').inner_text()
+        assert '未核實' in page.locator('.summary-source-status').first.inner_text()
+        assert '未能核對' in page.locator('.summary-integrity-warning').inner_text()
         assert page.locator('mark.source-evidence-match').count() == 0
     finally: context.close()
 
@@ -55,7 +55,7 @@ def test_a_stale_hash_link_does_not_scroll_to_a_still_present_quote(browser):
     context,page=load(browser,query='&quote='+quote(QUOTE)+'&quote_hash='+'0'*64)
     try:
         supported(page)
-        assert '正文版本已變更' in page.locator('.source-evidence-status').inner_text()
+        assert '版本未能核對' in page.locator('.summary-integrity-warning').inner_text()
         assert page.locator('mark.source-evidence-match').count()==0
     finally: context.close()
 
@@ -86,9 +86,8 @@ def test_partial_source_keeps_a_verifiable_quote_but_discloses_scope(browser):
     context,page=load(browser)
     try:
         supported(page,content_quality={'fallback':'rss-blocked'},evidence_status='partial',scrape_error='HTTP 403')
-        assert page.locator('.summary-source-link').count()==1
-        assert '證據範圍有限' in page.locator('#source-evidence').inner_text()
-        assert 'HTTP 403' in page.locator('#source-evidence').inner_text()
+        assert page.locator('.summary-source-link, #source-evidence').count()==0
+        assert page.locator('.summary-source-status').count()==1
         supported(page,content_quality={'fallback':'minimal'})
         assert page.locator('.summary-source-link').count()==0
     finally: context.close()
@@ -100,12 +99,11 @@ def test_key_sentence_link_never_substitutes_for_summary_evidence(browser):
         page.evaluate('(quote)=>{const list=document.createElement("ul");list.id="facts";const li=document.createElement("li");li.textContent=quote;list.append(li);document.body.append(list)}',QUOTE)
         supported(page,summary_evidence=[])
         assert page.locator('.summary-source-link').count()==0
-        assert page.locator('.key-source-link').count()==1
-        page.locator('.key-source-link').click()
-        assert '原文關鍵句' in page.locator('.source-evidence-status').inner_text()
+        assert page.locator('.key-source-link').count()==0
+        assert page.locator('.key-source-status').count()==0
         supported(page,summary_evidence=[],key_sentences_content_hash='0'*64)
         assert page.locator('.key-source-link').count()==0
-        assert page.locator('.key-source-status').inner_text()=='原文段落不可用'
+        assert page.locator('.key-source-status').inner_text()=='未核實'
     finally: context.close()
 
 
@@ -156,24 +154,16 @@ def test_actual_homepage_summary_link_opens_verified_reader_paragraph(browser, n
         page.add_init_script('window.quoteLinkSpeech=0; if(window.speechSynthesis) window.speechSynthesis.speak=()=>{window.quoteLinkSpeech++}')
         try:
             page.goto(base+'/index.html')
-            detail=page.locator('#leadStory .source-point-links')
-            detail.locator('summary').click()
-            assert detail.locator('a').count()==1
-            assert '未有可核對的原文段落' in detail.locator('li').nth(1).inner_text()
-            assert detail.locator('li').nth(1).locator('a').count()==0
-            link=detail.locator('a')
-            params=parse_qs(urlsplit(link.get_attribute('href')).query)
-            assert params['id']==[row['id']] and params['quote']==[QUOTE]
-            assert params['quote_hash']==[HASH] and params['quote_kind']==['summary']
-            assert link.locator('xpath=ancestor::a').count()==0
+            assert page.locator('.source-point-links, .article-details, .summary-source-link').count()==0
+            assert page.locator('#leadStory .summary-unverified').count()==1
             assert page.locator('#leadStory .ai-note').first.is_visible()
             assert (page.locator('#mobileTabs [data-view="ai"]') if width==390 else page.locator('#summaryPlayTab')).is_visible()
-            link.click()
-            destination=parse_qs(urlsplit(page.url).query)
-            assert destination['quote_hash']==[HASH] and destination['quote_kind']==['summary']
+            # Old saved hash-bound paragraph URLs remain checked internally,
+            # without recreating any user-facing evidence control or panel.
+            page.goto(base+'/article.html?id='+row['id']+'&quote='+quote(QUOTE)+'&quote_hash='+HASH+'&quote_kind=summary')
             page.locator('#source-p1 mark.source-evidence-match').first.wait_for()
             assert page.locator('#source-p1 strong mark.source-evidence-match').inner_text()=='新的交通安排'
-            assert 'AI 摘要' in page.locator('.source-evidence-status').inner_text()
+            assert page.locator('.summary-integrity-warning').count() == 0
             assert page.locator('#summaryBox h2').inner_text()=='AI 摘要'
             assert page.locator('#summaryBox h2').is_visible()
             assert page.locator('#keyFacts h2').inner_text()=='原文關鍵句'

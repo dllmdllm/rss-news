@@ -198,7 +198,7 @@ def test_retained_full_content_and_interpunct_summary(browser, news_data, width)
         assert page.get_by_text('真正第五點', exact=True).count() > 0
         page.goto(base_url + '/article.html?id=a0')
         page.locator('#contentNotice').wait_for(state='visible')
-        assert '2026-10-01T12:00:00+00:00' in page.locator('#contentNotice').inner_text()
+        assert '2026-10-01T12:00:00+00:00' not in page.locator('#contentNotice').inner_text()
         assert '來源限制存取' in page.locator('#contentNotice').inner_text()
         assert 'Last verified complete body.' in page.locator('#content').inner_text()
         # Evidence annotations are separate from the original five points;

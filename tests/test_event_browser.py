@@ -36,7 +36,8 @@ def test_event_reading_and_local_status_filters(browser, news_data, width):
         assert '安靜來源：觀察已過期；最近一次抓取 0 篇' in health
         assert '檢查時間' in health
         assert page.locator('#sideSourceHealth img').count() == 0
-        assert page.locator('#eventReadingList a[href^="article.html?id=a0&quote="]').count() == 1
+        assert page.locator('#eventReadingList a[href="article.html?id=a0"]').count() >= 1
+        assert page.locator('#eventReadingList a[href*="quote="], #eventReadingList blockquote').count() == 0
         page.evaluate("RssReaderState.saveLater('a1',true);RssReaderState.markRead('a0',true)")
         assert page.locator('option[value="saved"], [data-save-later]').count() == 0
         assert page.evaluate("RssReaderState.get('a1').saved") is True

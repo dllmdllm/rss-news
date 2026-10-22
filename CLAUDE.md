@@ -510,12 +510,13 @@ img.referrerPolicy = "no-referrer";
 
 - `score: null` → migrate 過來的舊 entry，下次 build 重新分析
 - `topic` 用於 `cluster_articles()`：相同 topic 歸為一組
-- **散文式 summary 拒收**（`_summary_looks_acceptable()`，2026-07-22）：
-  SYSTEM_PROMPT 要求 5-8 個 ・bullet，但 MiniMax 偶爾會吐返成段散文（HP
-  BIOS 文章 `1c81d678187d` 個案：116 字單行、冇 ・冇 \n）。≥40 字而又
-  完全冇 ・冇 \n 就當 parse 失敗——`_normalise_parsed()` 拒收觸發 retry，
-  `_needs_full_analysis()` 令已 cache 嘅散文 entry 下次 build 重新分析。
-  40 字長度 gate 防止誤殺短 placeholder（測試用嘅 "x" 呢類）
+- **摘要格式（2026-10-23）**：生成目標係五點、每點兩句完整自然句子，
+  `summary_points` 每句附逐字原文支持。來源不足可少寫或留空，明示 limited；
+  唔可以加外部資料、重複或湊數。Parser、逐句引文及發布 gate 分別核對格式、
+  實際提供嘅原文同完整 metadata/body hash。`summary` 保留 ・換行字串供舊讀者／搜尋／TTS。
+- Prompt hash 仍決定分析版本。只因格式變更而過期、但輸入 hash 按原版本核對
+  一樣嘅摘要暫留，沿原有每來源配額逐步更新；更正輸入唔可以還原舊分析。
+  limited 結果可快取，唔為湊足五點重試；無手動付費 backfill 或增加 token/call 上限。
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
   highlight；而家已喺 article-reading.js 恢復，關鍵句清單亦保留。
   translate_content.py 一定要行喺 analyse.py 之前，保持 key_sentences
@@ -899,10 +900,15 @@ strict distributed rate limits require separately approved infrastructure.
 
 - `summary_evidence` maps a specific current summary point to a verbatim body
   quote; missing support stays unavailable. Never pair points/quotes by position.
+  Rich points retain support for each sentence. Evidence is internal: no evidence
+  controls/panels in cards, reader, topic comparisons or player. Keep concise
+  incomplete/unverified notices and the original publisher navigation.
   Panel shared facts/attributed accounts/developments retain actual article IDs,
   quotes and source attribution; a topic association is not event identity.
 - Publication, fetch and content-update clocks are separate. Unchanged body hash
   retains its content-update time; unknown legacy times remain unknown.
+  Article UI shows only labelled last-updated time from content_updated_at;
+  missing values stay unknown, never fall back to fetch/publication time.
 - `reader-state.js` stores only bounded device-local state, never uploads it.
   Denied storage degrades to session memory. Restore position/speech queue only
   on user action; navigation/reload never starts audio. Physical device audio

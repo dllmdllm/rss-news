@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from src.event_dates import EVENT_DATE_VERSION, validate_event
 from src.article_evidence import validate_summary_evidence, body_text, normalise_text, verified_quote
 from src.enrichment_budget import legacy_source_limit
+from src.summary_contract import SUMMARY_FORMAT, normalise_points, validate_record
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -37,7 +38,12 @@ SYSTEM_PROMPT = (
     "每個 object 格式：\n"
     '{"idx":整數（對應輸入嘅「第X篇」入面嘅X，必須逐個對應、唔可以漏或者重複，'
     '呢個field唔理你輸出嘅array順序係點，我哋都靠佢核對邊個object屬於邊篇新聞）,'
-    '"summary":"單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔，每點唔超過10個字",'
+    '"summary_points":[{"sentences":["第一句完整自然句子。","第二句完整自然句子。"],'
+    '"quotes":["支持第一句嘅內文逐字引句","支持第二句嘅內文逐字引句"]}],'
+    '"summary_limited":false（目標正好五點，每點兩句有實質資料嘅完整自然句子；每句交代主體、事實同必要背景，'
+    '唔好用標語或十字片語。只可以用輸入正文直接支持嘅事實，每句附一條最短足夠嘅逐字引句；'
+    '禁止外加知識、推測、重複改寫同湊數。來源不足時設true，少寫點數或只保留有根據嘅一句；完全冇資料可用[]。'
+    '句子保留句號；人物名字中間嘅・唔係分點。無須再輸出summary字串或重複summary_evidence）,'
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'
@@ -46,8 +52,6 @@ SYSTEM_PROMPT = (
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
     '"key_sentences":["原文逐字摘錄最關鍵嘅 3 至 5 句句子（必須完全一致，唔好改寫，每句 10-80 字）"],'
-    '"summary_evidence":[{"point":"照抄 summary 其中一點文字（唔帶・）","quote":"支持呢一點嘅內文逐字原句，10至120字"}]'
-    '（可選；每點只配真正直接支持嘅原文，冇證據留空；唔可以按 key_sentences 位置配對或引用摘要本身）,'
     '"upcoming_events":[{"date":"YYYY-MM-DD或null","date_expression":"原文日期字眼",'
     '"evidence":"逐字摘錄包括日期同事件嘅原文句子","title":"短描述，唔超過20字"}]'
     '（最多2個；日期相對輸入嘅出版日期，以香港時間計算；月底、年初等唔可以猜某一日，date用null；無就[]）}'
@@ -55,7 +59,7 @@ SYSTEM_PROMPT = (
 
 # Derive version from the prompt hash so the cache auto-invalidates whenever
 # SYSTEM_PROMPT changes — no manual bump needed.
-ANALYSIS_VERSION = "p-" + hashlib.sha256((SYSTEM_PROMPT + MINIMAX_MODEL + EVENT_DATE_VERSION).encode("utf-8")).hexdigest()[:12]
+ANALYSIS_VERSION = "p-" + hashlib.sha256((SYSTEM_PROMPT + MINIMAX_MODEL + EVENT_DATE_VERSION + str(SUMMARY_FORMAT)).encode("utf-8")).hexdigest()[:12]
 
 _BAD_SUMMARY_PHRASES = (
     "單一字串",
@@ -92,6 +96,54 @@ def save_cache(cache: dict):
 # at this ceiling keeps the user-message under ~12k tokens, well below MiniMax's
 # context budget after SYSTEM_PROMPT + JSON-schema response is accounted for.
 _MAX_PROMPT_CHARS = 2000
+SUMMARY_FIELDS = ('summary_points', 'summary_format', 'summary_status')
+ANALYSIS_FIELDS = ('summary', 'summary_evidence', 'score', 'tags', 'sentiment', 'headline_fit',
+                   'topic', 'event_type', 'entities', 'key_sentences', 'upcoming_events',
+                   'analysis_input_hash', 'analysis_version', *SUMMARY_FIELDS)
+
+
+def _retain_supported_points(record):
+    if record.get('summary_format') != SUMMARY_FORMAT:
+        return
+    supported = {entry['point']: entry for entry in record.get('summary_evidence', [])}
+    original = record['summary_points']
+    kept = [point for point in original if ''.join(point) in supported]
+    record['summary_points'] = kept
+    record['summary'] = '\n'.join('・' + ''.join(point) for point in kept)
+    record['summary_evidence'] = [supported[''.join(point)] for point in kept]
+    if len(kept) != len(original) or len(kept) < 5 or any(len(point) != 2 for point in kept):
+        record['summary_status'] = 'limited'
+    validate_record(record)
+
+
+def _same_cached_input(cached, article):
+    if cached.get('summary_format') == SUMMARY_FORMAT:
+        try:
+            validate_record(cached)
+        except (ValueError, TypeError):
+            return False
+    version = cached.get('version', cached.get('analysis_version'))
+    digest = cached.get('input_hash', cached.get('analysis_input_hash'))
+    return (isinstance(version, str) and re.fullmatch(r'p-[a-f0-9]{8,64}', version) is not None
+            and digest == analysis_input_hash(article, version=version)
+            and bool(cached.get('summary'))
+            and not looks_like_prompt_schema_summary(cached['summary'])
+            and _summary_looks_acceptable(cached['summary']))
+
+
+def _restore_cached(article, cached):
+    """Reuse only an unchanged supplied input; prompt migration never deletes it."""
+    for field in ANALYSIS_FIELDS:
+        if field in cached:
+            article[field] = cached[field]
+    article['analysis_input_hash'] = cached.get('input_hash', cached.get('analysis_input_hash'))
+    article['analysis_version'] = cached.get('version', cached.get('analysis_version'))
+    article['analysis_status'] = 'available'
+    if article.get('summary_format') != SUMMARY_FORMAT:
+        article['summary_status'] = 'legacy'
+    article['summary_evidence'] = validate_summary_evidence(article, cached.get('summary_evidence'))
+    article['key_sentences'] = _normalise_key_sentences(cached.get('key_sentences'), article)
+    article['key_sentences_content_hash'] = hashlib.sha256((article.get('content') or '').encode('utf-8')).hexdigest()
 
 
 def _extract_text(html_content: str) -> str:
@@ -234,7 +286,7 @@ def _normalise_upcoming_events(raw) -> list[dict]:
     return out
 
 
-def _normalise_parsed(data: dict) -> dict | None:
+def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
     """Coerce a parsed JSON object into our canonical analysis dict."""
     if not isinstance(data, dict):
         return None
@@ -253,7 +305,10 @@ def _normalise_parsed(data: dict) -> dict | None:
             tags_raw = [t for t in re.split(r"[,，、\s]+", tags_raw) if t]
         elif not isinstance(tags_raw, list):
             tags_raw = []
-        summary = _normalise_summary(data.get("summary"))
+        rich = normalise_points(data['summary_points'], data.get('summary_limited', False)) if 'summary_points' in data else None
+        if require_rich and rich is None:
+            return None
+        summary = rich['summary'] if rich else _normalise_summary(data.get("summary"))
         if looks_like_prompt_schema_summary(summary):
             return None
         if not _summary_looks_acceptable(summary):
@@ -264,7 +319,7 @@ def _normalise_parsed(data: dict) -> dict | None:
             headline_fit = max(0, min(10, int(data.get("headline_fit"))))
         except (TypeError, ValueError):
             headline_fit = None
-        return {
+        result = {
             "summary":   summary,
             "score":     score,
             "tags":      [str(t).strip().lstrip("#") for t in tags_raw[:3] if str(t).strip()],
@@ -278,6 +333,9 @@ def _normalise_parsed(data: dict) -> dict | None:
             "upcoming_events": _normalise_upcoming_events(data.get("upcoming_events")),
             "version":   ANALYSIS_VERSION,
         }
+        if rich:
+            result.update(rich)
+        return result
     except Exception:
         return None
 
@@ -289,19 +347,19 @@ def _strip_fences(text: str) -> str:
     return text
 
 
-def _parse_analysis(raw: str) -> dict | None:
+def _parse_analysis(raw: str, *, require_rich=False) -> dict | None:
     """Parse a single JSON object from model output."""
     text = _strip_fences(raw)
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None
     try:
-        return _normalise_parsed(json.loads(m.group(0)))
+        return _normalise_parsed(json.loads(m.group(0)), require_rich=require_rich)
     except Exception:
         return None
 
 
-def _parse_batch(raw: str, expected: int) -> list[dict | None] | None:
+def _parse_batch(raw: str, expected: int, *, require_rich=False) -> list[dict | None] | None:
     """Parse a JSON array of analyses. Returns None on total shape mismatch
     so the caller retries or falls back. When the array shape matches but
     individual items are malformed, returns a list of same length with
@@ -334,13 +392,13 @@ def _parse_batch(raw: str, expected: int) -> list[dict | None] | None:
                     continue
                 if not (1 <= idx <= expected) or idx in by_idx:
                     continue
-                normalised = _normalise_parsed(obj)
+                normalised = _normalise_parsed(obj, require_rich=require_rich)
                 if normalised:
                     by_idx[idx] = normalised
             return [by_idx.get(i) for i in range(1, expected + 1)]
     # Accept a bare object when batch size is 1 (some models drop the array)
     if expected == 1:
-        single = _parse_analysis(text)
+        single = _parse_analysis(text, require_rich=require_rich)
         if single:
             return [single]
     return None
@@ -355,6 +413,12 @@ def _needs_full_analysis(cached: dict, article: dict | None = None) -> bool:
     # Auto-invalidate when the prompt hash embedded in the cache entry no
     # longer matches the current ANALYSIS_VERSION hash.
     if cached.get("version") != ANALYSIS_VERSION:
+        return True
+    if cached.get('summary_format') != SUMMARY_FORMAT:
+        return True
+    try:
+        validate_record(cached)
+    except (ValueError, TypeError):
         return True
     # Summary was stored as Python list repr (AI returned array, str()-ified)
     summary = cached.get("summary", "") or ""
@@ -376,10 +440,10 @@ def _article_text(a: dict) -> str:
     return a.get("title", "")
 
 
-def analysis_input_hash(article: dict) -> str:
+def analysis_input_hash(article: dict, *, version=None) -> str:
     payload = {"title": article.get("title", ""), "text": _article_text(article),
                "published": article.get("date", ""), "source": article.get("source", ""),
-               "url": article.get("url", ""), "version": ANALYSIS_VERSION}
+               "url": article.get("url", ""), "version": version or ANALYSIS_VERSION}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -431,13 +495,24 @@ async def _apply_results(
         p['key_sentences'] = _normalise_key_sentences(p.get('key_sentences'), a)
         p['key_sentences_content_hash'] = hashlib.sha256((a.get('content') or '').encode('utf-8')).hexdigest()
         p["upcoming_events"] = _validated_events(a, p.get("upcoming_events"))
+        if p.get('summary_format') == SUMMARY_FORMAT:
+            # Only quotes actually supplied to this generation may support it.
+            supplied = _article_text(a)
+            p['summary_evidence'] = [e for e in p['summary_evidence']
+                                     if all(q in supplied for q in e.get('quotes', []))]
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
+        _retain_supported_points(p)
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
         a['analysis_status'] = 'available'
         a.pop('_paid_enrichment_deferred', None)
         a["summary"]   = p["summary"]
         a["summary_evidence"] = p["summary_evidence"]
+        for field in SUMMARY_FIELDS:
+            if field in p:
+                a[field] = p[field]
+            else:
+                a.pop(field, None)
         a["score"]     = p["score"]
         a["tags"]      = p["tags"]
         a["sentiment"] = p["sentiment"]
@@ -483,7 +558,7 @@ async def _analyse_one(
                     total_waited += delay
                     continue
                 if raw:
-                    parsed = _parse_batch(raw, 1)
+                    parsed = _parse_batch(raw, 1, require_rich=True)
                     if parsed and parsed[0]:
                         await _apply_results([article], parsed, cache, save_lock, counter)
                         return
@@ -552,7 +627,7 @@ async def _analyse_batch(
                     total_waited += delay
                     continue
                 if raw:
-                    parsed = _parse_batch(raw, len(batch))
+                    parsed = _parse_batch(raw, len(batch), require_rich=True)
                     if parsed:
                         # parsed has same length as batch; items may be None
                         # when a single element was malformed — apply the
@@ -625,6 +700,7 @@ def _ensure_analysis_defaults(articles: list) -> None:
         a["key_sentences"] = _normalise_key_sentences(a.get("key_sentences"))
         a["upcoming_events"] = _validated_events(a, a.get("upcoming_events"))
         a["summary_evidence"] = validate_summary_evidence(a, a.get("summary_evidence"))
+        _retain_supported_points(a)
         a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
 
 
@@ -635,8 +711,11 @@ async def analyse_all(articles: list) -> list:
             original = article.pop('_unit_marker_repair_from', None)
             if original and article.get('analysis_input_hash') == analysis_input_hash(dict(article, content=original)):
                 article['analysis_input_hash'] = analysis_input_hash(article)
-            if article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
-                for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+            if _same_cached_input(article, article):
+                if article.get('summary_format') != SUMMARY_FORMAT:
+                    article['summary_status'] = 'legacy'
+            elif article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
+                for field in ANALYSIS_FIELDS:
                     article.pop(field, None)
         _ensure_analysis_defaults(articles)
         return articles
@@ -674,6 +753,11 @@ async def analyse_all(articles: list) -> list:
             a["analysis_version"] = ANALYSIS_VERSION
             a["summary"]   = c.get("summary", "")
             a["summary_evidence"] = validate_summary_evidence(a, c.get("summary_evidence"))
+            for field in SUMMARY_FIELDS:
+                if field in c:
+                    a[field] = c[field]
+                else:
+                    a.pop(field, None)
             a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
@@ -686,10 +770,15 @@ async def analyse_all(articles: list) -> list:
             a['key_sentences_content_hash'] = hashlib.sha256((a.get('content') or '').encode('utf-8')).hexdigest()
             a["upcoming_events"] = _validated_events(a, c.get("upcoming_events"))
         else:
-            cache.pop(aid, None)
+            legacy = cache.get(aid) or {}
+            keep_legacy = _same_cached_input(legacy, a)
+            if not keep_legacy:
+                cache.pop(aid, None)
             # A failed refresh must not restore analysis of a corrected input.
-            for field in ("summary", "summary_evidence", "score", "tags", "sentiment", "headline_fit", "topic", "event_type", "entities", "key_sentences", "upcoming_events", "analysis_input_hash", "analysis_version"):
+            for field in ANALYSIS_FIELDS:
                 a.pop(field, None)
+            if keep_legacy:
+                _restore_cached(a, legacy)
             source = a.get('source', '')
             if (a.get('content_quality') or {}).get('fallback') == 'minimal':
                 a['analysis_status'] = 'pending-source'

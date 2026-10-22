@@ -5,6 +5,7 @@ import copy
 import build
 from src import analyse
 from src.enrichment_budget import legacy_source_limit
+from src.summary_contract import normalise_points
 
 
 def rows(count=5):
@@ -21,7 +22,7 @@ def test_analysis_budget_counts_only_uncached_jobs_and_advances_backlog(monkeypa
 
     async def fake_batch(session, batch, sem, cache, lock, counter):
         requested.extend(a['id'] for a in batch)
-        parsed = [dict(summary='・Source summary', score=5, tags=[], sentiment='neutral', topic='',
+        parsed = [dict(**normalise_points([], True), score=5, tags=[], sentiment='neutral', topic='',
                        event_type='', headline_fit=None, version=analyse.ANALYSIS_VERSION) for _ in batch]
         await analyse._apply_results(batch, parsed, cache, lock, counter)
 

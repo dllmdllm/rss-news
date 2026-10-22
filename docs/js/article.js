@@ -19,7 +19,7 @@
       .split(/\n|\s+(?=[・•●])/)
       .map((line) => line.replace(/^\s*[・•●]\s*/, "").replace(/\s+/g, " ").trim())
       .filter(Boolean);
-    if (points.length <= 1) {
+    if (points.length <= 1 && !/^[・•●]/.test(raw) && !raw.includes('\n')) {
       points = (points[0] || "").split(/。|；|;/).map((line) => line.trim()).filter(Boolean);
     }
     return points.slice(0, limit);
@@ -117,9 +117,8 @@
       notice.textContent = '正文來自已核對嘅公開原文快照；未代表最新自動抓取已成功更新。';
     }
     if (retained) {
-      const when = retained.scraped_at ? `（擷取時間：${retained.scraped_at}）` : "（擷取時間未有記錄）";
       const status = retained.latest_fallback === "rss-blocked" ? "來源限制存取" : "最新嘗試未取得全文";
-      notice.textContent = `保留上次成功擷取嘅全文${when}。${status}，現時顯示已儲存內容。`;
+      notice.textContent = `保留上次成功擷取嘅全文。${status}，現時顯示已儲存內容。`;
     }
     if (partial) {
       if (fallback.startsWith("rss-")) {
@@ -380,8 +379,8 @@
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="${esc((article.title || "新聞") + "配圖")}">` : "";
     const summaryInner = summaryItems.length
       ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
-      : `<li class="summary-pending">🤖 AI 摘要稍後補上</li>`;
-    $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>`;
+      : `<li class="summary-pending">${article.summary_status === 'limited' ? '來源資料不足，暫無可支持的摘要。' : '🤖 AI 摘要稍後補上'}</li>`;
+    $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>${summaryNotice(article) ? `<p class="summary-limits">${esc(summaryNotice(article))}</p>` : ''}`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">正文暫不可用或版本不符，請稍後重新載入；可繼續查看摘要及原文。</div>`;
     if ([...$('content').querySelectorAll('img')].some(img => imageSignature(img.getAttribute('src')) === imageSignature(article.thumbnail))) {
       $('hero').innerHTML = '';

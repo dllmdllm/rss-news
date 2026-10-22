@@ -213,14 +213,21 @@ function articleUrl(article) {
 }
 
 function timeLabel(article) {
-  const date = new Date(article.date || "");
-  if (Number.isNaN(date.getTime())) return "";
+  const value = article.content_updated_at;
+  const date = new Date(typeof value === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(value) ? value : NaN);
+  if (Number.isNaN(date.getTime())) return "最後更新：未提供";
   const diff = Date.now() - date.getTime();
   const mins = Math.max(0, Math.round(diff / 60000));
-  if (mins < 60) return `${mins} 分鐘前`;
+  if (mins < 60) return `最後更新：${mins} 分鐘前`;
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} 小時前`;
-  return date.toLocaleDateString("zh-HK", { month: "numeric", day: "numeric" });
+  if (hours < 24) return `最後更新：${hours} 小時前`;
+  return '最後更新：' + date.toLocaleString("zh-HK", { month: "numeric", day: "numeric", hour: '2-digit', minute: '2-digit' });
+}
+
+function summaryNotice(article) {
+  if (article.summary_status === 'limited') return '來源資料不足，摘要只保留可支持的內容，未湊足五點兩句。';
+  if (article.summary && article.summary_format !== 2 && !summaryIsTitleFallback(article)) return '現有摘要為精簡版；較完整版本待例行更新。';
+  return '';
 }
 
 // Detect when summary is just the article title (the placeholder shape

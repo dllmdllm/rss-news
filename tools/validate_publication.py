@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.article_urls import valid_article_url
 from src.index_projection import project_article
+from src.summary_contract import validate_record as validate_summary_record
 
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 SENTIMENTS = {"positive", "negative", "neutral"}
@@ -178,6 +179,7 @@ def validate_site(docs: Path, require_current=False):
         quality = record.get("quality")
         fallbacks[aid] = quality.get("fallback") if isinstance(quality, dict) else None
     for aid, article in articles.items():
+        validate_summary_record(article)
         for quote in article.get('key_sentences') or []:
             quote_supported(quote, aid, bodies, f'{aid}/key_sentences', fallbacks)
         if article.get('key_sentences') and article.get('key_sentences_content_hash') != hashes[aid]:
@@ -194,6 +196,11 @@ def validate_site(docs: Path, require_current=False):
             if item.get("article_id", aid) != aid:
                 raise ValueError(f"{aid}: summary evidence must reference its own article")
             quote_supported(item.get("quote"), aid, bodies, f"{aid}/summary_evidence", fallbacks)
+            if 'quotes' in item:
+                if not isinstance(item['quotes'], list) or not 1 <= len(item['quotes']) <= 2:
+                    raise ValueError(f'{aid}: invalid summary sentence evidence')
+                for quote in item['quotes']:
+                    quote_supported(quote, aid, bodies, f'{aid}/summary_evidence', fallbacks)
     for aid, article in articles.items():
         for key, value in project_article(article).items():
             # The prior published index predates source-quote/translation

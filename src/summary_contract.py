@@ -1,0 +1,79 @@
+"""Bounded summary structure; no inference, networking or source-text mutation."""
+import re
+
+SUMMARY_FORMAT = 2
+MAX_POINTS = 5
+
+
+def normalise(value):
+    return re.sub(r'\s+', ' ', value).strip() if isinstance(value, str) else ''
+
+
+def sentence(value):
+    text = normalise(value)
+    if not 4 <= len(text) <= 180 or not re.search(r'[。！？.!?][」』”\"\']*$', text):
+        raise ValueError('summary needs a complete sentence')
+    # Decimals and Latin abbreviations are not Chinese sentence boundaries.
+    if re.search(r'[。！？].+[。！？]', text):
+        raise ValueError('one sentence per structured slot')
+    if re.match(r'^[・•●▪◦\-*]', text):
+        raise ValueError('sentence must not contain a bullet marker')
+    return text
+
+
+def normalise_points(raw, limited=False):
+    if not isinstance(raw, list) or len(raw) > MAX_POINTS or type(limited) is not bool:
+        raise ValueError('invalid summary point count')
+    if not limited and len(raw) != MAX_POINTS:
+        raise ValueError('five points required unless source is limited')
+    points, support, seen = [], [], set()
+    for item in raw:
+        if not isinstance(item, dict) or not isinstance(item.get('sentences'), list):
+            raise ValueError('structured sentences required')
+        values = item['sentences']
+        quotes = item.get('quotes')
+        if len(values) not in ({1, 2} if limited else {2}):
+            raise ValueError('two sentences required unless source is limited')
+        if not isinstance(quotes, list) or len(quotes) != len(values):
+            raise ValueError('every sentence needs source support')
+        values = [sentence(value) for value in values]
+        quotes = [normalise(quote) for quote in quotes]
+        if any(not 8 <= len(quote) <= 500 for quote in quotes):
+            raise ValueError('invalid source quote')
+        for value in values:
+            identity = re.sub(r'[\W_]+', '', value).casefold()
+            if identity in seen:
+                raise ValueError('repeated summary sentence')
+            seen.add(identity)
+        point = ''.join(values)
+        points.append(values)
+        support.append({'point': point, 'quote': quotes[0], 'quotes': quotes})
+    return {'summary': '\n'.join('・' + ''.join(point) for point in points),
+            'summary_points': points, 'summary_format': SUMMARY_FORMAT,
+            'summary_status': 'limited' if limited else 'complete',
+            'summary_evidence': support}
+
+
+def validate_record(record):
+    """New records must remain structurally honest; legacy records stay readable."""
+    if record.get('summary_format') != SUMMARY_FORMAT:
+        return
+    points = record.get('summary_points')
+    status = record.get('summary_status')
+    if status not in {'complete', 'limited'} or not isinstance(points, list):
+        raise ValueError('invalid rich summary status')
+    evidence = record.get('summary_evidence')
+    if not isinstance(evidence, list) or len(evidence) != len(points):
+        raise ValueError('rich summary requires support for every point')
+    raw = []
+    for point, support in zip(points, evidence):
+        if not isinstance(point, list) or not all(isinstance(value, str) for value in point) or not isinstance(support, dict):
+            raise ValueError('invalid rich summary point')
+        if support.get('point') != ''.join(point):
+            raise ValueError('summary support is not bound to its point')
+        raw.append({'sentences': point, 'quotes': support.get('quotes')})
+        if not isinstance(support.get('quotes'), list) or not support['quotes'] or support.get('quote') != support['quotes'][0]:
+            raise ValueError('summary primary quote differs from sentence support')
+    canonical = normalise_points(raw, status == 'limited')
+    if record.get('summary') != canonical['summary']:
+        raise ValueError('summary string differs from structured points')

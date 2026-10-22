@@ -171,14 +171,6 @@
         for (const [index, text] of row.summary.entries()) {
           const item = document.createElement('li');
           item.textContent = text;
-          const href = row.links[index];
-          if (typeof href === 'string' && href.startsWith('article.html?')) {
-            const source = document.createElement('a');
-            source.href = href;
-            source.textContent = '原文段落';
-            source.className = 'summary-source-link';
-            item.append(document.createTextNode(' '), source);
-          }
           list.append(item);
         }
         body.append(meta, title, list);

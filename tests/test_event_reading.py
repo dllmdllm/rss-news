@@ -19,11 +19,11 @@ def test_event_sources_unavailable_conservative_dedupe_and_claims():
     assert(html.includes('尚無可核對')); assert(html.includes('查看已標示重複的 1 篇'));
     const good = {text:'source-backed',evidence:[{article_id:'a',quote:'source-backed',verified:true,content_hash:'a'.repeat(64)}, {article_id:'b',quote:'source-backed with detail',verified:true,content_hash:'b'.repeat(64)}]};
     html = api.render(topics, articles, {c:{digest:{shared_facts:[good],new_developments:[{text:'bad',evidence:[{article_id:'unknown',quote:'x'}]}]}}});
-    assert(html.includes('source-backed')); assert(html.includes('source-backed with detail')); assert(!html.includes('>bad<'));
-    assert(html.includes('article.html?id=a&quote=source-backed#source-evidence'));
+    assert(html.includes('source-backed')); assert(!html.includes('source-backed with detail')); assert(!html.includes('>bad<'));
+    assert(html.includes('article.html?id=a'));
     assert(!api.claims([good], [articles[0],{...articles[1],source:'HK01 突發'}],true));
     assert(api.provenance({content_quality:{fallback:'rss'},scrape_error:'503'}).includes('正文未完整'));
-    assert(api.provenance({}).includes('抓取 未提供'));
+    assert(api.provenance({}).includes('完整性未核實'));
     assert.equal(api.outlet('星島頭條'), '星島'); assert.equal(api.outlet('星島 即時國際'), '星島'); assert.equal(api.outlet('星島別家'), '星島別家');
     assert(api.healthObservation({error:'<script>alert(1)</script>'}).includes('&lt;script&gt;'));
     assert(api.healthObservation({}).includes('檢查時間 未提供'));
@@ -57,10 +57,10 @@ def test_collapsed_times_never_hide_or_overstate_body_coverage_warnings():
       [{content_quality:{fallback:'none',origin:'wordpress-public-posts'}}, '正文完整性未核實'],
     ]) {
       const html = render({...complete,...change});
-      assert(html.slice(0, html.indexOf('<details')).includes(warning));
+      assert(html.includes(warning));
       assert(!html.includes('<details open'));
-      assert(html.includes('<summary>資料詳情</summary>'));
-      assert(html.includes('抓取 未提供'));
+      assert(!html.includes('資料詳情'));
+      assert(!html.includes('<details'));
     }
     const unknown = render({...complete,content_quality:{fallback:'none',origin:'wordpress-public-posts'}});
     assert(!unknown.includes('正文未完整')); // Unknown is not proven incomplete.

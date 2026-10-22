@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import src.analyse as analyse
+from src.summary_contract import normalise_points
 from src.analyse import (
     ANALYSIS_VERSION,
     _needs_full_analysis,
@@ -62,7 +63,7 @@ def test_analysis_input_hash_tracks_corrected_inputs_and_model_provenance():
     for field, value in (("title", "Correction"), ("content", "<p>corrected body</p>"),
                          ("date", "2026-10-10T00:00:00Z"), ("source", "Correct outlet")):
         assert analyse.analysis_input_hash(dict(article, **{field: value})) != original
-    cached = dict(score=5, summary="・old", version=ANALYSIS_VERSION, input_hash=original)
+    cached = dict(score=5, version=ANALYSIS_VERSION, input_hash=original, **normalise_points([], True))
     assert not _needs_full_analysis(cached, article)
     assert _needs_full_analysis(cached, dict(article, title="Correction"))
     assert _needs_full_analysis(dict(cached, input_hash=None), article)
@@ -248,7 +249,7 @@ def test_needs_when_version_missing():
 
 def test_no_need_when_current_version():
     assert _needs_full_analysis({
-        "summary": "x", "score": 5, "version": ANALYSIS_VERSION
+        **normalise_points([], True), "score": 5, "version": ANALYSIS_VERSION
     }) is False
 
 
