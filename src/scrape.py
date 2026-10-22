@@ -13,6 +13,7 @@ from src.hk_text import from_simplified
 from src.media_fields import image_url, repair_thumbnail
 from src.public_http import UnsafeDestination, public_connector, public_get, read_public_body
 from src.enrichment_budget import legacy_source_limit
+from src.article_evidence import bind_current_body_hash
 from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
@@ -1192,6 +1193,21 @@ def _rss_fallback_content(
 ) -> str | None:
     """Preserve safe RSS text/media and mark it as partial source content."""
     rss = _format_rss_fallback_html(article.get("rss_content") or "", article.get("url") or "")
+    previous = article.get('content')
+    quality = article.get('content_quality') or {}
+    # A retained article absent from this feed response has no fresh RSS field.
+    # A denied/empty body request must not replace its verified partial prose
+    # with a title-only fallback or pretend that it was freshly observed.
+    if (not rss and isinstance(previous, str) and previous
+            and str(quality.get('fallback') or '').startswith('rss-')
+            and article.get('content_hash') == hashlib.sha256(previous.encode('utf-8')).hexdigest()):
+        article['content_quality'] = {**quality, 'fallback': fallback}
+        article['content_retention'] = {
+            'scraped_at': (article.get('content_retention') or {}).get('scraped_at') or article.get('content_updated_at'),
+            'latest_fallback': fallback,
+            'latest_error': article.get('scrape_error'),
+        }
+        return previous
     thumb = image_url(article.get("thumbnail"), article.get("url") or "") or image_url(first_rss_image(rss))
     article["thumbnail"] = thumb
     inline_urls = {img.get("src") for img in BeautifulSoup(rss, "html.parser").find_all("img")}
@@ -1215,12 +1231,14 @@ def _rss_fallback_content(
     content = img_html + rss
     if article["source"] in SIMPLIFIED_SOURCES:
         content = _to_hk_traditional(content)
+    article.pop('content_retention', None)
     article["content"] = content
     article["content_quality"] = content_quality(
         content,
         source=article["source"],
         fallback=fallback,
     )
+    bind_current_body_hash(article)
     if article.get('collection_method') == 'wordpress-public-posts':
         article['content_quality']['origin'] = 'wordpress-public-posts'
         article['content_quality']['completeness'] = 'unverified'
@@ -1442,12 +1460,14 @@ async def _scrape_one(
                     content = _add_featured_image(content, article.get("thumbnail") or "")
                     if article["source"] in SIMPLIFIED_SOURCES:
                         content = _to_hk_traditional(content)
+                    article.pop('content_retention', None)
                     article["content"] = content
                     article["content_quality"] = content_quality(
                         content,
                         source=article["source"],
                         fallback="none",
                     )
+                    bind_current_body_hash(article)
                     article["body_status"] = "available"
                 else:
                     if _rss_fallback_content(article, fallback="rss-empty", allow_minimal=True):

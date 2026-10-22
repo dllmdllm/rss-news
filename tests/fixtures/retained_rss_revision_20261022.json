@@ -1,0 +1,60 @@
+{
+  "captured_from_commit": "450c94b4bfc1bf41136c7073153e2e8188004218",
+  "article": {
+    "id": "d86a96236169",
+    "title": "PS5 韌體「三日兩 Patch」反破解 完全無效  14.20 韌體僅 8 小時再被攻破",
+    "url": "https://www.hkepc.com/27038/PS5_%E9%9F%8C%E9%AB%94%E4%B8%89%E6%97%A5%E5%85%A9_Patch%E5%8F%8D%E7%A0%B4%E8%A7%A3_%E5%AE%8C%E5%85%A8%E7%84%A1%E6%95%88__14.20_%E9%9F%8C%E9%AB%94%E5%83%85_8_%E5%B0%8F%E6%99%82%E5%86%8D%E8%A2%AB%E6%94%BB%E7%A0%B4",
+    "source": "HKEPC",
+    "category": "科技",
+    "date": "2026-10-22T03:35:22+00:00",
+    "thumbnail": null,
+    "content_hash": "4454803a16135bed822137cdec749e3f1a4cd907df2d2e9c115d29980c7fe234",
+    "key_sentences": [
+      "以為靠著「二五仔」舉報的漏洞，就能一舉殲滅整個 PlayStation 5 破解社群，沒想到「三日兩 Patch」推送了 PS5 14.10、14.20 新韌體修補被發現的破解漏洞後，新韌體僅花 8 小時就被破解團隊再度攻破。",
+      "看來 Sony 很難在 GTA 6 推出之前，達成封鎖 PS5 破解社群的目標。"
+    ],
+    "key_sentences_content_hash": "4454803a16135bed822137cdec749e3f1a4cd907df2d2e9c115d29980c7fe234",
+    "summary_evidence": [
+      {
+        "point": "PS5新韌體八小時遭破解",
+        "quote": "新韌體僅花 8 小時就被破解團隊再度攻破。",
+        "article_id": "d86a96236169",
+        "verified": true
+      },
+      {
+        "point": "破解漏洞迅速被發現",
+        "quote": "PS5 14.10、14.20 新韌體修補被發現的破解漏洞後，新韌體僅花 8 小時就被破解團隊再度攻破。",
+        "article_id": "d86a96236169",
+        "verified": true
+      },
+      {
+        "point": "連發韌體未能封鎖破解",
+        "quote": "沒想到「三日兩 Patch」推送了 PS5 14.10、14.20 新韌體修補被發現的破解漏洞後，新韌體僅花 8 小時就被破解團隊再度攻破。",
+        "article_id": "d86a96236169",
+        "verified": true
+      },
+      {
+        "point": "索尼或難阻止PS5破解",
+        "quote": "看來 Sony 很難在 GTA 6 推出之前，達成封鎖 PS5 破解社群的目標。",
+        "article_id": "d86a96236169",
+        "verified": true
+      }
+    ],
+    "content_updated_at": "2026-10-22T03:37:49.469389+00:00"
+  },
+  "sidecar": {
+    "version": 1,
+    "content": "<p>【很難看 ... 😆】以為靠著「二五仔」舉報的漏洞，就能一舉殲滅整個 PlayStation 5 破解社群，沒想到「三日兩 Patch」推送了 PS5 14.10、14.20 新韌體修補被發現的破解漏洞後，新韌體僅花 8 小時就被破解團隊再度攻破。</p><p>看來 Sony 很難在 GTA 6 推出之前，達成封鎖 PS5 破解社群的目標。</p>",
+    "quality": {
+      "score": 1,
+      "chars": 165,
+      "images": 0,
+      "source": "HKEPC",
+      "fallback": "rss-blocked",
+      "origin": "rss",
+      "completeness": "unverified"
+    },
+    "content_hash": "4454803a16135bed822137cdec749e3f1a4cd907df2d2e9c115d29980c7fe234",
+    "scraped_at": "2026-10-22T03:42:09.756404+00:00"
+  }
+}

@@ -56,7 +56,7 @@ from src.analyse import (
     _article_text,
 )
 from src.event_dates import event_identity, validate_event
-from src.article_evidence import update_provenance, validate_summary_evidence
+from src.article_evidence import bind_current_body_hash, update_provenance, validate_summary_evidence
 from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
@@ -775,7 +775,12 @@ def _retain_verified_content(articles: list, old_articles: list) -> None:
         # and RSS bodies must never acquire verified-full provenance.
         if not record or not record.get("content") or quality.get("fallback") != "none":
             continue
+        actual = hashlib.sha256(record['content'].encode('utf-8')).hexdigest()
+        if any(expected and expected != actual for expected in
+               (record.get('content_hash'), previous.get('content_hash'))):
+            continue
         article["content"] = record["content"]
+        bind_current_body_hash(article)
         article["content_quality"] = dict(quality)
         article["thumbnail"] = previous.get("thumbnail")
         if record.get('content_capture'):

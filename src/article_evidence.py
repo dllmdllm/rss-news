@@ -6,6 +6,21 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 
+def bind_current_body_hash(article: dict) -> None:
+    """Bind an intentionally materialized body, never repair an unchanged cache.
+
+    Callers must first select a fresh extraction/fallback or validate the saved
+    record being restored. Unchanged cached/deferred bytes keep their expected
+    hash so the strict inventory can still reject corruption.
+    """
+    digest = hashlib.sha256(article['content'].encode('utf-8')).hexdigest()
+    if article.get('content_hash') != digest:
+        article.pop('key_sentences_content_hash', None)
+        article['summary_evidence'] = []
+        article['summary_evidence_status'] = 'unavailable'
+    article['content_hash'] = digest
+
+
 def body_text(content: str) -> str:
     soup = BeautifulSoup(content or "", "html.parser")
     for tag in soup.find_all(["script", "style", "noscript", "template"]):
