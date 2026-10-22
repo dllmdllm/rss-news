@@ -802,6 +802,13 @@
       state.searchSignature = signature;
       state.searchLimit = state.restoringSnapshot ? Math.max(20, state.searchLimit || 20) : 20;
     }
+    if (state.restoringSnapshot) {
+      const restoreIndex = results.findIndex(article => article.id === state.restoreArticleId);
+      // Leave a page of results below the old anchor so scroll restoration
+      // cannot clamp against the shortened mobile search document.
+      if (restoreIndex >= 0) state.searchLimit = Math.min(results.length,
+        Math.max(state.searchLimit || 20, restoreIndex + 1 + 20));
+    }
     const visible = results.slice(0, state.searchLimit || 20);
     title.textContent = `搜尋結果 · ${state.matchCount} 篇匹配報道 · ${results.length} 張卡 · 已顯示 ${visible.length} 張`;
     host.innerHTML = results.length
