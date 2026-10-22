@@ -15,7 +15,7 @@
     } catch (_) { return ''; }
   }
 
-  function create(host, { points, timeLabel }) {
+  function create(host, { points, timeLabel, pointLink }) {
     const viewport = host.querySelector('.summary-viewport');
     const track = host.querySelector('.summary-track');
     const toggle = host.querySelector('[data-player-toggle]');
@@ -112,7 +112,13 @@
         const summary = points(article, Infinity);
         if (!summary.length) { skipped++; continue; }
         rows.push({ id: article.id, title: article.title || '', source: article.source || '', date: article.date || '',
-          time: timeLabel(article), thumbnail: thumbnailUrl(article.thumbnail), summary });
+          time: timeLabel(article), thumbnail: thumbnailUrl(article.thumbnail), summary,
+          links: summary.map(text => typeof pointLink === 'function' ? pointLink(article, text) : null),
+          members: (Array.isArray(article.group_articles) ? article.group_articles : []).map(member => ({
+            id: member.id, title: member.title, source: member.source,
+            matched: article.matched_members?.includes(member.id) !== false,
+          })),
+          partial: window.RssSourceEvidence?.scope(article).status === 'partial' });
       }
       count.textContent = `${rows.length} 篇關鍵句${skipped ? ` · ${skipped} 篇未有可用關鍵句` : ''}`;
       const next = JSON.stringify(rows.map(({ time, ...row }) => row));
@@ -162,12 +168,43 @@
         link.textContent = row.title;
         title.append(link);
         const list = document.createElement('ul');
-        for (const text of row.summary) {
+        for (const [index, text] of row.summary.entries()) {
           const item = document.createElement('li');
           item.textContent = text;
+          const href = row.links[index];
+          if (typeof href === 'string' && href.startsWith('article.html?')) {
+            const source = document.createElement('a');
+            source.href = href;
+            source.textContent = '原文段落';
+            source.className = 'summary-source-link';
+            item.append(document.createTextNode(' '), source);
+          }
           list.append(item);
         }
         body.append(meta, title, list);
+        if (row.partial) {
+          const note = document.createElement('p');
+          note.className = 'reading-provenance';
+          note.textContent = '關鍵句只核對已取得的正文；來源完整性未核實。';
+          body.append(note);
+        }
+        if (row.members.length > 1) {
+          const details = document.createElement('details');
+          details.className = 'story-group';
+          const summary = document.createElement('summary');
+          summary.textContent = `同組 ${row.members.length} 篇報道`;
+          const members = document.createElement('ul');
+          for (const member of row.members) {
+            const item = document.createElement('li'), link = document.createElement('a');
+            link.href = 'article.html?id=' + encodeURIComponent(member.id);
+            link.textContent = `${member.source || '來源'} · ${member.title || '報道'}`;
+            item.append(link);
+            if (!member.matched) item.append(document.createTextNode('（不符合目前搜尋或篩選）'));
+            members.append(item);
+          }
+          details.append(summary, members);
+          body.append(details);
+        }
         card.append(media, body);
         fragment.append(card);
       }

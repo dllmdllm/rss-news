@@ -135,7 +135,7 @@ def validate_site(docs: Path, require_current=False):
             raise ValueError(f"{label}: unsupported schema_version {version}")
     if set(articles) != set(indexed):
         raise ValueError("full/index article IDs differ")
-    for field in ('updated', 'sources', 'trending_topics'):
+    for field in ('updated', 'sources', 'trending_topics', 'display_window_hours', 'retention_window_hours'):
         if full.get(field) != index.get(field):
             raise ValueError(f'full/index {field} contract mismatch')
     if require_current and not articles:
@@ -196,6 +196,13 @@ def validate_site(docs: Path, require_current=False):
             quote_supported(item.get("quote"), aid, bodies, f"{aid}/summary_evidence", fallbacks)
     for aid, article in articles.items():
         for key, value in project_article(article).items():
+            # The prior published index predates source-quote/translation
+            # projection. Keep it readable during an approved source rollout;
+            # the new writer's explicit24h contract requires every new field.
+            if (full.get('display_window_hours') is None and key not in indexed[aid]
+                    and key in {'summary_evidence', 'translation_status', 'translation_reason',
+                                'title_translation_status', 'analysis_status', 'body_status'}):
+                continue
             if indexed[aid].get(key, 'unavailable' if key == 'summary_evidence_status' else None) != value:
                 raise ValueError(f'{aid}: index {key} contract mismatch')
     panel_path = data / "panel_digests.json"

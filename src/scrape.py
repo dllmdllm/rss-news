@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from src.rss_html import first_rss_image, safe_http_url, sanitize_rss_html
 from src.hk_text import from_simplified
 from src.media_fields import image_url, repair_thumbnail
 from src.public_http import UnsafeDestination, public_connector, public_get, read_public_body
+from src.enrichment_budget import legacy_source_limit
 from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
@@ -1267,10 +1269,17 @@ async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
         charset = resp.charset or "utf-8"
         return raw.decode(charset, errors="replace")
 
+    # Official Yahoo responses currently contain a 21.5 KiB header field.
+    # This bounded parser allowance changes neither source identity nor any
+    # DNS/TLS/redirect/status/body/request guard. Other publishers keep defaults.
+    header_options = ({"max_field_size": 65536}
+                      if urlsplit(url).hostname in {"hk.news.yahoo.com", "hk.finance.yahoo.com"}
+                      else {})
     async with public_get(
         session, url,
         timeout=aiohttp.ClientTimeout(total=_MAIN_TIMEOUT),
         headers=_extra_headers_for_url(url) or None,
+        **header_options,
     ) as resp:
         return await _read(resp)
 
@@ -1339,19 +1348,58 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     return content, og_image
 
 
+def _reusable_full_body(article: dict) -> bool:
+    content = article.get("content")
+    quality = article.get("content_quality") or {}
+    if (not isinstance(content, str) or not content.strip() or
+            quality.get("fallback") != "none" or quality.get("completeness") == "unverified"):
+        return False
+    expected = article.get("content_hash")
+    return expected is None or expected == hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _cached_access_failure(article: dict) -> bool:
+    return bool(article.get("content") and article.get("body_status") == "failed" and
+                (article.get("content_quality") or {}).get("fallback") in {
+                    "rss-blocked", "rss-tls-error", "rss-unsafe-url"})
+
+
+def _defer_body(article: dict) -> None:
+    # Preserve any already stored source body; an absent body receives the
+    # existing pure RSS/minimal fallback. A budget is not an HTTP failure.
+    if not article.get("content"):
+        _rss_fallback_content(article, fallback="rss-budget", allow_minimal=True)
+    article["body_status"] = "pending-budget"
+
+
+def _fallback_body_status(article: dict, *, failed: bool = False) -> None:
+    article["body_status"] = ("failed" if failed or
+                              (article.get("content_quality") or {}).get("fallback") == "minimal"
+                              else "partial")
+
+
 async def _scrape_one(
     session: aiohttp.ClientSession,
     article: dict,
     sem: asyncio.Semaphore,
 ) -> dict:
     repair_thumbnail(article)
-    # Already scraped in a previous build and restored via _merge_missing_sources
-    if article.get("content"):
+    # Only a full retained body is a free cache hit. A budget-deferred RSS
+    # fallback must remain eligible for a real body request in a later cycle.
+    if _reusable_full_body(article):
+        article["body_status"] = "available"
         return article
+    if _cached_access_failure(article):
+        return article
+    # An admitted request remains pending until its result is known. If the
+    # shared stage budget cancels it, no old failed/partial label can make
+    # unfinished work look completed.
+    article["body_status"] = "pending-budget"
     for attempt in range(2):
         async with sem:
             try:
                 html = await _fetch_html(session, article["url"])
+                article.pop("scrape_error", None)
                 if html:
                     article["fetched_at"] = datetime.now(timezone.utc).isoformat()
                 extra_headers = _extra_headers_for_url(article["url"])
@@ -1359,6 +1407,7 @@ async def _scrape_one(
                 if html and _is_blocked(html):
                     article["scrape_error"] = "access blocked"
                     _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
+                    _fallback_body_status(article, failed=True)
                     return article
 
                 loop = asyncio.get_running_loop()
@@ -1399,23 +1448,28 @@ async def _scrape_one(
                         source=article["source"],
                         fallback="none",
                     )
+                    article["body_status"] = "available"
                 else:
                     if _rss_fallback_content(article, fallback="rss-empty", allow_minimal=True):
                         print(f"[FALLBACK] {article['source']} — trafilatura returned no content; used RSS")
+                    _fallback_body_status(article)
 
                 return article  # success, no retry needed
 
             except aiohttp.ClientSSLError as exc:
                 article["scrape_error"] = f"TLS verification failed: {exc!r}"
                 _rss_fallback_content(article, fallback="rss-tls-error", allow_minimal=True)
+                _fallback_body_status(article, failed=True)
                 return article
             except SourceAccessDenied as exc:
                 article["scrape_error"] = str(exc)
                 _rss_fallback_content(article, fallback="rss-blocked", allow_minimal=True)
+                _fallback_body_status(article, failed=True)
                 return article
             except UnsafeDestination as exc:
                 article['scrape_error'] = f'unsafe destination: {exc}'
                 _rss_fallback_content(article, fallback='rss-unsafe-url', allow_minimal=True)
+                _fallback_body_status(article, failed=True)
                 return article
             except SourceHTTPError as exc:
                 # Access restrictions above stop immediately; only temporary
@@ -1423,12 +1477,14 @@ async def _scrape_one(
                 if exc.status < 500 or attempt == 1:
                     article['scrape_error'] = str(exc)
                     _rss_fallback_content(article, fallback='rss-http-error', allow_minimal=True)
+                    _fallback_body_status(article, failed=True)
                     return article
             except Exception as exc:
                 if attempt == 1:
                     print(f"[WARN] scrape {article['url'][:70]}: {exc!r}")
                     article['scrape_error'] = f'fetch failed: {type(exc).__name__}'
                     _rss_fallback_content(article, fallback='rss-fetch-error', allow_minimal=True)
+                    _fallback_body_status(article, failed=True)
         # Semaphore released before sleeping so other articles can proceed
         if attempt == 0:
             await asyncio.sleep(3)
@@ -1436,19 +1492,60 @@ async def _scrape_one(
 
 
 async def scrape_all(articles: list) -> list:
+    results = list(articles)
+    # Prior deferred rows get the next slots even when newly published rows
+    # arrive before them. Cache hits consume no source request slot, and all
+    # source metadata remains in the original output order.
+    queue = []
+    for index, article in enumerate(articles):
+        repair_thumbnail(article)
+        if _reusable_full_body(article):
+            article["body_status"] = "available"
+        elif not _cached_access_failure(article):
+            queue.append((index, article))
+    queue.sort(key=lambda row: (row[1].get("body_status") != "pending-budget", row[0]))
+    admitted, counts = [], {}
+    for index, article in queue:
+        source = article.get("source", "")
+        if counts.get(source, 0) >= legacy_source_limit(source):
+            _defer_body(article)
+            continue
+        counts[source] = counts.get(source, 0) + 1
+        article["body_status"] = "pending-budget"
+        admitted.append((index, article))
+
+    if not admitted:
+        return results
     sem = asyncio.Semaphore(SCRAPE_CONCURRENCY)
     connector = public_connector(limit=SCRAPE_CONCURRENCY)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
-        tasks = [_scrape_one(session, a, sem) for a in articles]
+        tasks = [asyncio.create_task(_scrape_one(session, a, sem)) for _, a in admitted]
         try:
-            results = await asyncio.wait_for(
+            completed = await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=240,  # 4-min budget; stuck threads keep running but we move on
             )
-            results = [a if isinstance(a, dict) else articles[i] for i, a in enumerate(results)]
+            for (index, article), result in zip(admitted, completed):
+                if isinstance(result, dict):
+                    results[index] = result
+                else:
+                    article["scrape_error"] = f"fetch failed: {type(result).__name__}"
+                    if not article.get("content"):
+                        _rss_fallback_content(article, fallback="rss-fetch-error", allow_minimal=True)
+                    _fallback_body_status(article, failed=True)
         except asyncio.TimeoutError:
             print("[scrape] timeout — using partial results")
-            results = articles
+            for _, article in admitted:
+                if article.get("body_status") not in {"available", "partial", "failed"}:
+                    _defer_body(article)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            for _, article in admitted:
+                if article.get("body_status") == "pending-budget":
+                    _defer_body(article)
     scraped = sum(1 for a in results if a.get("content"))
     print(f"[scrape] {scraped}/{len(results)} articles with content")
     return results

@@ -6,6 +6,8 @@ from test_browser_smoke import _body_record, browser, news_data, _route_data, _s
 def _long_body(page, news_data):
     record = _body_record(news_data, {
         "content": "<p>今日有<strong>重要</strong>消息。</p>" + "".join(f"<p>第{i}段。" + "長文章內容。" * 30 + "</p>" for i in range(40))})
+    for article in news_data['articles']:
+        article['key_sentences_content_hash'] = record['content_hash']
     page.route('**/data/content/**', lambda route: route.fulfill(json=record))
 
 

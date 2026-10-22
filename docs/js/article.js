@@ -387,6 +387,9 @@
       $('hero').innerHTML = '';
     }
     showContentAvailability(article);
+    // A literal sentence from another body revision must not become a current
+    // source highlight, even if a few of its words happen to remain unchanged.
+    if (article.key_sentences_content_hash !== article.content_hash) article.key_sentences = [];
     window.RssArticleReading.init(article);
     const sourceUrl = safeArticleUrl(article.url);
     if (sourceUrl) $('sourceLink').href = sourceUrl;
@@ -429,6 +432,7 @@
     const facts = (article.key_sentences || []).filter(q => typeof q === 'string' && normalise(q).length >= 8 && body.includes(normalise(q)));
     const factItems = facts.slice(0, 5).filter((fact) => String(fact || "").trim());
     $("facts").innerHTML = factItems.map((fact) => `<li>${esc(fact)}</li>`).join("");
+    $("keyFacts").querySelector('h2').textContent = '原文關鍵句';
     // 冇關鍵句就唔好留個空框喺 AI 摘要同正文之間。
     $("keyFacts").hidden = !factItems.length;
     $("relatedList").innerHTML = relatedArticles(article, data.articles || [], sameSourceIds, 6, similarMap).map(renderMiniArticle).join("") || `<span class="ai-note">暫時未有相關新聞</span>`;

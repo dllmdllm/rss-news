@@ -280,20 +280,9 @@ const RssSearch = (() => {
     return terms.every(term => text.includes(term));
   }
   function collapse(rows, allRows = rows) {
-    const known = new Map(allRows.map(a => [a.id, a]));
-    const groups = new Map();
-    for (const row of rows) {
-      let root = row, seen = new Set();
-      while (known.has(root.duplicate_of) && !seen.has(root.id)) {
-        seen.add(root.id); root = known.get(root.duplicate_of);
-      }
-      const group = groups.get(root.id) || [];
-      group.push(row); groups.set(root.id, group);
-    }
-    return [...groups.entries()].map(([root, group]) => ({
-      ...(group.find(a => a.id === root) || group[0]),
-      matched_members: group.map(a => a.id), matched_sources: [...new Set(group.map(a => a.source))],
-    }));
+    if (globalThis.RssStoryGroups) return globalThis.RssStoryGroups.collapse(rows, allRows);
+    // An unavailable optional presentation helper must never hide articles.
+    return rows.map(article => ({...article, matched_members: [article.id], matched_sources: [article.source]}));
   }
   return {normalise, tokens, matches, collapse};
 })();

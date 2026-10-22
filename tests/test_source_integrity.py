@@ -71,7 +71,7 @@ def test_new_publisher_identity_is_stable_without_previous_slug():
     assert reconcile([a])[0]['id'] == reconcile([b])[0]['id']
 
 
-def test_rss_valid_item_quota_is_after_date_url_and_duplicate_validation(monkeypatch):
+def test_rss_time_window_keeps_all_valid_items_after_old_pinned_and_duplicates(monkeypatch):
     entries = [('bad', 'javascript:bad()', 'bad'), ('old', 'https://example.com/old', 'Wed, 21 Oct 2026 00:00:00 GMT'),
                ('one', 'https://example.com/one', 'Thu, 22 Oct 2026 10:00:00 GMT'),
                ('one duplicate', 'https://example.com/one', 'Thu, 22 Oct 2026 10:00:00 GMT'),
@@ -84,11 +84,11 @@ def test_rss_valid_item_quota_is_after_date_url_and_duplicate_validation(monkeyp
     info = dict(name='Source', url='https://example.com/feed', category='新聞', max_items=2)
     rows, error, modified = asyncio.run(fetch._fetch_one(None, info, datetime(2026,10,22,tzinfo=timezone.utc), {}))
     assert not error and not modified
-    assert [a['title'] for a in rows] == ['one', 'two']
+    assert [a['title'] for a in rows] == ['one', 'two', 'three']
     items = info['_intake']['items']
     assert len(items) == len(entries)
-    assert [sum(i['status'] == s for i in items) for s in ('accepted','excluded','pending')] == [2,3,1]
-    assert info['_intake']['coverage'] == 'incomplete'
+    assert [sum(i['status'] == s for i in items) for s in ('accepted','excluded','pending')] == [3,3,0]
+    assert info['_intake']['coverage'] == 'provided-feed-only'
 
 
 def test_rss_invalid_200_does_not_commit_etag_and_orphan_304_is_failure(monkeypatch, tmp_path):

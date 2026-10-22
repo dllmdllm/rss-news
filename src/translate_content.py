@@ -29,6 +29,7 @@ import aiohttp
 from bs4 import BeautifulSoup, NavigableString
 
 from src.feeds import ENGLISH_SOURCES
+from src.enrichment_budget import legacy_source_limit
 from src.minimax_client import MINIMAX_API_KEY, post_messages, should_retry
 
 CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "translated_content.json"
@@ -37,6 +38,11 @@ TRANSLATE_CONCURRENCY = 5
 TRANSLATE_MAX_ATTEMPTS = 3
 TRANSLATE_BACKOFF_BUDGET = 20.0
 SAVE_CACHE_EVERY = 5   # incremental cache flush so a mid-run timeout keeps already-paid-for translations
+# Admit an entire article or keep its full original body. A long review must
+# not repeatedly ask for a 90k-token monolithic response under the 90s stage
+# deadline. Cached translations are reused before applying this lower budget.
+MAX_TRANSLATION_CHARS = 8000
+MAX_TRANSLATION_OUTPUT_TOKENS = MAX_TRANSLATION_CHARS * 3
 # Sanity cap, not a truncate-to length: a paragraph longer than this is left
 # untranslated (original English) rather than sent truncated, which used to
 # silently delete everything past the cutoff once the tag's content got
@@ -136,6 +142,33 @@ def _translation_units(content: str):
     return soup, units
 
 
+def _translation_omissions(content: str) -> bool:
+    """Existing text-block guards preserve source prose rather than translate it."""
+    soup = BeautifulSoup(content or "", "html.parser")
+    for node in soup.descendants:
+        if type(node) is not NavigableString or not str(node).strip():
+            continue
+        block = node.find_parent(_TEXT_TAGS)
+        if block is not None and (block.find("img") or
+                len(block.get_text(" ", strip=True)) > _MAX_PARAGRAPH_CHARS):
+            return True
+    return False
+
+
+def _translation_state(article: dict, status: str, reason: str = "") -> str:
+    article["translation_status"] = status
+    article["translation_reason"] = reason
+    return status
+
+
+def _admission_reason(article: dict, texts: list[str]) -> str | None:
+    if article.get("_paid_enrichment_deferred"):
+        return "collection-budget"
+    if sum(map(len, texts)) > MAX_TRANSLATION_CHARS:
+        return "input-budget"
+    return None
+
+
 def _parse_translated_array(raw: str, expected: int) -> list[str] | None:
     text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw.strip())
     m = re.search(r"\[.*\]", text, re.DOTALL)
@@ -145,9 +178,10 @@ def _parse_translated_array(raw: str, expected: int) -> list[str] | None:
         data = json.loads(m.group(0))
     except Exception:
         return None
-    if not isinstance(data, list) or len(data) != expected:
+    if (not isinstance(data, list) or len(data) != expected or
+            any(not isinstance(item, str) or not item.strip() for item in data)):
         return None
-    values = [str(item) for item in data]
+    values = list(data)
     numbered = [re.match(r'^\[(\d+)\]\s+', value) for value in values]
     if len(values) >= 3 and all(numbered) and [int(m[1]) for m in numbered] == list(range(len(values))):
         values = [value[m.end():] for value, m in zip(values, numbered)]
@@ -161,13 +195,15 @@ async def _translate_article(
     cache: dict,
     save_lock: asyncio.Lock,
     counter: list,
-) -> None:
+) -> str:
     content = article.get("content") or ""
     soup, tags = _translation_units(content)
     if not tags:
-        return
+        return _translation_state(article, "unavailable", "no-translatable-text")
 
     texts = [tag.get_text(" ", strip=True) for tag in tags]
+    if reason := _admission_reason(article, texts):
+        return _translation_state(article, "deferred", reason)
     user_text = "\n".join(
         f"[{i}] " + json.dumps({
             "text": text,
@@ -185,7 +221,8 @@ async def _translate_article(
                     session,
                     system=SYSTEM_PROMPT,
                     user_text=user_text,
-                    max_tokens=max(1500, sum(len(t) for t in texts) * 3),
+                    max_tokens=min(MAX_TRANSLATION_OUTPUT_TOKENS,
+                                   max(1500, sum(len(t) for t in texts) * 3)),
                     timeout=45,
                     thinking={"type": "disabled"},
                 )
@@ -198,13 +235,13 @@ async def _translate_article(
                     await asyncio.sleep(backoff)
                     continue
                 print(f"[translate] {article.get('source')} {article.get('id')}: crashed {exc!r}")
-                return
+                return _translation_state(article, "failed", "request-error")
             if err:
                 if attempt < TRANSLATE_MAX_ATTEMPTS - 1 and should_retry(err, status):
                     await asyncio.sleep(backoff)
                     continue
                 print(f"[translate] {article.get('source')} {article.get('id')}: API error {status} {err.get('type')}")
-                return
+                return _translation_state(article, "failed", f"api-error-{status}")
             translated = _parse_translated_array(raw, len(texts))
             if translated:
                 break
@@ -212,13 +249,16 @@ async def _translate_article(
             if attempt < TRANSLATE_MAX_ATTEMPTS - 1:
                 await asyncio.sleep(backoff)
     if not translated:
-        return
+        return _translation_state(article, "failed", "invalid-output")
 
     for tag, new_text in zip(tags, translated):
         if new_text.strip():
             _replace_tag_text(tag, new_text)
 
     article["content"] = str(soup)
+    omitted = _translation_omissions(content)
+    _translation_state(article, "partial" if omitted else "translated",
+                       "unsupported-text-blocks" if omitted else "")
     cache[article["id"]] = {
         "content": article["content"],
         "source_hash": _source_hash(texts),
@@ -236,12 +276,22 @@ async def _translate_article(
     if counter[0] // SAVE_CACHE_EVERY > prev // SAVE_CACHE_EVERY:
         async with save_lock:
             save_cache(cache)
+    return "translated"
 
 
-async def translate_english_content(articles: list) -> None:
+async def translate_english_content(articles: list) -> dict:
     """Translate article bodies for ENGLISH_SOURCES in place. Cheap no-op
     (skipped entirely) when MINIMAX_API_KEY is unset, matching every other
     MiniMax-backed build step."""
+    report = {"eligible": 0, "cached": 0, "translated": 0, "failed": 0,
+              "deferred": 0, "unavailable": 0, "partial": 0}
+
+    def finish(*, disabled=False):
+        incomplete = sum(report[key] for key in ("failed", "deferred", "unavailable", "partial"))
+        status = ("disabled" if disabled else "complete" if not incomplete else
+                  "partial" if report["cached"] + report["translated"] else "failed")
+        return {**report, "ok": not incomplete, "status": status}
+
     for article in articles:
         if article.get('id') == 'f7bef5e0ede8' and article.get('source') == '9to5Mac' and article.get('content'):
             cleaned, changed = clean_unit_markers(article['content'])
@@ -249,15 +299,27 @@ async def translate_english_content(articles: list) -> None:
                 article['_unit_marker_repair_from'] = article['content']
                 article['content'] = cleaned
     if not MINIMAX_API_KEY:
-        return
+        for a in articles:
+            if a.get("source") in ENGLISH_SOURCES:
+                report["eligible"] += 1
+                _translation_state(a, "disabled", "provider-disabled")
+        return finish(disabled=True)
 
     cache = load_cache()
     pending = []
+    admitted_by_source = {}
     for a in articles:
-        if a.get("source") not in ENGLISH_SOURCES or not a.get("content"):
+        if a.get("source") not in ENGLISH_SOURCES:
+            continue
+        report["eligible"] += 1
+        if not a.get("content"):
+            report["unavailable"] += 1
+            _translation_state(a, "unavailable", "source-body-unavailable")
             continue
         soup, tags = _translation_units(a["content"])
         if not tags:
+            report["unavailable"] += 1
+            _translation_state(a, "unavailable", "no-translatable-text")
             continue
         texts = [t.get_text(" ", strip=True) for t in tags]
         original_texts = texts
@@ -289,29 +351,67 @@ async def translate_english_content(articles: list) -> None:
                     if changed:
                         a['_unit_marker_repair_from'] = a['content']
                         a['content'] = cleaned
+                report["cached"] += 1
+                omitted = _translation_omissions(a["content"])
+                report["partial"] += int(omitted)
+                _translation_state(a, "partial" if omitted else "cached",
+                                   "unsupported-text-blocks" if omitted else "")
                 continue
         if a.get('_unit_marker_repair_from'):
             # A known artifact repair cannot create a paid cache-miss path.
+            report["deferred"] += 1
+            _translation_state(a, "deferred", "deterministic-cleanup")
             continue
+        if reason := _admission_reason(a, texts):
+            report["deferred"] += 1
+            _translation_state(a, "deferred", reason)
+            continue
+        source = a["source"]
+        if admitted_by_source.get(source, 0) >= legacy_source_limit(source):
+            report["deferred"] += 1
+            _translation_state(a, "deferred", "collection-budget")
+            continue
+        admitted_by_source[source] = admitted_by_source.get(source, 0) + 1
+        _translation_state(a, "pending", "translation-in-progress")
         pending.append(a)
 
     if not pending:
-        return
+        return finish()
 
     sem = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
     save_lock = asyncio.Lock()
     counter = [0]
-    async with aiohttp.ClientSession() as session:
-        results = await asyncio.gather(
-            *[_translate_article(session, a, sem, cache, save_lock, counter) for a in pending],
-            return_exceptions=True,
-        )
+    tasks = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            tasks = [asyncio.create_task(_translate_article(session, a, sem, cache,
+                                                           save_lock, counter)) for a in pending]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        # wait_for cancels this stage. Drain every child before the final
+        # atomic flush, including a tail of 1–4 completed paid translations.
+        # Failed/cancelled work never enters the successful-result cache.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for a in pending:
+            if a.get("translation_status") == "pending":
+                _translation_state(a, "deferred", "stage-cancelled")
+        active_ids = {a["id"] for a in articles}
+        save_cache({k: v for k, v in cache.items() if k in active_ids})
     for a, r in zip(pending, results):
         if isinstance(r, BaseException):
             print(f"[translate] {a.get('id')} crashed: {r!r}")
-    translated_count = counter[0]
-
-    active_ids = {a["id"] for a in articles}
-    pruned = {k: v for k, v in cache.items() if k in active_ids}
-    save_cache(pruned)
-    print(f"[translate] {translated_count}/{len(pending)} articles translated")
+            _translation_state(a, "failed", "translation-error")
+            report["failed"] += 1
+        elif r in ("translated", "failed", "deferred", "unavailable"):
+            report[r] += 1
+            report["partial"] += int(a.get("translation_status") == "partial")
+        else:
+            report["failed"] += 1
+            _translation_state(a, "failed", "translation-result-unavailable")
+    print(f"[translate] {report['translated']}/{len(pending)} articles translated; "
+          f"{report['failed']} failed, {report['deferred']} deferred")
+    return finish()

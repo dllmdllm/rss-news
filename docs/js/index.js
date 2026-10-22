@@ -13,6 +13,16 @@
   const RECENT_SEARCH_KEY = "search.recent";
   const RECENT_SEARCH_MAX = 5;
   const BRIEF_COLLAPSE_KEY = "brief.collapsed";
+  const DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+  let updateController = null;
+  let returnSearchFocus = false;
+
+  function eligibleArticles(rows, now = Date.now()) {
+    return (Array.isArray(rows) ? rows : []).filter(article => {
+      const stamp = Date.parse(article.published_at || article.date);
+      return Number.isFinite(stamp) && stamp >= now - DISPLAY_WINDOW_MS && stamp <= now + 5 * 60 * 1000;
+    });
+  }
 
   function loadRecentSearches() {
     try {
@@ -34,6 +44,7 @@
 
   const state = {
     articles: [],
+    allArticles: [],
     loaded: false,
     loadFailed: false,
     topics: [],
@@ -117,8 +128,6 @@
   }
 
   function summarySentencesHtml(article) {
-    const ks = Array.isArray(article.key_sentences) ? article.key_sentences.filter(Boolean) : [];
-    if (ks.length) return esc(ks.slice(0, 5).join(" "));
     const points = summaryPoints(article, 5);
     if (points.length) return esc(points.join(" "));
     if (summaryIsTitleFallback(article)) return `<span class="summary-pending">🤖 AI 摘要稍後補上</span>`;
@@ -143,6 +152,30 @@
       extra,
     ].filter(Boolean).join(" · ");
   }
+
+  function revisionLabel(article) {
+    const label = updateController?.label(article);
+    return label ? `<span class="revision-label" title="與這部裝置上次開頁比較">${label === 'new' ? '新增' : '已更新'}</span>` : '';
+  }
+
+  function sourceNotesHtml(article) {
+    const points = summaryPoints(article, 5);
+    if (!points.length) return '';
+    const helper = window.RssSourceEvidence;
+    const scope = helper?.scope(article);
+    return `<details class="source-point-links"><summary>AI 摘要依據</summary><p>${esc(scope?.label || '原文段落未能核對')}</p><ul>${points.map(point => {
+      const support = helper?.summarySupport(article, point);
+      const link = support && helper.href(article, support.quote, 'summary');
+      return `<li>${esc(point)} ${link ? `<a href="${esc(link)}">查看原文段落</a>` : '<span class="ai-note">未有可核對的原文段落</span>'}</li>`;
+    }).join('')}</ul></details>`;
+  }
+
+  function translationNotice(article) {
+    if (!['deferred', 'failed', 'unavailable', 'partial'].includes(article.translation_status)) return '';
+    return '<span class="reading-provenance">內文翻譯未完整；未譯部分保留原文。</span>';
+  }
+
+  const groupDetails = article => window.RssStoryGroups?.detailsHtml(article) || '';
 
   function categoryClass(category) {
     const map = {
@@ -201,6 +234,9 @@
 
   function filteredArticles() {
     const terms = RssSearch.tokens(state.query);
+    // Saved history is an explicit reader view. Its records are never erased
+    // by the current-news24h eligibility policy or a refresh.
+    const universe = state.readingStatus === 'saved' ? state.allArticles : state.articles;
     // 實體篩選靠 entities.json 記低嘅 article_ids——AI 抽到嘅實體名唔一定
     // 逐字出現喺標題／摘要，自己夾字會漏一大截。
     const entityEntry = state.entity && state.entityIndex
@@ -213,7 +249,7 @@
       ? state.topics.find((topic) => topic.topic === state.topic)
       : null;
     const topicIds = new Set((selectedTopic && selectedTopic.article_ids) || []);
-    const matched = state.articles.filter((article) => {
+    const matched = universe.filter((article) => {
       if (state.topic) {
         const inTopic = topicIds.size
           ? topicIds.has(article.id)
@@ -233,7 +269,7 @@
       return membership ? {...article, metadata_source: article.source, source: membership.source, category: membership.category} : article;
     });
     state.matchCount = matched.length;
-    return sortedArticles(RssSearch.collapse(sortedArticles(matched), state.articles));
+    return sortedArticles(RssSearch.collapse(sortedArticles(matched), universe));
   }
 
   function renderNav() {
@@ -298,15 +334,17 @@
             ${categoryChip(lead.category)}
             <span>${esc(lead.source || "")}</span>
             <span>${esc(timeLabel(lead))}</span>
+            ${revisionLabel(lead)}
             ${priorityBadge(lead)}
             ${clickbaitBadge(lead)}
           </div>
           <h1>${esc(lead.title || "")}</h1>
+          <span class="ai-note">AI 摘要</span>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
           ${window.RssEventReading?.provenance(lead) || ""}
           <span>${window.RssReaderState?.articleState(lead.id)?.read ? "已讀" : "未讀"}</span>
         </div>
-      </a><button type="button" class="save-later" data-save-later="${esc(lead.id)}" aria-pressed="${!!window.RssReaderState?.articleState(lead.id)?.saved}">${window.RssReaderState?.articleState(lead.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>`;
+      </a><button type="button" class="save-later" data-save-later="${esc(lead.id)}" aria-pressed="${!!window.RssReaderState?.articleState(lead.id)?.saved}">${window.RssReaderState?.articleState(lead.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
   }
 
   function briefItem(article, label) {
@@ -352,15 +390,17 @@
           <span>${esc(article.source || "")}</span>
           ${article.matched_sources?.length > 1 ? `<span>合併來源：${esc(article.matched_sources.join('、'))}</span>` : ''}
           <span>${esc(timeLabel(article))}</span>
+          ${revisionLabel(article)}
           ${priorityBadge(article)}
           ${clickbaitBadge(article)}
           <span>${window.RssReaderState?.articleState(article.id)?.read ? "已讀" : "未讀"}${window.RssReaderState?.articleState(article.id)?.saved ? " · 稍後閱讀" : ""}</span>
         </div>
         <h3>${esc(article.title || "")}</h3>
+        <span class="ai-note">AI 摘要</span>
         ${cardSummaryBlock(article)}
         ${window.RssEventReading?.provenance(article) || ""}
       </div>
-    </a><button type="button" class="save-later" data-save-later="${esc(article.id)}" aria-pressed="${!!window.RssReaderState?.articleState(article.id)?.saved}">${window.RssReaderState?.articleState(article.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button></div>`;
+    </a><button type="button" class="save-later" data-save-later="${esc(article.id)}" aria-pressed="${!!window.RssReaderState?.articleState(article.id)?.saved}">${window.RssReaderState?.articleState(article.id)?.saved ? "取消稍後閱讀" : "稍後閱讀"}</button>${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
   }
 
   const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
@@ -429,8 +469,10 @@
     feed.innerHTML = "";
     disconnectFeedObserver();
     let rendered = 0;
+    const restoreIndex = items.findIndex(article => article.id === state.restoreArticleId);
     const appendBatch = () => {
-      const next = Math.min(rendered + FEED_BATCH, items.length);
+      const next = Math.min(rendered + (rendered === 0 ? Math.max(FEED_BATCH,
+        restoreIndex >= 0 ? restoreIndex + 1 + FEED_BATCH : 0, state.restoreFeedCount || 0) : FEED_BATCH), items.length);
       if (next > rendered) {
         const oldSentinel = feed.querySelector(".feed-sentinel");
         if (oldSentinel) oldSentinel.remove();
@@ -557,7 +599,7 @@
     // When the user has narrowed to a category / source / topic, the AI
     // workstation should reflect that scope — otherwise the priority list
     // keeps showing global picks the user has filtered away.
-    const filterActive = state.category !== "全部" || state.source || state.topic || state.sentiment || state.entity || state.readingStatus !== "all";
+    const filterActive = state.query.trim() || state.category !== "全部" || state.source || state.topic || state.sentiment || state.entity || state.readingStatus !== "all";
     const pool = filterActive ? (filteredList || filteredArticles()) : state.articles;
     // Score each article once; reuse for sorting, min/max, and badge rendering.
     const scored = pool.map((article) => ({ article, score: criticalScore(article) }));
@@ -598,7 +640,7 @@
     $("sideSourceHealth").innerHTML = sources.map((row) => `
       <div class="side-health-row">
         <span>${esc(row.outlet)}${row.feeds > 1 ? `<span class="side-health-sub">${row.feeds} 個版面</span>` : ""}</span>
-        <span>${row.count} 篇</span>
+        <span>${row.count} 篇（保留資料）</span>
       </div>`).join("");
     const observations = Object.entries(state.sources || {}).map(([name, info]) => {
       const failed = !!info.error || info.fetch_status === "failed";
@@ -611,13 +653,13 @@
     $("sideSourceHealth").innerHTML += observations.map(({ name, info, failed, zero, observation }) => {
       const retained = Number(info.effective_count || 0);
       const link = /^https?:\/\//i.test(info.feed_url || "") ? `<a href="${esc(safeUrl(info.feed_url))}">RSS</a>` : "";
-      const outcome = failed ? "最近一次抓取失敗" : zero ? "最近一次抓取 0 篇" : "最近一次抓取成功";
+      const outcome = info.fetch_status === 'partial' ? '最近一次部分成功，仍有待續抓' : failed ? "最近一次抓取失敗" : zero ? "最近一次抓取 0 篇" : "最近一次抓取成功";
       const status = observation.status === "fresh" ? outcome : `${observation.label}；${outcome}`;
       const history = retained && (failed || zero || observation.status !== "fresh") ? `；保留 ${retained} 篇歷史資料` : "";
       const stamp = `<span class="reading-provenance">檢查時間 ${esc(observation.time || "未提供或無效")}</span>`;
       const reason = String(info.error || "").replace(/\s+/g, " ").trim().slice(0, 140);
       const intake = info.intake;
-      const coverage = intake ? (intake.coverage === 'incomplete' ? '收錄未完整：已達上限或仍有未讀頁／失敗' : intake.coverage === 'unknown' ? '收錄覆蓋未確認' : '只涵蓋來源提供的索引／feed') : '收錄覆蓋未確認';
+      const coverage = intake ? (intake.coverage === 'incomplete' ? '收錄未完整、待續抓：請求預算或未讀頁／失敗' : intake.coverage === 'unknown' ? '收錄覆蓋未確認' : '只涵蓋來源提供的索引／feed') : '收錄覆蓋未確認';
       const accounting = intake?.discovered != null ? `；發現 ${intake.discovered}，接收 ${intake.counts.accepted}，排除 ${intake.counts.excluded}，待處理 ${intake.counts.pending}` : '';
       return `<div class="side-health-row" role="status"><span>${esc(name)}：${esc(status)}${history} ${link}${stamp}<span class="reading-provenance">${esc(coverage + accounting)}</span>${reason ? `<span class="reading-provenance">原因：${esc(reason)}</span>` : ""}</span></div>`;
     }).join("");
@@ -724,10 +766,11 @@
         ${categoryChip(article.category)}
         <span>${esc(article.source || "")}</span>
         <span>${esc(timeLabel(article))}</span>
+        ${revisionLabel(article)}
         ${priorityBadge(article)}
       </div>
       <strong>${highlight(article.title || "", query)}</strong>
-    </a>`;
+    </a>${groupDetails(article)}`;
   }
 
   function renderSearchResults() {
@@ -755,7 +798,10 @@
     const results = filteredArticles();
     const signature = JSON.stringify([query, state.category, state.source, state.topic, state.readingStatus,
       state.sentiment, state.entity, state.mode, results.map(a => a.id)]);
-    if (signature !== state.searchSignature) { state.searchSignature = signature; state.searchLimit = 20; }
+    if (signature !== state.searchSignature) {
+      state.searchSignature = signature;
+      state.searchLimit = state.restoringSnapshot ? Math.max(20, state.searchLimit || 20) : 20;
+    }
     const visible = results.slice(0, state.searchLimit || 20);
     title.textContent = `搜尋結果 · ${state.matchCount} 篇匹配報道 · ${results.length} 張卡 · 已顯示 ${visible.length} 張`;
     host.innerHTML = results.length
@@ -1603,15 +1649,97 @@
     const data = await fetchArticleData();
     const articles = data.articles || [];
     if (!Array.isArray(data.articles)) throw new Error('文章資料格式不符');
-    state.articles = articles;
+    state.allArticles = articles;
+    state.articles = eligibleArticles(articles);
     window.RssReaderState?.registerAliases(articles);
     state.topics = data.trending_topics || [];
     state.sources = data.sources || {};
     state.fuse = null;
     state.loaded = true;
+    setupSnapshotUpdates(data);
     $("sideUpdated").textContent = data.updated || "";
     $("aiUpdated").textContent = data.updated || "";
     renderAll();
+  }
+
+  function captureView() {
+    const input = $('search');
+    const active = document.activeElement === input;
+    const selectors = '#feed a.card, #leadStory > a, #searchResultList > a';
+    const anchor = [...document.querySelectorAll(selectors)].find(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.bottom > 0;
+    });
+    return {scrollY: window.scrollY, href: anchor?.getAttribute('href'), top: anchor?.getBoundingClientRect().top,
+      active, start: input?.selectionStart, end: input?.selectionEnd,
+      feedCount: document.querySelectorAll('#feed a.card').length,
+      open: [...document.querySelectorAll('details[open][data-story-group]')].map(node => node.dataset.storyGroup)};
+  }
+
+  function restoreView(view) {
+    for (const node of document.querySelectorAll('details[data-story-group]')) node.open = view.open.includes(node.dataset.storyGroup);
+    const anchor = [...document.querySelectorAll('#feed a.card, #leadStory > a, #searchResultList > a')]
+      .find(node => node.getAttribute('href') === view.href && node.getBoundingClientRect().width > 0);
+    if (anchor && Number.isFinite(view.top)) window.scrollBy(0, anchor.getBoundingClientRect().top - view.top);
+    else window.scrollTo(0, view.scrollY);
+    if (view.active) {
+      $('search')?.focus({preventScroll: true});
+      try { $('search').setSelectionRange(view.start, view.end); } catch (_) {}
+    }
+  }
+
+  function setupSnapshotUpdates(data) {
+    if (!window.RssReaderUpdates || updateController) return;
+    updateController = window.RssReaderUpdates.create({
+      eligible: row => eligibleArticles([row]).length === 1,
+      selectArticles: snapshot => eligibleArticles(snapshot.articles),
+      onPending: pending => {
+        const host = $('updatePrompt');
+        if (!host) return;
+        host.hidden = !pending;
+        if (pending) $('updateMessage').textContent = pending.newCount || pending.updatedCount
+          ? `新增 ${pending.newCount} 篇 · 更新 ${pending.updatedCount} 篇` : '資料有更新；目前閱讀保留';
+      },
+      onError: () => { if ($('updateCheckStatus')) $('updateCheckStatus').textContent = '更新檢查未完成，保留目前文章'; },
+      onApply: async snapshot => {
+        const view = captureView();
+        view.active = view.active || returnSearchFocus;
+        returnSearchFocus = false;
+        state.restoreArticleId = view.href ? new URL(view.href, document.baseURI).searchParams.get('id') : null;
+        state.restoreFeedCount = view.feedCount;
+        state.restoringSnapshot = true;
+        const overflowAnchor = document.documentElement.style.overflowAnchor;
+        document.documentElement.style.overflowAnchor = 'none';
+        state.allArticles = snapshot.articles;
+        state.articles = eligibleArticles(snapshot.articles);
+        window.RssReaderState?.registerAliases(snapshot.articles);
+        state.sources = snapshot.sources;
+        state.topics = snapshot.trending_topics || [];
+        state.fuse = null;
+        keySentenceRecords = new Map(); keySentenceReady = false; keySentenceFailed = false;
+        $('sideUpdated').textContent = snapshot.updated || '';
+        $('aiUpdated').textContent = snapshot.updated || '';
+        renderAll();
+        restoreView(view);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        restoreView(view);
+        document.documentElement.style.overflowAnchor = overflowAnchor;
+        state.restoreArticleId = null;
+        state.restoreFeedCount = 0;
+        state.restoringSnapshot = false;
+        if ($('updateCheckStatus')) $('updateCheckStatus').textContent = '';
+        return true;
+      },
+    });
+    updateController.begin(data);
+    updateController.start();
+    $('applySnapshotUpdate')?.addEventListener('pointerdown', () => { returnSearchFocus = document.activeElement === $('search'); });
+    $('applySnapshotUpdate')?.addEventListener('click', () => void updateController.apply());
+    $('dismissSnapshotUpdate')?.addEventListener('click', () => { $('updatePrompt').hidden = true; });
+    window.addEventListener('focus', () => void updateController.check());
+    window.addEventListener('pagehide', () => updateController.stop());
+    // Expose only the read-only/manual refresh controller, not reader data.
+    window.rssSnapshotUpdates = updateController;
   }
 
   let keySentenceRecords = new Map(), keySentenceReady = false, keySentenceFailed = false, keySentenceRequest = null;
@@ -1647,7 +1775,14 @@
       } finally { clearTimeout(timer); keySentenceRequest = null; }
     })();
   }
-  const summaryPlayer = $("summaryPlayer") && window.RssSummaryPlayer?.create($("summaryPlayer"), { points: keySentencePoints, timeLabel });
+  const summaryPlayer = $("summaryPlayer") && window.RssSummaryPlayer?.create($("summaryPlayer"), {
+    points: keySentencePoints, timeLabel,
+    pointLink: (article, text) => {
+      const record = keySentenceRecords.get(article.id);
+      const quote = window.RssSourceEvidence?.keySupport(record, text);
+      return quote ? window.RssSourceEvidence.href(record, quote, 'key') : null;
+    },
+  });
   function syncDesktopView(list) {
     const playing = !isMobile() && state.desktopView === 'player';
     document.body.classList.toggle('summary-mode', playing);
@@ -1719,7 +1854,7 @@
           indicator.textContent = "⟳ 更新中…";
           indicator.classList.add("show");
         }
-        location.reload();
+        void updateController?.check().finally(() => { if (indicator) indicator.classList.remove('show'); });
       }
     }, { passive: true });
   }

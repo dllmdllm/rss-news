@@ -125,12 +125,12 @@ def test_source_change_is_limited_to_two_official_publishers():
         assert f['url'].endswith('/feed/') and f['rss_media']
 
 
-def test_bounded_first_page_is_sorted_deduped_and_capped():
+def test_bounded_first_page_is_sorted_deduped_without_article_eligibility_cap():
     values=[post(link='https://publisher.example/older/',date_gmt='2026-10-10T01:00:00'),
             post(link='https://publisher.example/new/',date_gmt='2026-10-10T03:00:00'),
             post(link='https://publisher.example/middle/',date_gmt='2026-10-10T02:00:00')]
     rows=F._parse_wordpress_posts(values+values,{**FEED,'max_items':2},CUTOFF)
-    assert [r['url'] for r in rows]==['https://publisher.example/new/','https://publisher.example/middle/']
+    assert [r['url'] for r in rows]==['https://publisher.example/new/','https://publisher.example/middle/','https://publisher.example/older/']
     with pytest.raises(ValueError,match='bounded page size'):
         F._parse_wordpress_posts([post()]*41,FEED,CUTOFF)
     session=Session(200,json.dumps([post()]).encode('utf-8'))
@@ -164,11 +164,11 @@ def test_json_chinese_does_not_depend_on_windows_default_codepage(monkeypatch):
 
 
 @pytest.mark.parametrize('configured,expected', [(0, 1), (-2, 1), (1000, 40)])
-def test_request_and_parser_share_positive_item_bound(configured, expected):
+def test_request_page_size_does_not_limit_valid_response_articles(configured, expected):
     feed = {**FEED, 'max_items': configured}
     assert F._wordpress_item_limit(feed) == expected
     rows = F._parse_wordpress_posts([post(), post(link='https://publisher.example/other/')], feed, CUTOFF)
-    assert len(rows) == min(expected, 2)
+    assert len(rows) == 2
     session = Session(200, b'[]')
     asyncio.run(F._fetch_one(session, feed, CUTOFF, {}))
     assert f'per_page={expected}' in session.calls[0][0]
@@ -233,4 +233,5 @@ def test_source_statistics_disclose_collection_route_without_overwriting_rss(mon
     assert source['feed_url'] == FEED['url']
     assert source['collection_url'] == FEED['api_url']
     assert source['collection_method'] == 'wordpress-public-posts'
-    assert source['collection_scope'] == 'latest-public-posts' and source['collection_limit'] == 30
+    assert source['collection_scope'] == 'public-posts-window' and source['collection_limit'] is None
+    assert source['collection_page_size'] == 30 and source['collection_request_limit'] == 3

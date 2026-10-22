@@ -625,12 +625,14 @@ def save_json(articles: list, source_stats: dict):
     _write_upcoming(articles)
 
     meta = [
-        {k: v for k, v in a.items() if k not in _CONTENT_FIELDS}
+        {k: v for k, v in a.items() if k not in _CONTENT_FIELDS and not k.startswith('_')}
         for a in articles
     ]
     meta_path = DATA_DIR / "articles.json"
     payload = {
         "schema_version": 2,
+        "display_window_hours": 24,
+        "retention_window_hours": ARTICLE_MAX_AGE_HOURS,
         "updated":  datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M HKT"),
         "sources":  source_stats,
         "trending_topics": build_trending_topics(articles),
@@ -656,6 +658,8 @@ def save_json(articles: list, source_stats: dict):
     index_path = DATA_DIR / "articles_index.json"
     index_payload = {
         "schema_version": 2,
+        "display_window_hours": payload.get('display_window_hours', 24),
+        "retention_window_hours": payload.get('retention_window_hours', 30),
         "updated": payload["updated"],
         "sources": source_stats,
         "trending_topics": payload["trending_topics"],
@@ -1023,6 +1027,11 @@ def _merge_missing_sources(articles: list, old_articles: list, source_stats: dic
     """Merge every still-active record; a bounded batch is not a deletion list."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     articles = reconcile(articles, old_articles)
+    previous_by_id = {a['id']: a for a in old_articles}
+    for article in articles:
+        previous = previous_by_id.get(article['id']) or {}
+        if previous.get('body_status') == 'pending-budget':
+            article['body_status'] = 'pending-budget'
     existing_keys = {identity_key(a) for a in articles}
     old_by_source: dict[str, list] = defaultdict(list)
     for a in old_articles:
@@ -1121,8 +1130,9 @@ async def main():
     # than once in the same process (2026-07-21 audit finding).
     _core_saved = False
 
-    def mark_step(name: str, ok: bool = True, error: str = "", seconds: float | None = None) -> None:
+    def mark_step(name: str, ok: bool = True, error: str = "", seconds: float | None = None, **details) -> None:
         row = {"ok": ok}
+        row.update(details)
         if error:
             row["error"] = error
         if seconds is not None:
@@ -1211,6 +1221,8 @@ async def main():
 
         for article in articles:
             _prepare_article_media(article)
+            if (article.get('content_quality') or {}).get('fallback') == 'minimal':
+                article['_paid_enrichment_deferred'] = True
         # Pure boundaries before any paid enrichment. Existing strict snapshot
         # validation still checks final metadata/sidecars before publication.
         media_inventory(articles)
@@ -1226,8 +1238,12 @@ async def main():
         t = time.monotonic()
         _tlog("translate start")
         try:
-            await core_step(lambda: translate_english_content(articles), 90)
-            mark_step("translate", seconds=time.monotonic() - t)
+            result = await core_step(lambda: translate_english_content(articles), 90)
+            if isinstance(result, dict):
+                mark_step('translate', ok=bool(result.get('ok')), error='' if result.get('ok') else 'translation incomplete; original content retained',
+                          seconds=time.monotonic() - t, **{k:v for k,v in result.items() if k != 'ok'})
+            else:
+                mark_step("translate", seconds=time.monotonic() - t)
         except (asyncio.TimeoutError, TimeoutError):
             _tlog("translate timed out — using partial (untranslated) content")
             mark_step("translate", ok=False, error="timeout 90s", seconds=time.monotonic() - t)
@@ -1271,7 +1287,8 @@ async def main():
         mark_step("media_qa", ok=False, error=repr(exc), seconds=time.monotonic() - t)
     t = time.monotonic()
     try:
-        await asyncio.wait_for(generate_panel_digests(articles), timeout=200)
+        paid_cohort = [a for a in articles if not a.get('_paid_enrichment_deferred')]
+        await asyncio.wait_for(generate_panel_digests(paid_cohort), timeout=200)
         mark_step("panel_digest", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"panel_digest: {exc!r}")
@@ -1333,7 +1350,7 @@ async def main():
     t = time.monotonic()
     _tlog("daily_brief start")
     try:
-        await asyncio.wait_for(generate_daily_brief(articles), timeout=90)
+        await asyncio.wait_for(generate_daily_brief(paid_cohort), timeout=90)
         mark_step("daily_brief", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"daily_brief: {exc!r}")
@@ -1343,7 +1360,7 @@ async def main():
     t = time.monotonic()
     _tlog("entity_digest start")
     try:
-        await asyncio.wait_for(generate_entity_digests(articles), timeout=120)
+        await asyncio.wait_for(generate_entity_digests(paid_cohort), timeout=120)
         mark_step("entity_digest", seconds=time.monotonic() - t)
     except Exception as exc:
         _tlog(f"entity_digest: {exc!r}")

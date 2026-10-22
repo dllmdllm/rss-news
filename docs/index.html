@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <title>新聞控制台</title>
   <link rel="stylesheet" href="css/summary-player.css">
+  <link rel="stylesheet" href="css/reader-loop.css">
   <style>
     :root {
       color-scheme: dark;
@@ -1446,6 +1447,7 @@
         <button id="summaryPlayTab" role="tab" aria-selected="false" aria-controls="summaryPlayer" data-desktop-view="player" type="button" tabindex="-1">關鍵句播放</button>
       </div>
       <section class="morning-brief" id="morningBrief" hidden></section>
+      <div id="updatePrompt" class="snapshot-update-prompt" role="status" hidden><span id="updateMessage"></span><button id="applySnapshotUpdate" type="button">載入新資料</button><button id="dismissSnapshotUpdate" type="button">稍後</button></div>
       <article class="lead" id="leadStory"></article>
       <aside class="brief">
         <div class="brief-part brief-priority">
@@ -1463,6 +1465,8 @@
         <h2 id="feedTitle">重點新聞流</h2>
         <span id="resultCount"></span>
       </div>
+      <p class="ai-note" id="collectionWindowNote">目前新聞：過去24小時；收錄受來源索引及每輪請求預算限制，未收齊會標示待續抓。稍後閱讀保留已儲存資料。</p>
+      <span class="ai-note" id="updateCheckStatus" role="status"></span>
       <section class="summary-player" id="summaryPlayer" role="tabpanel" aria-labelledby="summaryPlayTab" hidden>
         <div class="summary-controls">
           <button type="button" data-player-toggle aria-pressed="false">▶ 繼續</button>
@@ -1656,13 +1660,22 @@
       if (!id) return;
       event.preventDefault();
       const quote = url.searchParams.get("quote");
-      location.href = `article.html?id=${encodeURIComponent(id)}${quote ? "&quote=" + encodeURIComponent(quote.slice(0, 500)) : ""}${url.hash}`;
+      const params = new URLSearchParams({id});
+      if (quote && quote.length <= 2000) params.set('quote', quote);
+      const quoteHash = url.searchParams.get('quote_hash');
+      if (/^[a-f0-9]{64}$/.test(quoteHash || '')) params.set('quote_hash', quoteHash);
+      const kind = url.searchParams.get('quote_kind');
+      if (['summary', 'key', 'quote'].includes(kind)) params.set('quote_kind', kind);
+      location.href = 'article.html?' + params.toString() + url.hash;
     });
   </script>
   <script src="vendor/fuse.min.js?v=20260718-topicfix"></script>
+  <script src="js/story-groups.js"></script>
   <script src="js/common.js?v=20260718-topicfix"></script>
   <script src="js/reader-state.js"></script>
   <script src="js/event-reading.js"></script>
+  <script src="js/reader-updates.js"></script>
+  <script src="js/source-evidence.js"></script>
   <script src="js/summary-player.js"></script>
   <script src="js/index.js?v=20260718-topicfix"></script>
 </body>

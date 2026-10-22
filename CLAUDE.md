@@ -949,11 +949,21 @@ picture. No article-body fetch or new AI generation is involved.
   URL/ID aliases and feed/category memberships; reader state resolves aliases
   locally without deleting saved/read/position records. Unknown GUID/URL shapes
   stay conservative; do not infer identities from titles or decode reserved paths.
-- Intake reports accepted/excluded/pending outcomes and bounded coverage. Existing
-  item/time caps remain; Now reads at most three pages only while quota remains,
-  and on.cc reads the HKT dates intersecting the window (at most three). Failure
-  retains partial/last-good records, never implies full coverage. Feed validators
-  persist after bodies/metadata materialize; orphan 304 and invalid schemas fail.
+- The default news views display the latest24h;30h remains the internal overlap
+  and retained reader-history window. A source's prior article-count budget is
+  not collection eligibility. Scan the finite provided feed/index, with bounded
+  requests/time/bytes, and expose accepted/excluded/pending coverage. Now and
+  public WordPress refresh page1 and resume older pages (at most3requests;
+  WordPress15s total); on.cc covers intersecting HKT dates. Published intake
+  cursors resume work in the next existing cycle; pinned/old head items never
+  stop scanning. Failure retains partial/last-good data and never proves full
+  coverage. Feed validators persist after materialization; invalid/orphan304 fails.
+- Keep uncached title/body translation, body fetching and analysis admission at
+  the prior per-source budgets; cache reuse is free. Deferred metadata stays
+  visible with partial/pending status; never increase paid quota to catch up.
+  Uncached body translation above8000characters is deferred with original text
+  intact; valid long translations already cached are reused. Cancellation drains
+  work and saves completed translations; per-article failures remain explicit.
 - Preserve figure/image/caption/credit as one editorial subtree, mixed inline
   text and legitimate repeated images. Resolve relative media against the article
   URL. Captioned hero figures remain in the body; text mode keeps captions. Only
@@ -966,3 +976,11 @@ picture. No article-body fetch or new AI generation is involved.
   of matching records/cards. All matches remain reachable via existing scrolling
   or search pagination. IME composition preserves focus and waits for completion;
   loading/failure must not appear as a confirmed zero. AI and Read Later remain.
+- Explicit duplicate groups expose every underlying article. Broad topics do
+  not establish same-event identity; cycles/dangling chains fail open. Source
+  paragraph links bind literal quotations to the current body hash and a unique
+  rendered paragraph; ambiguous/partial/unavailable evidence stays honest.
+- Device-only revision labels use separate bounded visit state and aliases;
+  never delete saved/read/position data. Visible-page index checks only offer
+  a new-count prompt. Applying requires a click and preserves current query,
+  filters, focus and a visible reading anchor; polling never reloads the page.
