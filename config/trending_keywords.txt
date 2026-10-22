@@ -1,6 +1,7 @@
-# synced 2026-10-22T10:17:31.051558+08:00
-恆生指數
+# synced 2026-10-22T10:57:42.613402+08:00
+hang seng index
 hsi
+恆生指數
 湖人對勇士
 澳洲
 lakers vs warriors
@@ -8,4 +9,3 @@ php 漏洞
 teams
 nba直播
 php 問題
-meta stock
