@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import unquote, urljoin
 from src.public_http import public_connector, public_get, public_url, read_public_body
 from src.article_urls import valid_article_url
+from src.publisher_identity import memberships
 
 import aiohttp
 import feedparser
@@ -34,6 +35,70 @@ _CJK_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 # Conditional-request cache: maps feed URL → {"etag": ..., "last_modified": ...}
 # Saves bandwidth when the upstream feed has not changed (HTTP 304 path).
 _FEED_CACHE_PATH = Path(__file__).parent.parent / "docs" / "data" / "feed_http_cache.json"
+_pending_http_cache = None
+
+
+def _intake(feed):
+    return feed.setdefault('_intake', {'version': 1, 'pages': [], 'items': [],
+                                      'coverage': 'unknown', 'truncated': False})
+
+
+def _item(feed, url, status, reason=''):
+    ledger = _intake(feed)
+    ledger['items'].append({'key': _make_id(str(url or len(ledger['items']))),
+                            'status': status, 'reason': reason})
+
+
+def _bounded_rows(rows, feed, discovered=None, *, limit=None):
+    limit = max(1, int(limit if limit is not None else feed.get('max_items', MAX_ITEMS_PER_FEED)))
+    ledger = _intake(feed)
+    ledger['accounting'] = 'provided-response'
+    for n, row in enumerate(rows):
+        _item(feed, row.get('url'), 'accepted' if n < limit else 'pending',
+              '' if n < limit else 'item-budget')
+    if discovered is not None:
+        for n in range(max(0, discovered - len(ledger['items']))):
+            _item(feed, None, 'excluded', 'outside-window-or-invalid-metadata')
+    ledger['truncated'] = len(rows) >= limit
+    ledger['coverage'] = 'incomplete' if ledger['truncated'] else 'provided-index-only'
+    return rows[:limit]
+
+
+def _materialized(feed, previous):
+    if previous.get('materialized_empty'):
+        return True
+    try:
+        rows = json.loads((_FEED_CACHE_PATH.parent / 'articles.json').read_text(encoding='utf-8'))['articles']
+        rows = [row for row in rows if any(m['source'] == feed['name'] for m in memberships(row))]
+        for row in rows:
+            record = json.loads((_FEED_CACHE_PATH.parent / 'content' / (row['id'] + '.json')).read_text(encoding='utf-8'))
+            if (record.get('version') != 1 or not isinstance(record.get('content'), str) or not record['content'].strip()
+                    or record.get('content_hash') != hashlib.sha256(record['content'].encode()).hexdigest()
+                    or row.get('content_hash') != record.get('content_hash')):
+                return False
+        known = {url for row in rows
+                 for url in [row.get('url'), *(row.get('url_aliases') or [])]}
+        expected = previous.get('materialized_urls')
+        return bool(known) and (expected is None or set(expected).issubset(known))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def commit_feed_http_cache(articles, *, data_dir=None):
+    """Commit proposed validators only after metadata and bodies materialize."""
+    global _pending_http_cache
+    if _pending_http_cache is None:
+        return
+    if data_dir is not None and Path(data_dir).resolve() != _FEED_CACHE_PATH.parent.resolve():
+        return
+    urls = {url for row in articles for url in [row.get('url'), *(row.get('url_aliases') or [])]}
+    committed = {}
+    for url, entry in _pending_http_cache.items():
+        expected = entry.get('materialized_urls') or []
+        if set(expected).issubset(urls):
+            committed[url] = entry
+    _save_feed_http_cache(committed)
+    _pending_http_cache = None
 
 
 def _parse_title_translations(raw: str, expected: int) -> list[str] | None:
@@ -263,7 +328,7 @@ def _parse_am730_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> li
             "rss_content": None,
         })
     articles.sort(key=lambda a: a["date"], reverse=True)
-    return articles[:max_items]
+    return _bounded_rows(articles, feed_info, len(root.findall('.//{*}url')))
 
 
 _YAHOO_ARTICLE_RE = re.compile(r"-\d{6,}\.html(?:$|\?)")
@@ -370,21 +435,41 @@ async def _fetch_yahoo_tech(
         return [], "no article links on listing page", False
 
     articles: list = []
+    feed_info['_partial_batch'] = articles
+    ledger = _intake(feed_info)
+    ledger['accounting'] = 'bounded-listed-candidates'
+    ledger['coverage'] = 'incomplete'
+    ledger['pages'].append(feed_info['url'])
+    failures = []
+    visited = set()
     for i in range(0, len(candidates), 10):
         batch = candidates[i:i + 10]
         pages = await asyncio.gather(*[
             _get(u, referer=feed_info["url"]) for u in batch
         ])
         for url, html in zip(batch, pages):
+            visited.add(url)
+            ledger['pages'].append(url)
             if not html:
+                _item(feed_info, url, 'pending', 'article-fetch-failed')
+                failures.append(_make_id(url))
                 continue
             article = _parse_yahoo_article(html, _clean_url(url), cutoff, feed_info)
             if not article:
+                _item(feed_info, url, 'excluded', 'expired-or-invalid-metadata')
+                continue
+            if len(articles) >= max_items:
+                _item(feed_info, url, 'pending', 'item-budget')
                 continue
             articles.append(article)
-            if len(articles) >= max_items:
-                return articles, None, False
-    return articles, None, False
+            _item(feed_info, url, 'accepted')
+        if len(articles) >= max_items:
+            break
+    for url in candidates:
+        if url not in visited:
+            _item(feed_info, url, 'pending', 'request-budget')
+    ledger['truncated'] = len(candidates) >= max_items * 2 or len(articles) >= max_items
+    return articles, f'{len(failures)} article metadata requests failed' if failures else None, False
 
 
 def _oncc_link_title(anchor) -> str:
@@ -431,16 +516,20 @@ def _parse_oncc_index(html: str, feed_info: dict, cutoff: datetime) -> list[dict
         if "hk.on.cc/hk/bkn/cnt/" not in article_url:
             continue
         if section and f"/cnt/{section}/" not in article_url:
+            _item(feed_info, article_url, 'excluded', 'out-of-scope-category')
             continue
         if article_url in seen:
+            _item(feed_info, article_url, 'excluded', 'duplicate-publisher-item')
             continue
 
         date = _parse_oncc_datetime(article_url)
         if date < cutoff:
+            _item(feed_info, article_url, 'excluded', 'expired-or-invalid-date')
             continue
 
         title = _oncc_link_title(anchor)
         if not title:
+            _item(feed_info, article_url, 'excluded', 'invalid-title')
             continue
 
         seen.add(article_url)
@@ -455,9 +544,7 @@ def _parse_oncc_index(html: str, feed_info: dict, cutoff: datetime) -> list[dict
             "thumbnail":   _oncc_link_thumbnail(anchor, base_url),
             "rss_content": None,
         })
-        if len(articles) >= max_items:
-            break
-    return articles
+    return _bounded_rows(articles, feed_info)
 
 
 async def _read_feed(
@@ -514,6 +601,8 @@ async def _fetch_hk01(
         return articles, repr(exc), False
 
     max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+    if not isinstance(data, dict) or not isinstance(data.get('items'), list):
+        return [], 'invalid HK01 feed schema', False
     # 2026-07-21 audit finding: (a) 之前喺 filter 贊助/影片卡之前就截
     # max_items，令實際 candidate 數量少過預期——而家 filter 完先 cap；
     # (b) per-item 處理冇 try/except，一個 item 格式怪（例如 mainImage
@@ -557,9 +646,7 @@ async def _fetch_hk01(
         except Exception as exc:
             print(f"[WARN] fetch {feed_info['name']}: skipping malformed item: {exc!r}")
             continue
-        if len(articles) >= max_items:
-            break
-    return articles, None, False
+    return _bounded_rows(articles, feed_info, len(data['items'])), None, False
 
 
 async def _fetch_am730(
@@ -583,6 +670,11 @@ async def _fetch_am730(
         return [], repr(exc), False
 
     xml_text = raw.decode(charset, errors="replace")
+    try:
+        if ET.fromstring(xml_text).tag.rsplit('}', 1)[-1] != 'urlset':
+            raise ValueError('expected urlset')
+    except (ET.ParseError, ValueError):
+        return [], 'invalid am730 sitemap schema', False
     articles = _parse_am730_sitemap(xml_text, feed_info, cutoff)
     return articles, None, False
 
@@ -638,7 +730,7 @@ def _parse_tvb_sitemap(xml_text: str, feed_info: dict, cutoff: datetime) -> list
         })
 
     articles.sort(key=lambda a: a["date"], reverse=True)
-    return articles[:max_items]
+    return _bounded_rows(articles, feed_info, len(root.findall(f'{{{SM}}}url')))
 
 
 async def _fetch_tvb(
@@ -662,6 +754,12 @@ async def _fetch_tvb(
         return [], repr(exc), False
 
     xml_text = raw.decode(charset, errors="replace")
+    try:
+        root = ET.fromstring(xml_text)
+        if root.tag != '{http://www.sitemaps.org/schemas/sitemap/0.9}urlset':
+            raise ValueError('expected sitemap urlset')
+    except (ET.ParseError, ValueError):
+        return [], 'invalid TVB sitemap schema', False
     articles = _parse_tvb_sitemap(xml_text, feed_info, cutoff)
     return articles, None, False
 
@@ -674,27 +772,7 @@ _NOWTV_CATEGORY_SLUG: dict[str, str] = {
 }
 
 
-async def _fetch_nowtv(
-    session:   aiohttp.ClientSession,
-    feed_info: dict,
-    cutoff:    datetime,
-) -> tuple[list, str | None, bool]:
-    """Now TV news JSON API."""
-    try:
-        async with public_get(session,
-            feed_info["url"],
-            timeout=aiohttp.ClientTimeout(total=15),
-            headers={"Accept": "application/json"},
-        ) as resp:
-            if resp.status >= 400:
-                return [], f"HTTP {resp.status}", False
-            data = json.loads(await read_public_body(resp))
-    except Exception as exc:
-        print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
-        return [], repr(exc), False
-
-    items = data if isinstance(data, list) else []
-    max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
+def _parse_nowtv_items(items, feed_info, cutoff):
     articles: list[dict] = []
 
     for item in items:
@@ -737,10 +815,54 @@ async def _fetch_nowtv(
             # 一齊丟失（2026-07-21 audit finding）——而家淨係 skip 呢個 item。
             print(f"[WARN] fetch {feed_info['name']}: skipping malformed item: {exc!r}")
             continue
-        if len(articles) >= max_items:
-            break
+    return articles
 
-    return articles, None, False
+
+async def _fetch_nowtv(session, feed_info, cutoff):
+    """Read at most three official pages, within the unchanged item/time cap.
+
+    A full first page normally fills the cap. Extra pages only fill remaining
+    capacity after invalid/expired items, never silently promise full coverage.
+    """
+    articles, seen, discovered = [], set(), 0
+    feed_info['_partial_batch'] = articles
+    ledger = _intake(feed_info)
+    limit = feed_info.get('max_items', MAX_ITEMS_PER_FEED)
+    endpoint = public_url(feed_info['url'])
+    error = None
+    for page in range(1, 4):
+        url = str(endpoint if page == 1 else endpoint.update_query({'page': str(page)}))
+        ledger['pages'].append(url)
+        try:
+            async with public_get(session, url, headers={'Accept': 'application/json'},
+                                  timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status >= 400:
+                    error = f'HTTP {response.status} (page {page})'
+                    break
+                data = json.loads(await read_public_body(response))
+            if not isinstance(data, list):
+                error = f'invalid Now list schema (page {page})'
+                break
+        except Exception as exc:
+            error = f'{type(exc).__name__} (page {page})'
+            break
+        discovered += len(data)
+        ledger['raw_discovered'] = discovered
+        parsed = _parse_nowtv_items(data, feed_info, cutoff)
+        for row in parsed:
+            if row['id'] not in seen:
+                seen.add(row['id'])
+                articles.append(row)
+            else:
+                _item(feed_info, row['url'], 'excluded', 'duplicate-publisher-item')
+        if not data or len(articles) >= limit or (parsed and min(a['date'] for a in parsed) < cutoff.isoformat()):
+            break
+    result = _bounded_rows(articles, feed_info, discovered)
+    # Even a short provided page cannot prove all publisher news was indexed.
+    ledger['pagination_complete'] = not error and not data
+    if error or not ledger['pagination_complete']:
+        ledger['coverage'] = 'incomplete'
+    return result, error, False
 
 
 # on.cc 部分 section（娛樂）嘅 index 頁係純 client-side render——HTML 得 12KB
@@ -757,20 +879,28 @@ def _parse_oncc_dailylist(data, feed_info: dict, cutoff: datetime) -> list[dict]
     max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
     articles: list[dict] = []
     for item in data if isinstance(data, list) else []:
-        article_id = (item.get("articleId") or "").strip()
-        title = (item.get("title") or "").strip()
+        if not isinstance(item, dict):
+            _item(feed_info, None, 'excluded', 'invalid-record')
+            continue
+        article_id = item.get('articleId') if isinstance(item.get('articleId'), str) else ''
+        title = item.get('title') if isinstance(item.get('title'), str) else ''
+        article_id, title = article_id.strip(), title.strip()
         if not article_id or not title:
+            _item(feed_info, article_id, 'excluded', 'invalid-id-or-title')
             continue
         # articleId 內嵌自己嘅日期（bkn-YYYYMMDD…）——文章 URL 用呢個日期做
         # 目錄，唔係 dailyList 檔案嘅日期（凌晨出嘅文會跨檔）。
         m = re.search(r"bkn-(\d{8})", article_id)
         if not m:
+            _item(feed_info, article_id, 'excluded', 'invalid-id')
             continue
         article_url = f"{_ONCC_ASSET_BASE}/cnt/{section}/{m.group(1)}/{article_id}.html"
         date = _parse_oncc_datetime(article_url)
         if date < cutoff:
+            _item(feed_info, article_url, 'excluded', 'expired-or-invalid-date')
             continue
-        thumb = (item.get("thumbnail") or "").strip()
+        thumb = item.get('thumbnail') if isinstance(item.get('thumbnail'), str) else ''
+        thumb = thumb.strip()
         thumbnail = _ONCC_ASSET_BASE + thumb if thumb.startswith("/") else (thumb or None)
         articles.append({
             "id":          _make_id(article_url),
@@ -781,10 +911,8 @@ def _parse_oncc_dailylist(data, feed_info: dict, cutoff: datetime) -> list[dict]
             "category":    feed_info["category"],
             "content":     None,
             "thumbnail":   thumbnail,
-            "rss_content": (item.get("content") or "").strip() or None,
+            "rss_content": item['content'].strip() or None if isinstance(item.get('content'), str) else None,
         })
-        if len(articles) >= max_items:
-            break
     return articles
 
 
@@ -796,12 +924,17 @@ async def _fetch_oncc_daily(
     section = feed_info.get("oncc_section") or "entertainment"
     now_hkt = datetime.now(timezone(timedelta(hours=8)))
     merged: list[dict] = []
+    feed_info['_partial_batch'] = merged
     seen: set[str] = set()
     errors: list[str] = []
-    # 今日 + 尋日兩個檔，覆蓋 30h cutoff window。
-    for day_offset in (0, 1):
+    discovered = 0
+    # A 30h window can cross THREE HKT calendar dates. Still inside the
+    # existing 75s feed budget (at most three 15s requests).
+    day_count = min(3, (now_hkt.date() - cutoff.astimezone(now_hkt.tzinfo).date()).days + 1)
+    for day_offset in range(max(1, day_count)):
         date_str = (now_hkt - timedelta(days=day_offset)).strftime("%Y%m%d")
         url = _ONCC_DAILYLIST_URL.format(date=date_str, section=section)
+        _intake(feed_info)['pages'].append(url)
         try:
             async with public_get(session,
                 url,
@@ -814,6 +947,10 @@ async def _fetch_oncc_daily(
                 raw = await read_public_body(resp)
             # feed 帶 UTF-8 BOM，要用 utf-8-sig 解
             data = json.loads(raw.decode("utf-8-sig", errors="replace"))
+            if not isinstance(data, list):
+                raise ValueError('expected daily list array')
+            discovered += len(data)
+            _intake(feed_info)['raw_discovered'] = discovered
         except Exception as exc:
             print(f"[WARN] fetch {feed_info['name']} ({date_str}): {exc!r}")
             errors.append(repr(exc))
@@ -822,13 +959,18 @@ async def _fetch_oncc_daily(
             if a["id"] not in seen:
                 seen.add(a["id"])
                 merged.append(a)
-    error = "; ".join(errors) if errors and not merged else None
+            else:
+                _item(feed_info, a['url'], 'excluded', 'duplicate-publisher-item')
+    error = "; ".join(errors) if errors else None
     # 今日／尋日兩個檔各自內部已經 cap 咗 max_items，但 merge 之後未re-cap
     # 過——兩日通常都有唔重疊嘅文章，實際上可以攞到接近雙倍配額
     # （2026-07-21 audit finding）。Merge 完再揀最新 max_items 個。
     max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
     merged.sort(key=lambda a: a["date"], reverse=True)
-    return merged[:max_items], error, False
+    result = _bounded_rows(merged, feed_info, discovered)
+    if error:
+        _intake(feed_info)['coverage'] = 'incomplete'
+    return result, error, False
 
 
 async def _fetch_oncc(
@@ -947,10 +1089,14 @@ def _parse_wordpress_posts(posts, feed_info: dict, cutoff: datetime) -> list[dic
             "category": _map_category_for_url(raw_url, feed_info),
             "content": None, "thumbnail": thumbnail, "rss_content": body,
             "collection_method": "wordpress-public-posts",
+            "publisher_article_id": str(post['id']) if type(post.get('id')) is int and post['id'] > 0 else None,
         })
     if posts and not valid_records:
         raise ValueError("public posts index contains no valid published metadata")
-    return sorted(articles, key=lambda row: row["date"], reverse=True)[:max_items]
+    result = _bounded_rows(sorted(articles, key=lambda row: row['date'], reverse=True), feed_info, len(posts), limit=max_items)
+    if len(posts) >= max_items:
+        _intake(feed_info).update(truncated=True, coverage='incomplete')
+    return result
 
 
 async def _fetch_wordpress_public(session, feed_info: dict, cutoff: datetime):
@@ -967,6 +1113,7 @@ async def _fetch_wordpress_public(session, feed_info: dict, cutoff: datetime):
             "orderby": "date", "order": "desc", "_embed": "wp:featuredmedia",
             "_fields": "id,link,date_gmt,status,title,content,excerpt,_links,_embedded",
         })
+        _intake(feed_info)['pages'].append(str(endpoint))
         async with public_get(session, str(endpoint),
                 headers={**feed_info.get("headers", {}), "Accept": "application/json"},
                 timeout=aiohttp.ClientTimeout(total=max(1.0, min(
@@ -1010,6 +1157,7 @@ async def _fetch_one(
     if feed_info.get("fetcher") == "nowtv":
         return await _fetch_nowtv(session, feed_info, cutoff)
     articles = []
+    feed_info['_partial_batch'] = articles
     url = feed_info["url"]
     prev = http_cache.get(url) or {}
     cond_headers = dict(feed_info.get("headers") or {})
@@ -1025,7 +1173,11 @@ async def _fetch_one(
             session, url, cond_headers, request_timeout=feed_info.get("request_timeout", 15)
         )
         if status == 304:
-            return articles, None, True
+            if _materialized(feed_info, prev):
+                _intake(feed_info)['coverage'] = 'unchanged-provided-index'
+                return articles, None, True
+            http_cache.pop(url, None)
+            return [], 'HTTP 304 without a materialized feed snapshot', False
         if status >= 400:
             return articles, f"HTTP {status}", False
 
@@ -1041,30 +1193,43 @@ async def _fetch_one(
         if not feed.entries:
             http_cache.pop(url, None)
             return articles, "empty feed: no entries", False
-        # Store new validators for next run
+        # Propose validators; fetch_all does not persist them before save_json.
         new_entry = {"rss_html_version": RSS_HTML_VERSION} if feed_info.get("rss_media") else {}
         if headers.get("ETag"):
             new_entry["etag"] = headers["ETag"]
         if headers.get("Last-Modified"):
             new_entry["last_modified"] = headers["Last-Modified"]
-        if new_entry:
-            http_cache[url] = new_entry
-        elif url in http_cache:
-            http_cache.pop(url, None)
         # Per-feed override lets mixed-category feeds (星島 main RSS) keep
         # enough items that category reclassification via `url_category`
         # actually picks up entertainment/leisure items, which tend to sit
         # below the top-20 breaking-news slice.
         max_items = feed_info.get("max_items", MAX_ITEMS_PER_FEED)
         pending_title_translations: list[dict] = []
-        for entry in feed.entries[:max_items]:
+        _intake(feed_info)['accounting'] = 'provided-response'
+        valid_entries = 0
+        seen_urls = set()
+        for entry in feed.entries:
             article_url = _clean_url(entry.get("link", ""))
             if not article_url:
+                _item(feed_info, entry.get('link'), 'excluded', 'invalid-url')
                 continue
 
             date = _parse_date(entry)
+            if date == datetime.min.replace(tzinfo=timezone.utc):
+                _item(feed_info, article_url, 'excluded', 'invalid-date')
+                continue
+            valid_entries += 1
             if date < cutoff:
+                _item(feed_info, article_url, 'excluded', 'expired')
                 continue  # skip articles older than ARTICLE_MAX_AGE_HOURS
+            if article_url in seen_urls:
+                _item(feed_info, article_url, 'excluded', 'duplicate-url')
+                continue
+            seen_urls.add(article_url)
+            if len(articles) >= max_items:
+                _item(feed_info, article_url, 'pending', 'item-budget')
+                _intake(feed_info)['truncated'] = True
+                continue
 
             # RSS image
             thumbnail = _rss_thumbnail(entry, article_url)
@@ -1091,7 +1256,10 @@ async def _fetch_one(
                 "thumbnail":   thumbnail,
                 "rss_content": rss_content,
             }
+            modified = _parse_date(feedparser.FeedParserDict({key: entry[key] for key in ('updated', 'updated_parsed') if key in entry}))
+            article['source_modified_at'] = modified.isoformat() if modified != datetime.min.replace(tzinfo=timezone.utc) else None
             articles.append(article)
+            _item(feed_info, article_url, 'accepted')
             if feed_info["name"] in ENGLISH_SOURCES:
                 pending_title_translations.append(article)
         if pending_title_translations:
@@ -1099,6 +1267,14 @@ async def _fetch_one(
             translated = await _translate_titles_minimax(session, titles)
             for article, title in zip(pending_title_translations, translated):
                 article["title"] = title
+        if not valid_entries:
+            http_cache.pop(url, None)
+            return articles, 'feed contains no valid URL/date metadata', False
+        new_entry['materialized_urls'] = [a['url'] for a in articles]
+        new_entry['materialized_empty'] = not articles
+        if new_entry:
+            http_cache[url] = new_entry
+        _intake(feed_info)['coverage'] = 'incomplete' if _intake(feed_info)['truncated'] else 'provided-feed-only'
     except Exception as exc:
         print(f"[WARN] fetch {feed_info['name']}: {exc!r}")
         return articles, repr(exc), False
@@ -1171,6 +1347,7 @@ async def _fetch_one_capped(
     cutoff:     datetime,
     http_cache: dict,
 ) -> tuple[list, str | None, bool]:
+    _intake(feed_info)['started_at'] = datetime.now(timezone.utc).isoformat()
     try:
         return await asyncio.wait_for(
             _fetch_one(session, feed_info, cutoff, http_cache),
@@ -1178,15 +1355,22 @@ async def _fetch_one_capped(
         )
     except (asyncio.TimeoutError, TimeoutError):
         print(f"[WARN] fetch {feed_info['name']}: feed timeout after {_PER_FEED_TIMEOUT}s")
-        return [], f"timeout after {_PER_FEED_TIMEOUT}s", False
+        partial = feed_info.get('_partial_batch') or []
+        ledger = _intake(feed_info)
+        if partial and not any(row['status'] == 'accepted' for row in ledger['items']):
+            partial = _bounded_rows(partial, feed_info, ledger.get('raw_discovered'))
+        return partial, f"timeout after {_PER_FEED_TIMEOUT}s", False
 
 
 async def fetch_all() -> tuple[list, dict]:
+    global _pending_http_cache
+    _pending_http_cache = None
     cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     http_cache = _load_feed_http_cache()
     connector  = public_connector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
-        tasks   = [_fetch_one_capped(session, f, cutoff, http_cache) for f in RSS_FEEDS]
+        feeds = [dict(f) for f in RSS_FEEDS]
+        tasks   = [_fetch_one_capped(session, f, cutoff, http_cache) for f in feeds]
         # return_exceptions=True so a single feed crash (TLS error, parser
         # blow-up) doesn't cancel every other feed in flight.
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1195,7 +1379,7 @@ async def fetch_all() -> tuple[list, dict]:
     articles: list = []
     failed_sources     = 0
     not_modified_count = 0
-    for feed_info, result in zip(RSS_FEEDS, results):
+    for feed_info, result in zip(feeds, results):
         if isinstance(result, BaseException):
             print(f"[fetch] {feed_info['name']} crashed: {result!r}")
             batch, error, not_modified = [], str(result), False
@@ -1212,10 +1396,22 @@ async def fetch_all() -> tuple[list, dict]:
             "observed_at": datetime.now(timezone.utc).isoformat() if not error else None,
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "feed_url":     feed_info["url"],
-            "fetch_status": "failed" if error else ("not_modified" if not_modified else "success"),
+            "fetch_status": ("partial" if batch else "failed") if error else ("not_modified" if not_modified else "success"),
             "error":        error,
             "not_modified": not_modified,
         }
+        ledger = _intake(feed_info)
+        if error:
+            ledger['coverage'] = 'incomplete'
+            ledger['failure'] = error
+        ledger['completed_at'] = datetime.now(timezone.utc).isoformat()
+        ledger['collection_url'] = feed_info.get('api_url') or feed_info['url']
+        ledger['limit'] = _wordpress_item_limit(feed_info) if feed_info.get('fetcher') == 'wordpress_public' else feed_info.get('max_items', MAX_ITEMS_PER_FEED)
+        ledger['request_budget_seconds'] = _PER_FEED_TIMEOUT
+        ledger['discovered'] = len(ledger['items']) if ledger.get('accounting') else None
+        ledger['counts'] = {status: sum(row['status'] == status for row in ledger['items'])
+                            for status in ('accepted', 'excluded', 'pending')}
+        source_stats[feed_info['name']]['intake'] = ledger
         if feed_info.get("fetcher") == "wordpress_public":
             source_stats[feed_info["name"]].update({
                 "collection_method": "wordpress-public-posts",
@@ -1227,23 +1423,25 @@ async def fetch_all() -> tuple[list, dict]:
             failed_sources += 1
         if not_modified:
             not_modified_count += 1
-        observed_at = source_stats[feed_info["name"]]["observed_at"]
         for article in batch:
             article["published_at"] = article.get("date")
-            article["fetched_at"] = observed_at
+            article["fetched_at"] = source_stats[feed_info['name']]['checked_at']
         articles.extend(batch)
 
     # Drop cache entries for feeds no longer in RSS_FEEDS so the file
     # does not grow unbounded as sources get renamed/removed.
     active_urls = {f["url"] for f in RSS_FEEDS}
     http_cache = {u: v for u, v in http_cache.items() if u in active_urls}
-    _save_feed_http_cache(http_cache)
+    _pending_http_cache = http_cache
 
-    seen, unique = set(), []
+    seen, unique = {}, []
     for a in articles:
         if a["id"] not in seen:
-            seen.add(a["id"])
+            a['memberships'] = memberships(a)
+            seen[a['id']] = a
             unique.append(a)
+        else:
+            seen[a['id']]['memberships'] += memberships(a)
 
     unique.sort(key=lambda x: x["date"], reverse=True)
     parts = [

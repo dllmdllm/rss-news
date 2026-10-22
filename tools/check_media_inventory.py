@@ -5,9 +5,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.media_qa import inventory
+from tools.validate_publication import validate_site
 
 
 def check(docs):
+    validate_site(Path(docs), require_current=True)
     data = Path(docs) / 'data'
     articles = json.loads((data / 'articles.json').read_text(encoding='utf-8'))['articles']
     records = []

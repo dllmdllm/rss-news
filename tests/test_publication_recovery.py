@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 from pathlib import Path
 import stat
@@ -15,11 +16,12 @@ def _repo(tmp_path):
     data = repo / 'docs' / 'data'
     (data / 'content').mkdir(parents=True)
     article = {'id':'a1','title':'article','summary':'summary','score':5,
-               'sentiment':'neutral','tags':[],'date':'2026-10-12T00:00:00+00:00'}
+               'sentiment':'neutral','tags':[],'date':'2026-10-12T00:00:00+00:00',
+               'content_hash':hashlib.sha256(b'<p>original public body</p>').hexdigest()}
     payload = {'articles':[article]}
     for name in ['articles.json','articles_index.json']:
         (data / name).write_text(json.dumps(payload), encoding='utf-8')
-    (data / 'content' / 'a1.json').write_text(json.dumps({'version':1,'content':'<p>original public body</p>'}), encoding='utf-8')
+    (data / 'content' / 'a1.json').write_text(json.dumps({'version':1,'content':'<p>original public body</p>', 'content_hash':article['content_hash']}), encoding='utf-8')
     (repo / 'docs' / 'index.html').write_text('<h1>prior site</h1>', encoding='utf-8')
     (repo / '.env').write_text('PRIVATE_SENTINEL=never_archive', encoding='utf-8')
     subprocess.run(['git','init',str(repo)], check=True, capture_output=True)

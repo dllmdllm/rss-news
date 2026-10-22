@@ -34,6 +34,8 @@
 
   const state = {
     articles: [],
+    loaded: false,
+    loadFailed: false,
     topics: [],
     sources: {},
     category: "全部",
@@ -198,7 +200,7 @@
   }
 
   function filteredArticles() {
-    const query = state.query.trim().toLowerCase();
+    const terms = RssSearch.tokens(state.query);
     // 實體篩選靠 entities.json 記低嘅 article_ids——AI 抽到嘅實體名唔一定
     // 逐字出現喺標題／摘要，自己夾字會漏一大截。
     const entityEntry = state.entity && state.entityIndex
@@ -211,7 +213,7 @@
       ? state.topics.find((topic) => topic.topic === state.topic)
       : null;
     const topicIds = new Set((selectedTopic && selectedTopic.article_ids) || []);
-    return sortedArticles(state.articles.filter((article) => {
+    const matched = state.articles.filter((article) => {
       if (state.topic) {
         const inTopic = topicIds.size
           ? topicIds.has(article.id)
@@ -219,15 +221,19 @@
         if (!inTopic) return false;
       }
       if (state.readingStatus !== "all" && window.RssReaderState && !window.RssReaderState.filter([article], state.readingStatus).length) return false;
-      if (state.category !== "全部" && article.category !== state.category) return false;
-      if (state.source && article.source !== state.source) return false;
+      const memberships = article.memberships || [{source: article.source, category: article.category}];
+      if (!memberships.some(m => (state.category === '全部' || m.category === state.category) && (!state.source || m.source === state.source))) return false;
       if (state.sentiment && article.sentiment !== state.sentiment) return false;
       if (entityIds && !entityIds.has(article.id)) return false;
-      if (!query) return true;
-      const text = !isMobile() && state.desktopView === 'player' ? keySentencePoints(article).join(' ') : article.summary || '';
-      const haystack = `${article.title || ""} ${text} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
-      return haystack.includes(query);
-    }));
+      return RssSearch.matches(article, terms);
+    }).map(article => {
+      if (!state.source && state.category === '全部') return article;
+      const membership = (article.memberships || [{source: article.source, category: article.category}])
+        .find(m => (!state.source || m.source === state.source) && (state.category === '全部' || m.category === state.category));
+      return membership ? {...article, metadata_source: article.source, source: membership.source, category: membership.category} : article;
+    });
+    state.matchCount = matched.length;
+    return sortedArticles(RssSearch.collapse(sortedArticles(matched), state.articles));
   }
 
   function renderNav() {
@@ -237,17 +243,20 @@
     const SEP = String.fromCharCode(31);
     const countsByCat = new Map();
     for (const a of state.articles) {
-      const key = a.category + SEP + a.source;
-      countsByCat.set(key, (countsByCat.get(key) || 0) + 1);
+      const keys = new Set((a.memberships || [{source:a.source, category:a.category}]).map(m => m.category + SEP + m.source));
+      for (const key of keys) countsByCat.set(key, (countsByCat.get(key) || 0) + 1);
     }
     const byCategory = categories.map((cat) => {
       const count = cat === "全部"
         ? state.articles.length
-        : state.articles.filter((a) => a.category === cat).length;
+        : state.articles.filter((a) => (a.memberships || [{category:a.category}]).some(m => m.category === cat)).length;
       let entries;
       if (cat === "全部") {
-        entries = Object.entries(state.sources || {})
-          .map(([name, src]) => [name, Number(src.effective_count ?? src.count ?? 0)]);
+        const counts = new Map();
+        for (const article of state.articles) {
+          for (const source of new Set((article.memberships || [{source:article.source}]).map(m => m.source))) counts.set(source, (counts.get(source) || 0) + 1);
+        }
+        entries = [...counts.entries()];
       } else {
         entries = [...countsByCat.entries()]
           .filter(([key]) => key.startsWith(cat + SEP))
@@ -341,6 +350,7 @@
         <div class="meta">
           ${categoryChip(article.category)}
           <span>${esc(article.source || "")}</span>
+          ${article.matched_sources?.length > 1 ? `<span>合併來源：${esc(article.matched_sources.join('、'))}</span>` : ''}
           <span>${esc(timeLabel(article))}</span>
           ${priorityBadge(article)}
           ${clickbaitBadge(article)}
@@ -359,17 +369,7 @@
 
   function renderCategorySections(perGroup = CATEGORY_BASE_PER_GROUP) {
     const sections = CATEGORY_GROUPS.map((group) => {
-      const rows = sortedArticles(state.articles.filter((article) => {
-        // Lead 已經喺上面大卡顯示咗，唔好喺分類 section 再出一次。
-        if (feedLeadId && article.id === feedLeadId) return false;
-        if (article.category !== group) return false;
-        if (state.query) {
-          const query = state.query.trim().toLowerCase();
-          const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
-          return haystack.includes(query);
-        }
-        return true;
-      })).slice(0, perGroup);
+      const rows = filteredArticles().filter(article => article.id !== feedLeadId && article.category === group).slice(0, perGroup);
       if (!rows.length) return "";
       return `<section class="category-section ${categoryClass(group)}">
         <div class="category-section-head">
@@ -386,7 +386,7 @@
   // right. Without this, a tall brief sticks out below the lead while the
   // category grid ends short, leaving the brief column visually orphaned.
   function fillCategoriesToMatchBrief() {
-    if (state.topic || state.category !== "全部" || state.source || state.sentiment || state.entity || state.readingStatus !== "all") return;
+    if (state.query.trim() || state.topic || state.category !== "全部" || state.source || state.sentiment || state.entity || state.readingStatus !== "all") return;
     if (window.matchMedia && !window.matchMedia("(min-width: 901px)").matches) return;
     const brief = document.querySelector(".brief");
     const feed = $("feed");
@@ -478,7 +478,7 @@
     // 加 isMobile() gate，唔係 desktop layout 會被殘留嘅 mobile.view 影響
     // （mobile.view 預設 "home"，冇 gate 嘅話 desktop 永遠行平鋪）。
     const mobileFlat = isMobile() && state.mobile.view === "home";
-    if (!mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment && !state.entity && state.readingStatus === "all") {
+    if (!state.query.trim() && !mobileFlat && !state.topic && state.category === "全部" && !state.source && !state.sentiment && !state.entity && state.readingStatus === "all") {
       feed.classList.remove("feed-grid");
       disconnectFeedObserver();
       renderCategorySections();
@@ -494,7 +494,8 @@
         ? `${list.length} 篇 <button class="clear-filter" id="clearSentiment" type="button">✕ 清除輿情</button>`
         : (state.entity
           ? `${list.length} 篇 <button class="clear-filter" id="clearEntity" type="button">✕ 清除焦點</button>`
-          : `${list.length} 篇`));
+          : `${state.matchCount} 篇匹配報道 · ${list.length} 張卡`));
+    if (state.loaded === false) $('resultCount').textContent = '正在讀取文章資料';
     // 「分類重點」只喺真係 render sections 嗰陣先啱；手機時間線係平鋪，
     // 叫返「最新新聞流」。
     $("feedTitle").textContent = state.source
@@ -615,13 +616,16 @@
       const history = retained && (failed || zero || observation.status !== "fresh") ? `；保留 ${retained} 篇歷史資料` : "";
       const stamp = `<span class="reading-provenance">檢查時間 ${esc(observation.time || "未提供或無效")}</span>`;
       const reason = String(info.error || "").replace(/\s+/g, " ").trim().slice(0, 140);
-      return `<div class="side-health-row" role="status"><span>${esc(name)}：${esc(status)}${history} ${link}${stamp}${reason ? `<span class="reading-provenance">原因：${esc(reason)}</span>` : ""}</span></div>`;
+      const intake = info.intake;
+      const coverage = intake ? (intake.coverage === 'incomplete' ? '收錄未完整：已達上限或仍有未讀頁／失敗' : intake.coverage === 'unknown' ? '收錄覆蓋未確認' : '只涵蓋來源提供的索引／feed') : '收錄覆蓋未確認';
+      const accounting = intake?.discovered != null ? `；發現 ${intake.discovered}，接收 ${intake.counts.accepted}，排除 ${intake.counts.excluded}，待處理 ${intake.counts.pending}` : '';
+      return `<div class="side-health-row" role="status"><span>${esc(name)}：${esc(status)}${history} ${link}${stamp}<span class="reading-provenance">${esc(coverage + accounting)}</span>${reason ? `<span class="reading-provenance">原因：${esc(reason)}</span>` : ""}</span></div>`;
     }).join("");
     const summary = [];
     if (troubled.length) summary.push(`${troubled.length} 個 feed 需要檢查`);
     if (stale.length) summary.push(`${stale.length} 個 feed 觀察已過期`);
     if (unknown.length) summary.push(`${unknown.length} 個 feed 狀態未確認`);
-    $("sourceHealth").textContent = summary.join(" · ") || (observations.length ? "來源正常" : "來源狀態未確認");
+    $("sourceHealth").textContent = summary.join(" · ") || (observations.length ? "來源有回應；收錄範圍見詳情" : "來源狀態未確認");
   }
 
   function ensureFuse() {
@@ -708,7 +712,7 @@
   function highlight(text, query) {
     if (!query) return esc(text);
     const safe = esc(text);
-    const tokens = query.split(/\s+/).filter((t) => t.length >= 2).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const tokens = RssSearch.tokens(query).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     if (!tokens.length) return safe;
     const re = new RegExp(tokens.join("|"), "gi");
     return safe.replace(re, (m) => `<mark>${m}</mark>`);
@@ -730,10 +734,15 @@
     const host = $("searchResultList");
     const title = $("searchResultTitle");
     if (!host || !title) return;
+    if (!state.loaded) {
+      title.textContent = state.loadFailed ? '搜尋資料載入失敗' : '正在準備搜尋';
+      host.innerHTML = state.loadFailed ? '<div class="empty-result" role="status">未取得搜尋資料，請重新載入再試。</div>' : '';
+      return;
+    }
     const query = state.query.trim();
     if (!query) {
       title.textContent = "建議閱讀";
-      const top = [...state.articles]
+      const top = filteredArticles()
         .map((article) => ({ article, score: criticalScore(article) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, 8)
@@ -743,22 +752,17 @@
         : `<div class="empty-result">暫無建議</div>`;
       return;
     }
-    ensureFuse();
-    let results = [];
-    if (state.fuse) {
-      results = state.fuse.search(query, { limit: 20 }).map((r) => r.item);
-    } else {
-      const lower = query.toLowerCase();
-      results = state.articles.filter((article) => {
-        const haystack = `${article.title || ""} ${article.summary || ""} ${article.source || ""} ${(article.tags || []).join(" ")}`.toLowerCase();
-        return haystack.includes(lower);
-      });
-    }
-    if (window.RssReaderState) results = window.RssReaderState.filter(results, state.readingStatus);
-    title.textContent = `搜尋結果 · ${results.length} 篇`;
+    const results = filteredArticles();
+    const signature = JSON.stringify([query, state.category, state.source, state.topic, state.readingStatus,
+      state.sentiment, state.entity, state.mode, results.map(a => a.id)]);
+    if (signature !== state.searchSignature) { state.searchSignature = signature; state.searchLimit = 20; }
+    const visible = results.slice(0, state.searchLimit || 20);
+    title.textContent = `搜尋結果 · ${state.matchCount} 篇匹配報道 · ${results.length} 張卡 · 已顯示 ${visible.length} 張`;
     host.innerHTML = results.length
-      ? results.slice(0, 20).map((a) => searchResultItem(a, query)).join("")
-      : `<div class="empty-result" role="status">搵唔到「${esc(query)}」。試吓縮短關鍵字、用其他寫法，或揀熱門話題／標籤。</div>`;
+      ? visible.map(a => searchResultItem(a, query)).join('') + (visible.length < results.length
+        ? '<button type="button" data-search-more>載入更多搜尋結果</button>' : '')
+      : `<div class="empty-result" role="status">在目前條件及已收錄資料中搵唔到「${esc(query)}」。可調整關鍵字或篩選；未涵蓋未收錄文章。</div>`;
+
   }
 
   function renderSearchStage() {
@@ -868,8 +872,12 @@
     const isAi = state.mobile.view === "ai";
     const activeCat = isAi ? state.mobile.aiCat : state.mobile.homeCat;
     const activeSource = isAi ? state.mobile.aiSource : state.mobile.homeSource;
-    const sources = Object.entries(state.sources || {})
-      .filter(([, src]) => activeCat === "全部" || src.category === activeCat)
+    const counts = new Map();
+    for (const article of state.articles) {
+      for (const source of new Set((article.memberships || [{source:article.source, category:article.category}])
+        .filter(m => activeCat === '全部' || m.category === activeCat).map(m => m.source))) counts.set(source, (counts.get(source) || 0) + 1);
+    }
+    const sources = [...counts.entries()].map(([source, count]) => [source, {count}])
       .sort((a, b) => Number(b[1].effective_count ?? b[1].count ?? 0) - Number(a[1].effective_count ?? a[1].count ?? 0));
     if (!sources.length) {
       host.innerHTML = "";
@@ -1136,21 +1144,33 @@
       if (!button) return;
       applyFontSize(button.dataset.font);
     });
-    // Debounce：renderAll 會全頁重砌（nav / lead / feed / AI panel），
-    // 500+ 篇文加 Fuse 每個 keystroke 跑一次會令手機打字窒。
-    let searchDebounce = null;
-    $("search").addEventListener("input", (event) => {
-      state.query = event.target.value;
+    // Keep the input DOM/focus/caret and AI/navigation intact during typing.
+    let searchDebounce = null, composing = false;
+    const submitSearch = () => {
       clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(renderAll, 150);
-    });
+      if (composing) return;
+      state.query = $('search').value;
+      searchDebounce = setTimeout(() => {
+        const list = filteredArticles();
+        renderLead(list); renderFeed(list); syncDesktopView(list); renderSearchResults();
+        if (!state.query.trim()) requestAnimationFrame(fillCategoriesToMatchBrief);
+      }, 100);
+    };
+    $('search').addEventListener('compositionstart', () => { composing = true; clearTimeout(searchDebounce); });
+    $('search').addEventListener('compositionend', () => { composing = false; submitSearch(); });
+    $('search').addEventListener('input', submitSearch);
     // 只喺 Enter 先儲「最近搜尋」——blur 都儲嘅話，手機收鍵盤會將打咗
     // 一半嘅 query 入晒紀錄。
     $("search").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") saveRecentSearch(state.query);
+      if (event.key === "Enter" && !event.isComposing && !composing) saveRecentSearch(state.query);
     });
 
     $("searchStage")?.addEventListener("click", (event) => {
+      if (event.target.closest('button[data-search-more]')) {
+        state.searchLimit = (state.searchLimit || 20) + 20;
+        renderSearchResults();
+        return;
+      }
       const setBtn = event.target.closest("button[data-search-set]");
       if (setBtn) {
         const value = setBtn.dataset.searchSet;
@@ -1582,12 +1602,13 @@
     bindEvents();
     const data = await fetchArticleData();
     const articles = data.articles || [];
-    const articleIds = new Set(articles.map(article => article.id));
-    state.articles = articles.filter(article => !article.duplicate_of || !articleIds.has(article.duplicate_of));
+    if (!Array.isArray(data.articles)) throw new Error('文章資料格式不符');
+    state.articles = articles;
+    window.RssReaderState?.registerAliases(articles);
     state.topics = data.trending_topics || [];
     state.sources = data.sources || {};
     state.fuse = null;
-    ensureFuse();
+    state.loaded = true;
     $("sideUpdated").textContent = data.updated || "";
     $("aiUpdated").textContent = data.updated || "";
     renderAll();
@@ -1596,7 +1617,7 @@
   let keySentenceRecords = new Map(), keySentenceReady = false, keySentenceFailed = false, keySentenceRequest = null;
   function keySentencePoints(article) {
     const record = keySentenceRecords.get(article.id);
-    if (!record || record.title !== article.title || record.source !== article.source || record.date !== article.date ||
+    if (!record || record.title !== article.title || record.source !== (article.metadata_source || article.source) || record.date !== article.date ||
         (article.content_hash && record.content_hash !== article.content_hash) ||
         !record.content_hash || record.key_sentences_content_hash !== record.content_hash || !Array.isArray(record.key_sentences)) return [];
     return [...new Set(record.key_sentences.filter(text => typeof text === 'string' && text.trim()).map(text => text.trim()))];
@@ -1635,10 +1656,10 @@
       if (keySentenceReady) summaryPlayer?.setArticles(Array.isArray(list) ? list : filteredArticles());
       else loadKeySentences();
       $('feedTitle').textContent = '關鍵句播放';
-      $('search').placeholder = '搜尋標題、關鍵句、來源';
+      $('search').placeholder = '搜尋標題、摘要、來源、標籤';
     } else if ($('feedTitle')?.textContent === '關鍵句播放') {
       renderFeed(filteredArticles());
-      $('search').placeholder = '搜尋標題、摘要、來源';
+      $('search').placeholder = '搜尋標題、摘要、來源、標籤';
     }
     document.querySelectorAll('#desktopViewTabs [data-desktop-view]').forEach(button => {
       const selected = button.dataset.desktopView === state.desktopView;
@@ -1649,7 +1670,10 @@
   }
   window.matchMedia?.('(max-width: 900px)')?.addEventListener?.('change', () => syncDesktopView());
   load().catch((err) => {
+    state.loadFailed = true;
     $("leadStory").innerHTML = `<div class="lead-copy"><h1>載入失敗</h1><p class="summary">${esc(err.message)}</p></div>`;
+    $('resultCount').textContent = '文章資料載入失敗';
+    renderSearchResults();
   });
   // ── 手機 pull-to-refresh ──
   // PWA / 加入主畫面模式冇瀏覽器 reload 掣，頂部下拉係新聞 app 嘅肌肉記憶。

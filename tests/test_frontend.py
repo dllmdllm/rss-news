@@ -1635,7 +1635,7 @@ def test_source_health_ages_observations_without_discarding_history():
       const valid304 = {count:0, fresh_count:0, effective_count:12, fetch_status:'not_modified', checked_at:stamp(20), observed_at:stamp(2000)};
       state.sources = {'304': valid304};
       renderAiPanel([]);
-      if ($('sourceHealth').textContent !== '來源正常') throw Error('valid recent 304 must count as observation');
+      if (!$('sourceHealth').textContent.startsWith('來源有回應')) throw Error('valid recent 304 must count as observation');
       if (sourceObservation({checked_at:stamp(60)}).status !== 'fresh' || sourceObservation({checked_at:stamp(61)}).status !== 'stale') throw Error('three-cycle threshold');
       state.sources = {
         '舊成功':{count:9, effective_count:27, fetch_status:'success', checked_at:stamp(27*60)},

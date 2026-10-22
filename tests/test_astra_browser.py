@@ -139,7 +139,8 @@ def test_real_sw_failed_upgrade_preserves_old_offline_shell_and_other_caches(bro
         path = tmp_path / (item[2:] or 'index.html')
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('<title>Offline shell</title><body>Working shell</body>' if path.suffix == '.html' else '/* fixture */', encoding='utf-8')
-    (tmp_path / 'sw.js').write_text(worker.replace('v287', 'v286'), encoding='utf-8')
+    current = re.search(r'const CACHE\s*=\s*"([^"]+)"', worker)[1]
+    (tmp_path / 'sw.js').write_text(worker.replace(current, 'rss-news-fixture-old'), encoding='utf-8')
     class Handler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
             # Same-size versions written within one second must not be hidden
@@ -167,14 +168,14 @@ def test_real_sw_failed_upgrade_preserves_old_offline_shell_and_other_caches(bro
             await r.update();
           });
         }''')
-        assert page.evaluate("async()=> (await caches.keys()).includes('rss-news-v286')")
+        assert page.evaluate("async()=> (await caches.keys()).includes('rss-news-fixture-old')")
         context.set_offline(True); page.reload()
         assert 'Working shell' in page.locator('body').inner_text()
         context.set_offline(False)
         style.write_text('/* restored */', encoding='utf-8')
-        (tmp_path / 'sw.js').write_text(worker.replace('v287', 'v288'), encoding='utf-8')
+        (tmp_path / 'sw.js').write_text(worker.replace(current, 'rss-news-fixture-new'), encoding='utf-8')
         page.evaluate('async()=>{await (await navigator.serviceWorker.getRegistration()).update()}')
-        page.wait_for_function("async()=> (await caches.keys()).includes('rss-news-v288') && !(await caches.keys()).includes('rss-news-v286')")
+        page.wait_for_function("async()=> (await caches.keys()).includes('rss-news-fixture-new') && !(await caches.keys()).includes('rss-news-fixture-old')")
         assert page.evaluate("async()=> (await caches.keys()).includes('other-app-v1')")
     finally:
         context.close(); server.shutdown(); server.server_close(); thread.join(timeout=3)

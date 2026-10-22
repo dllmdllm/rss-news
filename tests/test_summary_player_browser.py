@@ -81,7 +81,7 @@ def test_full_summary_safe_render_and_fractional_scroll_timing(player_page):
     assert page.locator('[data-player-toggle]').inner_text() == 'Ⅱ 暫停'
 
 
-def test_slim_metadata_retry_stale_guard_and_sentence_search(browser, player_data):
+def test_slim_metadata_retry_stale_guard_and_shared_metadata_search(browser, player_data):
     index = copy.deepcopy(player_data)
     for row in index['articles']:
         row.pop('key_sentences', None)
@@ -90,6 +90,8 @@ def test_slim_metadata_retry_stale_guard_and_sentence_search(browser, player_dat
     for row in full['articles']: row['content_hash'] = row['key_sentences_content_hash'] = 'current'
     full['articles'][0]['content_hash'] = 'stale'
     full['articles'][1]['key_sentences'] = ['唯一可搜尋句', '唯一可搜尋句', '', None]
+    index['articles'][1]['summary'] += ' 唯一可搜尋句'
+    full['articles'][1]['summary'] = index['articles'][1]['summary']
     with _static_server() as base:
         context = browser.new_context(viewport={'width':1280,'height':900}, service_workers='block')
         page = context.new_page(); _route_data(page, index)
@@ -116,7 +118,7 @@ def test_slim_metadata_retry_stale_guard_and_sentence_search(browser, player_dat
         page.wait_for_function('document.querySelectorAll(".summary-play-card").length===1')
         assert page.locator('.summary-play-card li').count() == 1
         page.locator('#search').fill('完整重點')
-        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===0')
+        page.wait_for_function('document.querySelectorAll(".summary-play-card").length===9')
         page.locator('#newsListTab').click()
         assert page.locator('#feed .card').count() > 0  # Ordinary list keeps summary search and pagination.
         page.locator('#search').fill(''); page.locator('#summaryPlayTab').click()
@@ -246,7 +248,7 @@ def test_existing_order_and_reading_filter_are_shared(player_page):
     assert page.locator('.summary-play-card').count() == 10
     page.locator('#categoryNav [data-tree-category="科技"]').click()
     assert page.locator('.summary-play-card').count() == 5
-    page.locator('#categoryNav [data-source="科技來源"]').click()
+    page.locator('#categoryNav [data-category="科技"][data-source="科技來源"]').click()
     assert page.locator('.summary-play-card').count() == 5
 
 

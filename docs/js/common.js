@@ -263,3 +263,37 @@ function registerServiceWorker() {
     });
   }
 }
+
+// All list/search/player views search the same currently collected metadata.
+// No body fetch, paid generation, fuzzy threshold or layout-specific cap.
+const RssSearch = (() => {
+  const normalise = value => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  const tokens = query => [...normalise(query).matchAll(/"([^"]+)"|(\S+)/g)].map(m => m[1] || m[2]);
+  const cache = new WeakMap();
+  function matches(article, terms) {
+    let text = cache.get(article);
+    if (text === undefined) {
+      text = normalise([article.title, article.summary, article.source, ...(article.tags || []),
+        ...(article.memberships || []).map(m => m.source)].join(' '));
+      cache.set(article, text);
+    }
+    return terms.every(term => text.includes(term));
+  }
+  function collapse(rows, allRows = rows) {
+    const known = new Map(allRows.map(a => [a.id, a]));
+    const groups = new Map();
+    for (const row of rows) {
+      let root = row, seen = new Set();
+      while (known.has(root.duplicate_of) && !seen.has(root.id)) {
+        seen.add(root.id); root = known.get(root.duplicate_of);
+      }
+      const group = groups.get(root.id) || [];
+      group.push(row); groups.set(root.id, group);
+    }
+    return [...groups.entries()].map(([root, group]) => ({
+      ...(group.find(a => a.id === root) || group[0]),
+      matched_members: group.map(a => a.id), matched_sources: [...new Set(group.map(a => a.source))],
+    }));
+  }
+  return {normalise, tokens, matches, collapse};
+})();

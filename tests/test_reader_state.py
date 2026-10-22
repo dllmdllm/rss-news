@@ -59,6 +59,25 @@ def test_denied_storage_keeps_session_state_and_preferences():
     ''')
 
 
+def test_slug_identity_alias_keeps_saved_read_and_position_without_deleting_old_state():
+    _run('''
+      const data=new Map();const storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};
+      const {state}=create(storage);
+      state.saveLater('old-url-id');state.markRead('old-url-id');state.set('old-url-id',{position:.64});
+      state.saveLater('unrelated');
+      const before=data.get('rss_reader_state_v1');
+      state.registerAliases([{id:'stable-id',id_aliases:['old-url-id']}]);
+      assert.equal(data.get('rss_reader_state_v1'),before);
+      assert.equal(state.articleState('stable-id').saved,true);
+      assert.equal(state.articleState('stable-id').read,true);
+      assert.equal(state.articleState('stable-id').position,.64);
+      state.saveLater('stable-id',false);
+      assert.equal(state.articleState('old-url-id').saved,false);
+      assert.equal(state.articleState('unrelated').saved,true);
+      assert.ok(JSON.parse(data.get('rss_reader_state_v1'))['old-url-id']);
+    ''')
+
+
 def test_corrupt_and_unbounded_state_is_normalized_and_capped():
     _run('''
       let raw='invalid json';const storage={getItem:()=>raw,setItem:(k,v)=>raw=v};

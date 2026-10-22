@@ -98,7 +98,11 @@ def _hk01_tokens_to_text(tokens: list) -> str:
     return "".join(t.get("content", "") for t in tokens if isinstance(t, dict))
 
 
-def _build_hk01_content(html: str) -> str | None:
+class SourceIdentityMismatch(ValueError):
+    """Embedded editorial payload does not belong to the requested article."""
+
+
+def _build_hk01_content(html: str, url: str = '') -> str | None:
     """Render HK01 article content from its embedded __NEXT_DATA__ JSON so image
     order is preserved. HK01 is a Next.js app that ships an empty article body
     and hydrates client-side, so trafilatura sees only a handful of paragraphs
@@ -117,7 +121,16 @@ def _build_hk01_content(html: str) -> str | None:
         return None
 
     try:
+        if url:
+            from src.publisher_identity import publisher_identity
+            expected = publisher_identity({'url': url})[1]
+            article = data.get('props', {}).get('initialProps', {}).get('pageProps', {}).get('article') or {}
+            actual = article.get('articleId')
+            if expected and str(actual) != expected:
+                raise SourceIdentityMismatch('HK01 payload articleId differs from requested URL')
         return _build_hk01_content_from_data(data)
+    except SourceIdentityMismatch:
+        raise
     except Exception as exc:
         # 之前淨係 json.loads 有 guard，深層 traverse 冇——HK01 一旦出現
         # unexpected shape（例如某個 key 明確係 None、blocks 入面有非-dict
@@ -373,7 +386,7 @@ def _build_oncc_content(html: str, url: str) -> str | None:
 
     def emit_image(img):
         src = _oncc_image_url(img, url)
-        if not src or src in seen_images:
+        if not src:
             return
         seen_images.add(src)
         caption = _oncc_caption_for_image(img)
@@ -399,6 +412,14 @@ def _build_oncc_content(html: str, url: str) -> str | None:
             if not node.find("img"):
                 emit_text(node.get_text(" ", strip=True))
                 return
+            # Mixed text/image paragraphs are editorial sequences. Walking
+            # only their child tags discarded both surrounding text nodes.
+            for img in node.find_all('img'):
+                src = _oncc_image_url(img, url)
+                if src:
+                    img['src'] = src
+            parts.append(sanitize_rss_html(str(node), url, dedupe_images=False))
+            return
         if node.name in {"div", "section"}:
             # recursive=True (any descendant, not just direct children) —
             # the root container (e.g. #centerCTN.news_content) wraps several
@@ -492,7 +513,7 @@ def _nuxt_container(raw, ref):
     raise ValueError('Nuxt container depth exceeded')
 
 
-def _build_tvb_content(html: str) -> str | None:
+def _build_tvb_content(html: str, url: str = '') -> str | None:
     """Extract TVB News article from its Nuxt __NUXT_DATA__ payload.
 
     TVB migrated from Next.js to Nuxt sometime around 2026-07 — the old
@@ -519,8 +540,12 @@ def _build_tvb_content(html: str) -> str | None:
         if not isinstance(data_obj, dict):
             return None
         ref = None
-        for key, candidate in list(data_obj.items())[:40]:
-            if 'article' not in key:
+        from src.publisher_identity import publisher_identity
+        expected = publisher_identity({'url': url})[1] if url else None
+        candidates = [(f'article-detail-{expected}-tc', data_obj.get(f'article-detail-{expected}-tc'))] if expected else list(data_obj.items())[:40]
+        for key, candidate in candidates:
+            matches = key == f'article-detail-{expected}-tc' if expected else 'article' in key
+            if not matches:
                 continue
             try:
                 container = _nuxt_container(raw, candidate)
@@ -529,9 +554,13 @@ def _build_tvb_content(html: str) -> str | None:
             if isinstance(container, dict):
                 ref = candidate
                 break
+        if expected and ref is None:
+            raise SourceIdentityMismatch('TVB article-detail key differs from requested URL')
         article = _nuxt_deref(raw, ref)
         if not isinstance(article, dict):
             return None
+    except SourceIdentityMismatch:
+        raise
     except Exception:
         return None
     if not article:
@@ -550,7 +579,7 @@ def _build_tvb_content(html: str) -> str | None:
     if cover_url and cover_url not in body_html:
         parts.append(f'<img src="{_html_escape(cover_url, quote=True)}">')
     parts.append(body_html)
-    safe_body = sanitize_rss_html("".join(parts), "https://news.tvb.com/")
+    safe_body = sanitize_rss_html("".join(parts), "https://news.tvb.com/", dedupe_images=False)
     return "<html><body>" + safe_body + "</body></html>"
 
 
@@ -588,12 +617,20 @@ def _strip_suicide_helpline(content: str) -> str:
     if not content or not any(m in content for m in _SUICIDE_HELPLINE_MARKERS):
         return content
     soup = BeautifulSoup(content, "html.parser")
-    for tag in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "li", "blockquote"]):
+    removed_footer = False
+    for tag in reversed(soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "li"])):
         text = tag.get_text(" ", strip=True)
         if not text:
             continue
-        if any(marker in text for marker in _SUICIDE_HELPLINE_MARKERS):
+        contact = any(text.startswith(marker) and re.fullmatch(
+            r'\s*[：:]\s*(?:\+852[ -]?)?\d[\d -]{6,}\d(?:\s*[（(][^）)]{0,40}[）)])?\s*', text[len(marker):])
+                      for marker in _SUICIDE_HELPLINE_MARKERS)
+        footer_heading = removed_footer and re.match(r'^(?:求助熱線|求助方法|請珍惜生命|不要放棄你的生命|請看看這些求助|如果你.*(?:情緒困擾|自殺念頭)|如感到.*困擾)', text)
+        if len(text) < 800 and (contact or footer_heading):
             tag.decompose()
+            removed_footer = True
+        else:
+            break
     return str(soup)
 
 
@@ -622,7 +659,7 @@ _LOOKMEDIA_SKIP_RE = re.compile(
 )
 
 
-def _build_lookmedia_content(html: str) -> str | None:
+def _build_lookmedia_content(html: str, url: str = 'https://www.weekendhk.com/') -> str | None:
     """GoTrip / WeekendHK article body walker.
 
     Two reasons trafilatura can't handle these pages:
@@ -650,95 +687,20 @@ def _build_lookmedia_content(html: str) -> str | None:
     for node in root.find_all(["script", "style", "noscript", "iframe", "form"]):
         node.decompose()
 
-    parts: list[str] = []
-    seen_imgs: set[str] = set()
-
-    def emit_img(img):
-        src = ""
-        # data-src first: when a lazy attr exists it IS the real image, and
-        # src is a placeholder. WeekendHK's placeholder is a plain http URL
-        # (a theme asset, same for every img) — filtering data: URIs alone
-        # collapsed all article photos into one deduped placeholder.
-        for attr in ("data-src", "data-lazy-src", "data-original", "src"):
-            val = (img.get(attr) or "").strip()
-            if val and not val.lower().startswith("data:"):
-                src = val
-                break
-        if not src or src in seen_imgs:
-            return
-        seen_imgs.add(src)
-        alt = _normalise_oncc_text(img.get("alt") or "")
-        safe_src = _html_escape(src, quote=True)
-        if alt:
-            parts.append(
-                f'<figure><img src="{safe_src}" alt="{_html_escape(alt, quote=True)}">'
-                f'<figcaption>{_html_escape(alt)}</figcaption></figure>'
-            )
-        else:
-            parts.append(f'<img src="{safe_src}">')
-
-    def walk(node):
-        name = getattr(node, "name", None)
-        if name is None:
-            return
+    # Keep the publisher DOM sequence, including mixed paragraphs, tables,
+    # lists, quotes and repeated image occurrences. Alt remains alt; visible
+    # figcaption/credit remains bound to its figure, even when alt is "0".
+    for node in list(root.find_all(True)):
+        if not node.name:
+            continue
         token = " ".join(node.get("class") or []) + " " + (node.get("id") or "")
         if _LOOKMEDIA_SKIP_RE.search(token):
-            return
-        if name == "img":
-            emit_img(node)
-            return
-        if name in {"p", "h2", "h3", "h4", "blockquote", "li"}:
-            imgs = node.find_all("img")
-            if imgs:
-                # Caption paragraphs: the visible text duplicates the image's
-                # alt/figcaption, so emit only the images (with captions).
-                for img in imgs:
-                    emit_img(img)
-            else:
-                text = node.get_text(" ", strip=True)
-                if text:
-                    parts.append(f"<p>{_html_escape(text)}</p>")
-            return
-        if name == "figure":
-            for img in node.find_all("img"):
-                emit_img(img)
-            return
-        if name in {"div", "section"}:
-            # A div with no block-level descendants is a leaf paragraph —
-            # emit its text in ONE piece. Recursing instead used to shred
-            # sentences at every inline <a>/<strong> boundary (each bare
-            # text fragment became its own <p>).
-            has_block = node.find(
-                ["p", "h2", "h3", "h4", "li", "blockquote", "figure", "img", "div", "section"],
-                recursive=True,
-            )
-            if not has_block:
-                text = node.get_text(" ", strip=True)
-                if len(text) >= 6:
-                    parts.append(f"<p>{_html_escape(text)}</p>")
-                return
-        for child in list(getattr(node, "children", [])):
-            # HTML comments (<!--leadlastlabel-->) are NavigableString
-            # subclasses — without this check their text leaked as content.
-            if isinstance(child, Comment):
-                continue
-            # The lead paragraph sits as a BARE text node directly inside
-            # `._page_1.read-full` (no <p> wrapper) — tag-only walking
-            # silently dropped it.
-            if isinstance(child, NavigableString):
-                text = _normalise_oncc_text(str(child))
-                if len(text) >= 6:
-                    parts.append(f"<p>{_html_escape(text)}</p>")
-                continue
-            walk(child)
-
-    walk(root)
-    if not parts:
+            node.decompose()
+    content = sanitize_rss_html(str(root), url, dedupe_images=False)
+    parsed = BeautifulSoup(content, 'html.parser')
+    if len(parsed.get_text(strip=True)) < 60 and not parsed.find('img'):
         return None
-    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)))
-    if text_chars < 60 and not seen_imgs:
-        return None
-    return "<html><body>" + "".join(parts) + "</body></html>"
+    return "<html><body>" + content + "</body></html>"
 
 
 # am730 has no RSS body/description and no client-hydrated JSON payload
@@ -769,7 +731,7 @@ _YAHOO_BODY_SELECTOR = "section.module-article-body div.atoms"
 _YAHOO_AD_MARKER_RE = re.compile(r"^\s*(廣告|advertisement)\s*$", re.IGNORECASE)
 
 
-def _build_yahoo_content(html: str) -> str | None:
+def _build_yahoo_content(html: str, url: str = 'https://hk.news.yahoo.com/') -> str | None:
     soup = BeautifulSoup(html or "", "html.parser")
     body = soup.select_one(_YAHOO_BODY_SELECTOR)
     if not body:
@@ -777,31 +739,15 @@ def _build_yahoo_content(html: str) -> str | None:
     for tag in body.select("script, style, noscript, iframe"):
         tag.decompose()
 
-    parts: list[str] = []
-    seen_src: set[str] = set()
-    # Walk in document order so images keep their position in the narrative.
-    for node in body.find_all(["p", "img", "h2", "h3", "figure"]):
-        if node.name == "img":
-            src = (node.get("src") or node.get("data-src") or "").strip()
-            if not src or src in seen_src:
-                continue
-            seen_src.add(src)
-            parts.append(f'<img src="{_html_escape(src, quote=True)}">')
-            continue
-        if node.find("img") and not node.get_text(strip=True):
-            continue
-        text = re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
-        if not text or _YAHOO_AD_MARKER_RE.match(text):
-            continue
-        tag = "h3" if node.name in ("h2", "h3") else "p"
-        parts.append(f"<{tag}>{_html_escape(text)}</{tag}>")
-
-    if not parts:
+    for node in list(body.find_all(['p', 'div'])):
+        if node.name and _YAHOO_AD_MARKER_RE.fullmatch(node.get_text(' ', strip=True)):
+            node.decompose()
+    # A figure is one ordered subtree. Flattening its caption before walking
+    # its child image reverses the source order and emits text twice.
+    content = sanitize_rss_html(str(body), url, dedupe_images=False)
+    if len(BeautifulSoup(content, 'html.parser').get_text(strip=True)) < 40:
         return None
-    text_chars = len(re.sub(r"<[^>]+>", "", "".join(parts)))
-    if text_chars < 40:
-        return None
-    return "<html><body>" + "".join(parts) + "</body></html>"
+    return "<html><body>" + content + "</body></html>"
 
 
 def _build_am730_content(html: str) -> str | None:
@@ -1346,17 +1292,17 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
         if source_body:
             content = sanitize_rss_html(str(source_body), url, dedupe_images=False)
     elif _is_hk01_url(url):
-        content = _build_hk01_content(html)
+        content = _build_hk01_content(html, url)
     elif _is_tvb_url(url):
-        content = _build_tvb_content(html)
+        content = _build_tvb_content(html, url)
     elif _is_oncc_url(url):
         content = _build_oncc_content(html, url)
     elif _is_am730_url(url):
         content = _build_am730_content(html)
     elif _is_lookmedia_url(url):
-        content = _build_lookmedia_content(html)
+        content = _build_lookmedia_content(html, url)
     elif _is_yahoo_url(url):
-        content = _build_yahoo_content(html)
+        content = _build_yahoo_content(html, url)
 
     if content is None:
         content = trafilatura.extract(

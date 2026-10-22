@@ -714,7 +714,7 @@ def test_build_yahoo_content_strips_inline_ad_markers():
     assert "第二段真正的新聞內容" in out
 
 
-def test_build_yahoo_content_dedupes_repeated_images():
+def test_build_yahoo_content_preserves_repeated_image_occurrences():
     html = """
     <section class="module-article-body"><div class="atoms">
       <p>足夠長度的新聞內文，用嚟通過最短字數門檻，所以要寫得長少少先得，唔係會返 None。</p>
@@ -724,7 +724,7 @@ def test_build_yahoo_content_dedupes_repeated_images():
     """
     out = scrape._build_yahoo_content(html)
 
-    assert out.count('src="https://s.yimg.com/dup.jpg"') == 1
+    assert out.count('src="https://s.yimg.com/dup.jpg"') == 2
 
 
 def test_build_yahoo_content_returns_none_without_body_container():

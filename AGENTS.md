@@ -944,3 +944,30 @@ missing/load-failed images keep explicit placeholders and stable geometry.
 Thumbnail URLs reject executable/data schemes, credentials and local/IP-literal
 targets. Loading is lazy/async with no-referrer; never invent or discover a fallback
 picture. No article-body fetch or new AI generation is involved.
+
+### Source retention and search integrity (2026-10-22)
+
+- A successful bounded feed batch is not a deletion list. Merge every previously
+  observed article still within the existing 30h window, preserving its body and
+  observation clocks. A source 304 never advances all retained article clocks.
+- Recognized publisher IDs bind slug revisions to existing published IDs. Keep
+  URL/ID aliases and feed/category memberships; reader state resolves aliases
+  locally without deleting saved/read/position records. Unknown GUID/URL shapes
+  stay conservative; do not infer identities from titles or decode reserved paths.
+- Intake reports accepted/excluded/pending outcomes and bounded coverage. Existing
+  item/time caps remain; Now reads at most three pages only while quota remains,
+  and on.cc reads the HKT dates intersecting the window (at most three). Failure
+  retains partial/last-good records, never implies full coverage. Feed validators
+  persist after bodies/metadata materialize; orphan 304 and invalid schemas fail.
+- Preserve figure/image/caption/credit as one editorial subtree, mixed inline
+  text and legitimate repeated images. Resolve relative media against the article
+  URL. Captioned hero figures remain in the body; text mode keeps captions. Only
+  exact normalized image URLs prove identity without a verified publisher mapping.
+- The publication, media and generated-data gates require metadata/sidecar/body
+  SHA256 equality and the complete homepage projection. Quote evidence remains
+  independently checked. Reusing an extractor is not an original-fidelity oracle.
+- Desktop/mobile/player share metadata matching (NFKC, case/space normalization,
+  AND terms and quoted phrases), filters before duplicate presentation, and counts
+  of matching records/cards. All matches remain reachable via existing scrolling
+  or search pagination. IME composition preserves focus and waits for completion;
+  loading/failure must not appear as a confirmed zero. AI and Read Later remain.

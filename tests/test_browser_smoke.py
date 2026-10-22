@@ -325,8 +325,9 @@ def test_production_index_projection_renders_mood(browser, news_data, width):
                       if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'index_payload' for t in node.targets))
     news_data['articles'][2]['sentiment'] = 'negative'
     payload = news_data
+    from src.index_projection import project_article
     index = eval(compile(ast.Expression(projection), str(ROOT / 'build.py'), 'eval'),
-                 {'payload': payload, 'source_stats': payload['sources'], 'articles': payload['articles']})
+                 {'payload': payload, 'source_stats': payload['sources'], 'articles': payload['articles'], 'project_article': project_article})
     with _static_server() as base_url:
         context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
         page = context.new_page()
