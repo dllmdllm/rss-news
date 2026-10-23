@@ -3,6 +3,9 @@ import hashlib
 import json
 import os
 import re
+import time
+from collections import defaultdict, deque
+from itertools import zip_longest
 from pathlib import Path
 
 import aiohttp
@@ -11,6 +14,8 @@ from src.event_dates import EVENT_DATE_VERSION, validate_event
 from src.article_evidence import validate_summary_evidence, body_text, normalise_text, verified_quote
 from src.enrichment_budget import legacy_source_limit
 from src.summary_contract import SUMMARY_FORMAT, normalise_points, validate_record
+from src.analysis_input import input_hash, source_text
+from src.analysis_statistics import CURRENT, RESPONSE_METADATA, count
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -298,6 +303,7 @@ def _normalise_upcoming_events(raw) -> list[dict]:
 def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
     """Coerce a parsed JSON object into our canonical analysis dict."""
     if not isinstance(data, dict):
+        count('validation_rejections', 'not_object')
         return None
     try:
         score_raw = data.get("score")
@@ -316,11 +322,14 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
             tags_raw = []
         rich = normalise_points(data['summary_points'], data.get('summary_limited', False)) if 'summary_points' in data else None
         if require_rich and rich is None:
+            count('validation_rejections', 'missing_rich_points')
             return None
         summary = rich['summary'] if rich else _normalise_summary(data.get("summary"))
         if looks_like_prompt_schema_summary(summary):
+            count('validation_rejections', 'prompt_schema_echo')
             return None
         if not _summary_looks_acceptable(summary):
+            count('validation_rejections', 'summary_shape')
             return None
         # headline_fit 係 optional——舊 cache entry / 模型漏答就係 None，
         # 前端 None 唔顯示 badge。
@@ -345,7 +354,20 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
         if rich:
             result.update(rich)
         return result
-    except Exception:
+    except Exception as exc:
+        reasons = {
+            'five points required unless source is limited': 'point_count',
+            'invalid summary point count': 'point_count',
+            'two sentences required unless source is limited': 'sentence_count',
+            'summary needs a complete sentence': 'sentence_incomplete',
+            'one sentence per structured slot': 'sentence_boundaries',
+            'sentence must not contain a bullet marker': 'sentence_bullet',
+            'repeated summary sentence': 'duplicate_sentence',
+            'every sentence needs source support': 'quote_count',
+            'invalid source quote': 'quote_length',
+            'structured sentences required': 'sentence_structure',
+        }
+        count('validation_rejections', reasons.get(str(exc), 'malformed_object'))
         return None
 
 
@@ -394,22 +416,32 @@ def _parse_batch(raw: str, expected: int, *, require_rich=False) -> list[dict | 
             by_idx: dict[int, dict] = {}
             for obj in arr:
                 if not isinstance(obj, dict):
+                    count('validation_rejections', 'not_object')
+                    count('results', 'rejected_slots')
                     continue
                 try:
                     idx = int(obj.get("idx"))
                 except (TypeError, ValueError):
+                    count('validation_rejections', 'missing_index')
+                    count('results', 'rejected_slots')
                     continue
                 if not (1 <= idx <= expected) or idx in by_idx:
+                    count('validation_rejections', 'invalid_or_duplicate_index')
+                    count('results', 'rejected_slots')
                     continue
                 normalised = _normalise_parsed(obj, require_rich=require_rich)
                 if normalised:
                     by_idx[idx] = normalised
+                else:
+                    count('results', 'rejected_slots')
             return [by_idx.get(i) for i in range(1, expected + 1)]
     # Accept a bare object when batch size is 1 (some models drop the array)
     if expected == 1:
         single = _parse_analysis(text, require_rich=require_rich)
         if single:
             return [single]
+    count('validation_rejections', 'batch_shape_or_json')
+    count('results', 'whole_batch_rejections')
     return None
 
 
@@ -442,18 +474,11 @@ def _needs_full_analysis(cached: dict, article: dict | None = None) -> bool:
 
 def _article_text(a: dict) -> str:
     """Choose the best available text source for analysis."""
-    if a.get("content"):
-        return _extract_text(a["content"])
-    if a.get("rss_content"):
-        return _extract_text(a["rss_content"])
-    return a.get("title", "")
+    return source_text(a)
 
 
 def analysis_input_hash(article: dict, *, version=None) -> str:
-    payload = {"title": article.get("title", ""), "text": _article_text(article),
-               "published": article.get("date", ""), "source": article.get("source", ""),
-               "url": article.get("url", ""), "version": version or ANALYSIS_VERSION}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return input_hash(article, version or ANALYSIS_VERSION)
 
 
 def _format_article(article: dict, idx: int) -> str:
@@ -486,7 +511,35 @@ async def _post_messages(
         max_tokens=max_tokens,
         timeout=timeout,
         thinking={"type": "disabled"},
+        metadata=RESPONSE_METADATA.get(),
     )
+
+
+async def _observed_post(session, articles, user_text, max_tokens, timeout, kind):
+    stats = CURRENT.get()
+    metadata = {}
+    token = RESPONSE_METADATA.set(metadata)
+    started = time.monotonic()
+    if stats is not None:
+        stats.started(articles, kind)
+    try:
+        result = await _post_messages(session, user_text, max_tokens, timeout)
+        metadata.setdefault('http_status', result[2])
+        count('requests', 'returned')
+        return result
+    except asyncio.CancelledError:
+        count('requests', 'cancelled')
+        raise
+    except TimeoutError:
+        count('requests', 'timed_out')
+        raise
+    except Exception:
+        count('requests', 'transport_error')
+        raise
+    finally:
+        if stats is not None:
+            stats.finished(metadata, time.monotonic() - started)
+        RESPONSE_METADATA.reset(token)
 
 
 async def _apply_results(
@@ -500,6 +553,7 @@ async def _apply_results(
     asyncio is single-threaded so the mutations below are atomic w.r.t.
     other coroutines; the lock only serializes the sync disk write."""
     for a, p in zip(batch, parsed):
+        original_points = len(p.get('summary_points') or [])
         p = dict(p, input_hash=analysis_input_hash(a))
         p['key_sentences'] = _normalise_key_sentences(p.get('key_sentences'), a)
         p['key_sentences_content_hash'] = hashlib.sha256((a.get('content') or '').encode('utf-8')).hexdigest()
@@ -511,6 +565,7 @@ async def _apply_results(
                                      if all(q in supplied for q in e.get('quotes', []))]
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
         _retain_supported_points(p)
+        count('results', 'unsupported_points_removed', original_points - len(p.get('summary_points') or []))
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
         a['analysis_status'] = 'available'
@@ -532,6 +587,11 @@ async def _apply_results(
         a["key_sentences"]   = p.get("key_sentences", [])
         a["upcoming_events"] = p.get("upcoming_events", [])
         cache[a["id"]] = p
+        stats = CURRENT.get()
+        if stats is not None and a['id'] not in stats.applied_ids:
+            stats.applied_ids.add(a['id'])
+            count('results', 'applied')
+            count('results', 'with_summary' if a.get('summary') else 'limited_empty')
     prev = counter[0]
     counter[0] += len(batch)
     if counter[0] // SAVE_CACHE_EVERY > prev // SAVE_CACHE_EVERY:
@@ -558,7 +618,7 @@ async def _analyse_one(
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
             try:
-                raw, err, status = await _post_messages(session, user_content, max_tokens=1200, timeout=30)
+                raw, err, status = await _observed_post(session, [article], user_content, 1200, 30, 'fallback')
                 if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
@@ -577,16 +637,16 @@ async def _analyse_one(
                             await asyncio.sleep(delay)
                             total_waited += delay
                         continue
-                    print(f"[WARN] analyse parse failed: {raw[:80]}")
+                    print('[WARN] analyse item rejected after bounded attempts')
                     return
                 if err:
-                    print(f"[WARN] analyse {article['url'][:60]}: {err}")
+                    print(f'[WARN] analyse item request failed (status {status})')
                 else:
-                    print(f"[WARN] analyse {article['url'][:60]}: empty response (status {status})")
+                    print(f'[WARN] analyse item empty response (status {status})')
                 return
             except Exception as exc:
                 if attempt == MAX_ATTEMPTS - 1:
-                    print(f"[WARN] analyse {article['url'][:60]}: {exc!r}")
+                    print(f'[WARN] analyse item request failed ({type(exc).__name__})')
                     return
                 delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
                 if delay <= 0:
@@ -627,7 +687,7 @@ async def _analyse_batch(
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
             try:
-                raw, err, status = await _post_messages(session, user_content, max_tokens, timeout)
+                raw, err, status = await _observed_post(session, batch, user_content, max_tokens, timeout, 'batch')
                 if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
                     delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
@@ -660,13 +720,13 @@ async def _analyse_batch(
                     print(f"[WARN] batch({len(batch)}) parse failed → per-article fallback")
                     break
                 if err:
-                    print(f"[WARN] batch({len(batch)}) analyse: {err}")
+                    print(f'[WARN] batch({len(batch)}) request failed (status {status})')
                 else:
                     print(f"[WARN] batch({len(batch)}) analyse: empty response (status {status})")
                 break
             except Exception as exc:
                 if attempt == MAX_ATTEMPTS - 1:
-                    print(f"[WARN] batch({len(batch)}) analyse: {exc!r}")
+                    print(f'[WARN] batch({len(batch)}) request failed ({type(exc).__name__})')
                     break
                 delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
                 if delay <= 0:
@@ -713,6 +773,32 @@ def _ensure_analysis_defaults(articles: list) -> None:
         a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
 
 
+def _fair_candidates(candidates):
+    """Missing before upgrades; alternate old/new misses and rotate sources.
+
+    Admission still applies the same per-source cap after this ordering.
+    No work, retry or time budget is enlarged by a different queue position.
+    """
+    for has_summary in (False, True):
+        groups = defaultdict(list)
+        for article in candidates:
+            if bool(article.get('summary')) == has_summary:
+                groups[article.get('source', '')].append(article)
+        queues = []
+        for group in groups.values():
+            if has_summary:
+                queues.append(deque(group))
+            else:
+                old = [a for a in group if a.get('_analysis_backlog')]
+                new = [a for a in group if not a.get('_analysis_backlog')]
+                queues.append(deque(a for pair in zip_longest(old, new)
+                                    for a in pair if a is not None))
+        while any(queues):
+            for queue in queues:
+                if queue:
+                    yield queue.popleft()
+
+
 async def analyse_all(articles: list) -> list:
     if not MINIMAX_API_KEY:
         print("[analyse] Skipped — set MINIMAX_API_KEY")
@@ -739,6 +825,24 @@ async def analyse_all(articles: list) -> list:
     for a in articles:
         aid = a["id"]
         original = a.pop('_unit_marker_repair_from', None)
+        no_text = not (a.get('content') or a.get('rss_content')) or not _article_text(a).strip()
+        minimal = (a.get('content_quality') or {}).get('fallback') == 'minimal'
+        if no_text or minimal:
+            prior = cache.get(aid) or _published_cache_record(a) or {}
+            # Existing compact text can remain readable, but a placeholder or
+            # image-only body must never admit new paid analysis.
+            keep_legacy = (prior.get('summary_format') != SUMMARY_FORMAT and
+                           bool(prior.get('summary')) and _same_cached_input(prior, a))
+            for field in ANALYSIS_FIELDS:
+                a.pop(field, None)
+            if keep_legacy:
+                _restore_cached(a, prior)
+            else:
+                cache.pop(aid, None)
+            a['analysis_status'] = 'pending-source'
+            a['_paid_enrichment_deferred'] = True
+            count('admission', 'minimal_source' if minimal else 'empty_source_text')
+            continue
         if original:
             previous = dict(a, content=original)
             cached = cache.get(aid) or {}
@@ -796,20 +900,17 @@ async def analyse_all(articles: list) -> list:
                 a.pop(field, None)
             if keep_legacy:
                 _restore_cached(a, legacy)
-            if (a.get('content_quality') or {}).get('fallback') == 'minimal':
-                a['analysis_status'] = 'pending-source'
-                a['_paid_enrichment_deferred'] = True
-                continue
             candidates.append(a)
 
     # A safe compact summary remains useful while its format is upgraded.
     # Admit genuinely missing summaries first, inside the same source caps.
-    for a in sorted(candidates, key=lambda row: bool(row.get('summary'))):
+    for a in _fair_candidates(candidates):
         source = a.get('source', '')
         admitted = admitted_by_source.get(source, 0)
         if admitted >= legacy_source_limit(source):
             a['analysis_status'] = 'pending-budget'
             a['_paid_enrichment_deferred'] = True
+            count('admission', 'source_budget_deferred')
             continue
         admitted_by_source[source] = admitted + 1
         a['analysis_status'] = 'pending'
@@ -818,6 +919,12 @@ async def analyse_all(articles: list) -> list:
 
     print(f"[analyse] {cached_count} cached, {len(pending)} to generate (batch={BATCH_SIZE})")
     upgrades = sum(bool(a.get('summary')) for a in pending)
+    count('admission', 'cached', cached_count)
+    count('admission', 'missing', len(pending) - upgrades)
+    count('admission', 'upgrades', upgrades)
+    stats = CURRENT.get()
+    if stats is not None:
+        stats.admitted_ids.update(a['id'] for a in pending)
     print(f"[analyse] admitted {len(pending) - upgrades} missing summaries, {upgrades} format upgrades")
 
     batches = [pending[i:i + BATCH_SIZE] for i in range(0, len(pending), BATCH_SIZE)]
@@ -829,7 +936,21 @@ async def analyse_all(articles: list) -> list:
     dropped = 0
     try:
         async with aiohttp.ClientSession() as session:
-            tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
+            queue = deque(batches)
+            async def worker():
+                while queue:
+                    batch = queue.popleft()
+                    try:
+                        await _analyse_batch(session, batch, sem, cache, save_lock, counter)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        count('results', 'batch_crashed')
+                        print(f'[WARN] analyse worker batch failed ({type(exc).__name__})')
+            # Only active workers may create fallback tasks. They finish that
+            # recovery before taking another batch, so fallback never waits
+            # behind every remaining source batch.
+            tasks = [worker() for _ in range(min(ANALYSE_CONCURRENCY, len(batches)))]
             # One failed batch must not discard successful siblings.
             results = await asyncio.gather(*tasks, return_exceptions=True)
     finally:
@@ -841,7 +962,7 @@ async def analyse_all(articles: list) -> list:
         save_cache(pruned)
     for r in results:
         if isinstance(r, BaseException):
-            print(f"[WARN] analyse batch crashed: {r!r}")
+            print(f'[WARN] analyse worker failed ({type(r).__name__})')
 
     done = sum(1 for a in articles if a.get("summary"))
     print(f"[analyse] {done}/{len(articles)} articles analysed"

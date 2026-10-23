@@ -30,6 +30,7 @@ async def post_messages(
     timeout:    float,
     connect:    float = 20,
     thinking:   dict | None = None,
+    metadata:   dict | None = None,
 ) -> tuple[str, dict, int]:
     """POST a single user message. Returns (raw_text, error_dict, http_status).
 
@@ -62,7 +63,21 @@ async def post_messages(
         timeout=aiohttp.ClientTimeout(total=timeout, connect=connect),
     ) as resp:
         status = resp.status
+        if metadata is not None:
+            metadata['http_status'] = status
         data   = await resp.json(content_type=None)
+    if metadata is not None:
+        reason = data.get('stop_reason')
+        if isinstance(reason, str):
+            metadata['stop_reason'] = reason if reason in {
+                'end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn', 'refusal'
+            } else 'other'
+        usage = data.get('usage')
+        if isinstance(usage, dict):
+            for key in ('input_tokens', 'output_tokens'):
+                value = usage.get(key)
+                if type(value) is int and 0 <= value <= 1_000_000_000:
+                    metadata[key] = value
     err    = data.get("error") or {}
     blocks = data.get("content") or []
     raw    = next(
