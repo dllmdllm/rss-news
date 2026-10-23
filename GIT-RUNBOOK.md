@@ -56,6 +56,10 @@ invent it. Physical Cantonese audio needs an actual device check.
 
 The existing update job now records the actual pushed/no-change SHA and checks
 the public index, core reader assets, metadata and up to five body sidecars.
+The two fixed own-site aggregate JSON files have explicit32MiB per-file and
+64MiB selected-snapshot bounds, with streamed exact-length/SHA256 verification.
+Other files and all publisher responses retain8MiB. Git preflight/archive reads
+share40seconds; connection/redirect/TLS guards and polling limits remain intact.
 Its report proves only those selected files; strict prepublication validation
 still checks the whole generated snapshot. The check polls at most twelve times
 within 90 seconds and never repeats paid analysis, sends messages, dispatches a
