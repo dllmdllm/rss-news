@@ -517,6 +517,10 @@ img.referrerPolicy = "no-referrer";
 - Prompt hash 仍決定分析版本。只因格式變更而過期、但輸入 hash 按原版本核對
   一樣嘅摘要暫留，沿原有每來源配額逐步更新；更正輸入唔可以還原舊分析。
   limited 結果可快取，唔為湊足五點重試；無手動付費 backfill 或增加 token/call 上限。
+- 分析被 build 時限取消時，亦要把已完成結果原子寫入 cache，唔可以只靠每20篇
+  checkpoint。付費分析前先按原輸入 hash 還原已發布結果（包括明示 limited 空結果），
+  修復缺失 cache；更正過嘅正文／標題仍須重新核對。相同來源配額內先處理缺摘要，
+  再升級仍有可用舊摘要嘅格式，唔增加並發、重試、token 或時限。
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
   highlight；而家已喺 article-reading.js 恢復，關鍵句清單亦保留。
   translate_content.py 一定要行喺 analyse.py 之前，保持 key_sentences

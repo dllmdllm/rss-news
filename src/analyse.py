@@ -126,9 +126,18 @@ def _same_cached_input(cached, article):
     digest = cached.get('input_hash', cached.get('analysis_input_hash'))
     return (isinstance(version, str) and re.fullmatch(r'p-[a-f0-9]{8,64}', version) is not None
             and digest == analysis_input_hash(article, version=version)
-            and bool(cached.get('summary'))
-            and not looks_like_prompt_schema_summary(cached['summary'])
-            and _summary_looks_acceptable(cached['summary']))
+            and (bool(cached.get('summary')) or cached.get('summary_format') == SUMMARY_FORMAT
+                 and cached.get('summary_status') == 'limited')
+            and not looks_like_prompt_schema_summary(cached.get('summary', ''))
+            and _summary_looks_acceptable(cached.get('summary', '')))
+
+
+def _published_cache_record(article):
+    """Recover only input-bound analysis fields, never article/body metadata."""
+    cached = {field: article[field] for field in ANALYSIS_FIELDS if field in article}
+    cached['input_hash'] = cached.pop('analysis_input_hash', None)
+    cached['version'] = cached.pop('analysis_version', None)
+    return cached if _same_cached_input(cached, article) else None
 
 
 def _restore_cached(article, cached):
@@ -724,6 +733,7 @@ async def analyse_all(articles: list) -> list:
 
     # Hydrate cached articles up front; collect the rest for batched calls.
     pending: list = []
+    candidates: list = []
     admitted_by_source = {}
     cached_count = 0
     for a in articles:
@@ -744,6 +754,13 @@ async def analyse_all(articles: list) -> list:
                     a.pop(field, None)
                 _ensure_analysis_defaults([a])
                 continue
+        # An interrupted prior cycle may have published a successful result
+        # before its final cache flush. Reuse its exact input-bound record
+        # rather than paying to generate the same result again.
+        if _needs_full_analysis(cache.get(aid), a):
+            published = _published_cache_record(a)
+            if published is not None:
+                cache[aid] = published
         if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
             cached_count += 1
@@ -779,43 +796,53 @@ async def analyse_all(articles: list) -> list:
                 a.pop(field, None)
             if keep_legacy:
                 _restore_cached(a, legacy)
-            source = a.get('source', '')
             if (a.get('content_quality') or {}).get('fallback') == 'minimal':
                 a['analysis_status'] = 'pending-source'
                 a['_paid_enrichment_deferred'] = True
                 continue
-            admitted = admitted_by_source.get(source, 0)
-            if admitted >= legacy_source_limit(source):
-                a['analysis_status'] = 'pending-budget'
-                a['_paid_enrichment_deferred'] = True
-                continue
-            admitted_by_source[source] = admitted + 1
-            a['analysis_status'] = 'pending'
-            a.pop('_paid_enrichment_deferred', None)
-            pending.append(a)
+            candidates.append(a)
+
+    # A safe compact summary remains useful while its format is upgraded.
+    # Admit genuinely missing summaries first, inside the same source caps.
+    for a in sorted(candidates, key=lambda row: bool(row.get('summary'))):
+        source = a.get('source', '')
+        admitted = admitted_by_source.get(source, 0)
+        if admitted >= legacy_source_limit(source):
+            a['analysis_status'] = 'pending-budget'
+            a['_paid_enrichment_deferred'] = True
+            continue
+        admitted_by_source[source] = admitted + 1
+        a['analysis_status'] = 'pending'
+        a.pop('_paid_enrichment_deferred', None)
+        pending.append(a)
 
     print(f"[analyse] {cached_count} cached, {len(pending)} to generate (batch={BATCH_SIZE})")
+    upgrades = sum(bool(a.get('summary')) for a in pending)
+    print(f"[analyse] admitted {len(pending) - upgrades} missing summaries, {upgrades} format upgrades")
 
     batches = [pending[i:i + BATCH_SIZE] for i in range(0, len(pending), BATCH_SIZE)]
 
     sem       = asyncio.Semaphore(ANALYSE_CONCURRENCY)
     save_lock = asyncio.Lock()
     counter   = [0]
-    async with aiohttp.ClientSession() as session:
-        tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
-        # return_exceptions=True so one batch's crash doesn't cancel siblings
-        # mid-flight (default gather() cancels all on first exception, silently
-        # losing successful work that hasn't yet flushed to cache).
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    active_ids = {a["id"] for a in articles}
+    dropped = 0
+    try:
+        async with aiohttp.ClientSession() as session:
+            tasks = [_analyse_batch(session, b, sem, cache, save_lock, counter) for b in batches]
+            # One failed batch must not discard successful siblings.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        # The build deliberately cancels this stage at its deadline. Preserve
+        # every completed result even below SAVE_CACHE_EVERY, then propagate
+        # cancellation so the build still records an incomplete stage.
+        pruned = {k: v for k, v in cache.items() if k in active_ids}
+        dropped = len(cache) - len(pruned)
+        save_cache(pruned)
     for r in results:
         if isinstance(r, BaseException):
             print(f"[WARN] analyse batch crashed: {r!r}")
 
-    # Evict stale cache entries for articles that have aged out
-    active_ids = {a["id"] for a in articles}
-    pruned = {k: v for k, v in cache.items() if k in active_ids}
-    dropped = len(cache) - len(pruned)
-    save_cache(pruned)
     done = sum(1 for a in articles if a.get("summary"))
     print(f"[analyse] {done}/{len(articles)} articles analysed"
           + (f" (pruned {dropped} stale cache entries)" if dropped else ""))

@@ -1000,7 +1000,8 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     old = {
         a["id"]: a
         for a in old_articles
-        if a.get("summary") and not looks_like_prompt_schema_summary(a.get("summary", ""))
+        if (a.get("summary") or a.get('summary_format') == 2 and a.get('summary_status') == 'limited')
+        and not looks_like_prompt_schema_summary(a.get("summary", ""))
     }
     restored = 0
     structured_normalisers = {
@@ -1264,6 +1265,9 @@ async def main():
 
         # --- analyse (up to 280s, bounded by the shared 740s core budget) ---
         # Preserve completed analyses and save before optional enrichments.
+        # Restore exact-input prior output before admission, so a torn cache
+        # does not turn already-published results into new paid work.
+        _apply_fallback_summaries(articles, old_articles)
         t = time.monotonic()
         _tlog("analyse start")
         try:
