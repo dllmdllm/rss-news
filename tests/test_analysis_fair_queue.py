@@ -1,5 +1,6 @@
 """No-provider regressions for final inputs, fair recovery and honest counters."""
 import asyncio
+import hashlib
 import json
 import re
 
@@ -47,11 +48,13 @@ def test_image_only_finalization_is_before_analysis_and_idempotent(monkeypatch, 
     row = article('hero')
     row.update(content='<img src="https://example.org/hero.jpg">', thumbnail='https://example.org/hero.jpg',
                content_quality={'fallback': 'rss-budget'})
+    row['content_hash'] = hashlib.sha256(row['content'].encode('utf-8')).hexdigest()
     before = analyse.analysis_input_hash(row)
     flags = build._finalize_article_body(row)
     after = analyse.analysis_input_hash(row)
     assert before != after and row['content_quality']['fallback'] == 'minimal'
     assert flags['minimal'] and flags['deduped']
+    build.media_inventory([row])
     async def forbidden(*args): pytest.fail('finalized placeholder must not reach provider')
     monkeypatch.setattr(analyse, '_post_messages', forbidden)
     asyncio.run(analyse.analyse_all([row]))
@@ -215,3 +218,58 @@ def test_published_rich_input_hash_is_recomputed_not_just_copied(monkeypatch, tm
         path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match='analysis input hash'):
         validate_site(tmp_path, require_current=True)
+
+
+def test_intentional_media_cleanup_rebinds_body_but_preserves_verified_text(monkeypatch, tmp_path):
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'content')
+    row = article('fresh')
+    row.update(thumbnail='https://example.org/hero.jpg', content_quality={'fallback':'none'})
+    row['content'] = '<img src="https://example.org/hero.jpg">' + row['content']
+    asyncio.run(analyse._apply_results([row], [result()], {}, asyncio.Lock(), [0]))
+    before = hashlib.sha256(row['content'].encode('utf-8')).hexdigest()
+    row['content_hash'] = before
+    row['key_sentences'] = ['車站今晚提早關門，旅客需要改乘巴士。']
+    row['key_sentences_content_hash'] = before
+    digest, summary = row['analysis_input_hash'], row['summary']
+    build._finalize_article_body(row)
+    build.media_inventory([row])
+    assert row['content_hash'] != before
+    assert row['analysis_input_hash'] == digest == analyse.analysis_input_hash(row)
+    assert row['summary'] == summary and row['summary_evidence']
+    assert row['key_sentences'] and row['key_sentences_content_hash'] == row['content_hash']
+    stable = row['content_hash']
+    build._finalize_article_body(row)
+    assert row['content_hash'] == stable
+
+
+def test_body_preparation_rejects_corrupt_cache_before_rebinding(monkeypatch, tmp_path):
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'content')
+    row = article('corrupt'); row['content_hash'] = '0' * 64
+    original = dict(row)
+    with pytest.raises(ValueError, match='body hash mismatch'):
+        build._finalize_article_body(row)
+    assert row == original
+
+
+def test_reusing_missing_body_rejects_corrupt_saved_record(monkeypatch):
+    row = article('corrupt-saved'); row['content'] = None
+    monkeypatch.setattr(build, '_load_old_content_record', lambda aid:
+        {'content':'<p>saved source</p>', 'content_hash':'0' * 64})
+    with pytest.raises(ValueError, match='retained body hash mismatch'):
+        build._finalize_article_body(row)
+    assert row['content'] is None and 'content_hash' not in row
+
+
+def test_main_validates_fresh_prepared_body_before_analysis(monkeypatch, tmp_path):
+    from test_build import _isolate_core
+    _isolate_core(monkeypatch, tmp_path)
+    async def fresh(rows):
+        for row in rows:
+            row['thumbnail'] = 'https://example.org/hero.jpg'
+            row['content'] = '<img src="https://example.org/hero.jpg"><p>fresh source text</p>'
+            row['content_quality'] = {'fallback': 'none'}
+            row['content_hash'] = hashlib.sha256(row['content'].encode('utf-8')).hexdigest()
+        return rows
+    monkeypatch.setattr(build, 'scrape_all', fresh)
+    asyncio.run(build.main())
+    assert build._build_status['analyse']['ok']
