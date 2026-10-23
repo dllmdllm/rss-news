@@ -29,6 +29,7 @@ import aiohttp
 from bs4 import BeautifulSoup, NavigableString
 
 from src.feeds import ENGLISH_SOURCES
+from src.article_evidence import bind_current_body_hash
 from src.enrichment_budget import legacy_source_limit
 from src.minimax_client import MINIMAX_API_KEY, post_messages, should_retry
 
@@ -91,6 +92,20 @@ def save_cache(cache: dict):
 
 def _source_hash(texts: list[str]) -> str:
     return hashlib.md5("\x1f".join(texts).encode("utf-8")).hexdigest()[:12]
+
+
+def _validate_body(article: dict) -> None:
+    content, expected = article.get('content'), article.get('content_hash')
+    if content and expected and hashlib.sha256(content.encode('utf-8')).hexdigest() != expected:
+        raise ValueError('body hash mismatch before translation: ' + article['id'])
+
+
+def _replace_content(article: dict, content: str) -> None:
+    # Translation/cache reuse and the known marker repair intentionally change
+    # the reader body. Check existing bytes first; never bless a corrupt input.
+    _validate_body(article)
+    article['content'] = content
+    bind_current_body_hash(article)
 
 
 def extract_paragraphs(content: str) -> tuple[BeautifulSoup, list]:
@@ -196,6 +211,7 @@ async def _translate_article(
     save_lock: asyncio.Lock,
     counter: list,
 ) -> str:
+    _validate_body(article)
     content = article.get("content") or ""
     soup, tags = _translation_units(content)
     if not tags:
@@ -255,7 +271,7 @@ async def _translate_article(
         if new_text.strip():
             _replace_tag_text(tag, new_text)
 
-    article["content"] = str(soup)
+    _replace_content(article, str(soup))
     omitted = _translation_omissions(content)
     _translation_state(article, "partial" if omitted else "translated",
                        "unsupported-text-blocks" if omitted else "")
@@ -293,11 +309,13 @@ async def translate_english_content(articles: list) -> dict:
         return {**report, "ok": not incomplete, "status": status}
 
     for article in articles:
+        if article.get('source') in ENGLISH_SOURCES:
+            _validate_body(article)
         if article.get('id') == 'f7bef5e0ede8' and article.get('source') == '9to5Mac' and article.get('content'):
             cleaned, changed = clean_unit_markers(article['content'])
             if changed:
                 article['_unit_marker_repair_from'] = article['content']
-                article['content'] = cleaned
+                _replace_content(article, cleaned)
     if not MINIMAX_API_KEY:
         for a in articles:
             if a.get("source") in ENGLISH_SOURCES:
@@ -341,7 +359,7 @@ async def translate_english_content(articles: list) -> dict:
             if len(translated_tags) == len(tags):
                 for tag, translated_tag in zip(tags, translated_tags):
                     _replace_tag_text(tag, translated_tag.get_text(" ", strip=True))
-                a["content"] = str(soup)
+                _replace_content(a, str(soup))
                 if a.get('id') == 'f7bef5e0ede8' and cached.get('deterministic_unit_cleanup'):
                     a['_unit_marker_repair_from'] = a['content']
                 # The audit confirmed this one cached unit-label echo. A
@@ -350,7 +368,7 @@ async def translate_english_content(articles: list) -> dict:
                     cleaned, changed = clean_unit_markers(a['content'])
                     if changed:
                         a['_unit_marker_repair_from'] = a['content']
-                        a['content'] = cleaned
+                        _replace_content(a, cleaned)
                 report["cached"] += 1
                 omitted = _translation_omissions(a["content"])
                 report["partial"] += int(omitted)
