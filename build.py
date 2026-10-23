@@ -812,6 +812,11 @@ def _prepare_article_media(article):
 
 def _finalize_article_body(a):
     """Use the same idempotent reader body before AI and before serialization."""
+    original = a.get('content')
+    expected = a.get('content_hash')
+    if original and expected and hashlib.sha256(original.encode('utf-8')).hexdigest() != expected:
+        raise ValueError('body hash mismatch before preparation: ' + a['id'])
+    evidence, keys = a.get('summary_evidence'), a.get('key_sentences')
     _prepare_article_media(a)
     flags = a.setdefault('_content_write_flags', {})
     content = a.get('content')
@@ -823,6 +828,9 @@ def _finalize_article_body(a):
     fallback = (a.get('content_quality') or {}).get('fallback') or 'unknown'
     if not content:
         content = old_record.get('content') if old_record else None
+        if content and any(digest and digest != hashlib.sha256(content.encode('utf-8')).hexdigest()
+                           for digest in (expected, old_record.get('content_hash'))):
+            raise ValueError('retained body hash mismatch before preparation: ' + a['id'])
         if not content:
             content = _minimal_content(a)
             flags['minimal'] = True
@@ -852,6 +860,17 @@ def _finalize_article_body(a):
         for key in ('origin', 'completeness', 'omitted_invalid_images'):
             if key in previous_quality:
                 a['content_quality'][key] = previous_quality[key]
+    if a['content'] != original or not a.get('content_hash'):
+        # Rebind only an intentional transform of the checked original bytes.
+        # Keep literal support only when it still verifies against this body;
+        # never relabel an unchanged corrupt cache as a successful extraction.
+        verified = validate_summary_evidence(a, evidence)
+        verified_keys = _normalise_key_sentences(keys, a)
+        bind_current_body_hash(a)
+        a['summary_evidence'] = verified
+        a['summary_evidence_status'] = 'available' if verified else 'unavailable'
+        a['key_sentences'] = verified_keys
+        a['key_sentences_content_hash'] = a['content_hash']
     return flags
 
 
