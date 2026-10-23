@@ -19,6 +19,58 @@ def _article(**overrides):
     return base
 
 
+@pytest.mark.parametrize('cached', [False, True])
+def test_translation_rebinds_checked_body_before_serialization(monkeypatch, tmp_path, cached):
+    from src.article_evidence import bind_current_body_hash
+    import build
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path / 'translations.json')
+    monkeypatch.setattr(build, 'CONTENT_DIR', tmp_path / 'content')
+    row = _article(content='<p>Original source paragraph.</p>')
+    bind_current_body_hash(row)
+    original_hash = row['content_hash']
+    row.update(summary_evidence=[{'quote': 'Original source paragraph.'}],
+               key_sentences_content_hash=original_hash)
+    if cached:
+        TC.save_cache({row['id']: {'version': TC.TRANSLATE_VERSION,
+            'source_hash': TC._source_hash(['Original source paragraph.']),
+            'content': '<p>已翻譯的來源段落。</p>'}})
+    async def provider(*args, **kwargs):
+        assert not cached, 'cached translation must not call the provider'
+        return json.dumps(['已翻譯的來源段落。']), {}, 200
+    monkeypatch.setattr(TC, 'post_messages', provider)
+    asyncio.run(TC.translate_english_content([row]))
+    build._finalize_article_body(row)
+    assert row['content_hash'] == hashlib.sha256(row['content'].encode()).hexdigest()
+    assert row['content_hash'] != original_hash
+    assert row['summary_evidence'] == [] and 'key_sentences_content_hash' not in row
+    assert build.media_inventory([row])['records'] == 1
+
+
+def test_translation_never_rebinds_corrupt_current_body(monkeypatch, tmp_path):
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(TC, 'CACHE_PATH', tmp_path / 'translations.json')
+    row = _article(content_hash='0' * 64)
+    original = dict(row)
+    async def forbidden(*args, **kwargs):
+        pytest.fail('corrupt input must fail before paid admission')
+    monkeypatch.setattr(TC, 'post_messages', forbidden)
+    with pytest.raises(ValueError, match='body hash mismatch before translation'):
+        asyncio.run(TC.translate_english_content([row]))
+    assert row == original and not TC.CACHE_PATH.exists()
+
+
+def test_marker_cleanup_rebinds_hash_even_when_provider_disabled(monkeypatch):
+    from src.article_evidence import bind_current_body_hash
+    monkeypatch.setattr(TC, 'MINIMAX_API_KEY', '')
+    row = _article(id='f7bef5e0ede8', content='<p>[0] 第一段。</p><p>[1] 第二段。</p><p>[2] 第三段。</p>')
+    bind_current_body_hash(row)
+    before = row['content_hash']
+    asyncio.run(TC.translate_english_content([row]))
+    assert '[0]' not in row['content'] and row['content_hash'] != before
+    assert row['content_hash'] == hashlib.sha256(row['content'].encode()).hexdigest()
+
+
 def test_confirmed_numbered_cache_never_falls_through_to_paid_refresh(monkeypatch):
     monkeypatch.setattr(TC, 'MINIMAX_API_KEY', 'test-key')
     content='<p>[0] 第一段。</p><p>[1] 第二段。</p><p>[2] 第三段。</p>'
@@ -245,6 +297,8 @@ def test_retained_translation_is_not_translated_again(monkeypatch):
     assert saved['eng1']['translated_hash'] != original_hash
     # A real English source correction must invalidate the cached translation.
     article['content'] = '<p>Corrected first paragraph.</p><p>Second paragraph.</p>'
+    # Fresh extraction binds its own bytes before the translation boundary.
+    article['content_hash'] = hashlib.sha256(article['content'].encode()).hexdigest()
     asyncio.run(TC.translate_english_content([article]))
     assert len(calls) == 2
 
@@ -296,7 +350,9 @@ def test_cancelled_stage_flushes_completed_tail_and_next_cycle_reuses_it(monkeyp
     calls = []
 
     def original(index):
-        return _article(id=f'article-{index}', content=f'<p>Story {index}.</p><img src="https://example.com/photo.jpg">')
+        row = _article(id=f'article-{index}', content=f'<p>Story {index}.</p><img src="https://example.com/photo.jpg">')
+        row['content_hash'] = hashlib.sha256(row['content'].encode()).hexdigest()
+        return row
 
     async def run():
         blocked = asyncio.Event()
@@ -326,6 +382,8 @@ def test_cancelled_stage_flushes_completed_tail_and_next_cycle_reuses_it(monkeyp
         cache = json.loads(TC.CACHE_PATH.read_text(encoding='utf-8'))
         assert set(cache) == {f'article-{i}' for i in range(completed_count)}
         assert all(articles[i]['translation_status']=='translated' for i in range(completed_count))
+        assert all(a['content_hash'] == hashlib.sha256(a['content'].encode()).hexdigest()
+                   for a in articles)
         assert articles[-1]['content'] == pending_original
         assert hashlib.sha256(articles[-1]['content'].encode()).hexdigest() == pending_hash
         assert articles[-1]['translation_status']=='deferred'

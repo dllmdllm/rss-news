@@ -273,3 +273,44 @@ def test_main_validates_fresh_prepared_body_before_analysis(monkeypatch, tmp_pat
     monkeypatch.setattr(build, 'scrape_all', fresh)
     asyncio.run(build.main())
     assert build._build_status['analyse']['ok']
+
+
+@pytest.mark.parametrize('cached', [False, True])
+def test_main_translates_hashed_body_then_analyzes_and_publishes_it(monkeypatch, tmp_path, cached):
+    from test_build import _isolate_core
+    from src import translate_content as tc
+    _isolate_core(monkeypatch, tmp_path)
+    monkeypatch.setattr(tc, 'MINIMAX_API_KEY', 'offline-mock')
+    monkeypatch.setattr(tc, 'CACHE_PATH', tmp_path / 'translations.json')
+    source = 'The station closes early tonight. Passengers must take a bus.'
+    translated = '車站今晚提早關門，旅客需要改乘巴士。'
+    async def fresh(rows):
+        for row in rows:
+            row.update(source='9to5Mac', content='<p>' + source + '</p>',
+                       content_quality={'fallback': 'none'})
+            row['content_hash'] = hashlib.sha256(row['content'].encode()).hexdigest()
+        return rows
+    if cached:
+        tc.save_cache({'partial': {'version': tc.TRANSLATE_VERSION,
+            'source_hash': tc._source_hash([source]), 'content': '<p>' + translated + '</p>'}})
+    async def provider(*args, **kwargs):
+        assert not cached
+        return json.dumps([translated]), {}, 200
+    async def analyzed(rows):
+        assert translated in rows[0]['content']
+        build.media_inventory(rows)
+        await analyse._apply_results(rows, [result()], {}, asyncio.Lock(), [0])
+        return rows
+    monkeypatch.setattr(tc, 'post_messages', provider)
+    monkeypatch.setattr(build, 'scrape_all', fresh)
+    monkeypatch.setattr(build, 'translate_english_content', tc.translate_english_content)
+    monkeypatch.setattr(build, 'analyse_all', analyzed)
+    asyncio.run(build.main())
+    payload = json.loads((build.DATA_DIR / 'articles.json').read_text(encoding='utf-8'))
+    row = payload['articles'][0]
+    sidecar = json.loads((build.CONTENT_DIR / 'partial.json').read_text(encoding='utf-8'))
+    row['content'] = sidecar['content']
+    assert row['summary'] and row['summary_evidence']
+    assert row['analysis_input_hash'] == analyse.analysis_input_hash(row, version=row['analysis_version'])
+    assert row['content_hash'] == sidecar['content_hash'] == hashlib.sha256(row['content'].encode()).hexdigest()
+    assert build._core_saved

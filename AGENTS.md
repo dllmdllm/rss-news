@@ -869,6 +869,20 @@ bodies never admit paid analysis. Rich input hashes must match the actual final
 body/title/date/source/URL and recorded analysis version, not merely another
 metadata field. Never rebind an old summary to corrected input by changing its hash.
 
+Every intentional body transform, including fresh/cached translation and known
+marker cleanup, first checks the existing body hash, then binds the changed
+bytes and invalidates old quote bindings. Do this at the mutation boundary so
+partial cancellation also leaves completed bodies consistent. An unchanged
+corrupt current/saved body must fail, never acquire a replacement hash. Analysis
+still binds its own final input; a body-hash update cannot validate old analysis.
+
+Required regression fixtures include the real build order through pre-analysis
+media inventory, translation, analysis and sidecar publication: fresh hashed
+leading hero, image-only/minimal inputs, cached/fresh translations, deterministic
+cleanup, cancelled tails, and corrupt current/saved caches. Already-canonical
+snapshot replay alone misses mutation-order failures. Keep the source/model,
+five-point/two-sentence contract and all existing budgets unchanged.
+
 Missing summaries precede format upgrades inside unchanged per-source AI caps.
 Missing work alternates prior backlog/new articles and rotates sources. At most
 five batch workers run; each completes its existing bounded fallback before
@@ -878,6 +892,13 @@ completed cache results. Build status includes sanitized aggregate analysis
 admission/request/rejection/cancellation counters; provider token/stop-reason
 metadata is recorded only when supplied. No source/model text or credentials
 belong in those statistics. An empty limited result is not a recovered summary.
+Count requests separately from articles and repeated slot rejections; cancellation
+is not a request timeout, summed concurrent seconds are not wall time, and
+reported tokens are not a bill. Missing per-request evidence stays unknown.
+Report production recovery only from a successful existing new-code publisher,
+strict whole-snapshot checks, exact public bytes and retained eligible backlog
+cohorts. Local tests, exact-head CI, Pages assets and data recovery are separate
+acceptance gates; guidance alone cannot guarantee correctness.
 
 Analysis input hashes include the actual supplied title/text, publication date,
 source/URL and prompt/model version. Corrected input cannot reuse an ID-only

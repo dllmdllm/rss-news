@@ -54,6 +54,20 @@ reader, storage-denied/offline behavior, no reload autoplay and current-body
 source links. Record whether positive evidence is actually present; do not
 invent it. Physical Cantonese audio needs an actual device check.
 
+Record local tests, exact-head required CI, advisory old-data findings, merge
+SHA, deployed asset SHA, actual pushed data SHA and publisher conclusion as
+separate evidence. Validate the full pinned new snapshot, then selected public
+bytes and desktop/mobile behavior. A failed gate retains prior public data;
+do not call an asset-only deployment a repaired data pipeline.
+
+For summary repairs, compare retained old-empty articles still inside the
+display window, excluding source-empty/minimal and valid limited-empty cases
+from the eligible recovery cohort. Check actual final-input/cache hashes and
+same-input valid-summary retention. Report newly nonempty summaries and remaining
+eligible backlog, not just changing global totals or HTTP successes. Preserve
+recorded request/rejection/timeout/cancellation counts and explicit unknowns.
+Observe existing cycles only; never use a manual paid backfill as verification.
+
 The existing update job now records the actual pushed/no-change SHA and checks
 the public index, core reader assets, metadata and up to five body sidecars.
 The two fixed own-site aggregate JSON files have explicit32MiB per-file and
