@@ -5,6 +5,12 @@ SUMMARY_FORMAT = 2
 MAX_POINTS = 5
 
 
+class ContractError(ValueError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 def normalise(value):
     return re.sub(r'\s+', ' ', value).strip() if isinstance(value, str) else ''
 
@@ -12,38 +18,44 @@ def normalise(value):
 def sentence(value):
     text = normalise(value)
     if not 4 <= len(text) <= 180 or not re.search(r'[。！？.!?][」』”\"\']*$', text):
-        raise ValueError('summary needs a complete sentence')
+        raise ContractError('sentence_incomplete', 'summary needs a complete sentence')
     # Decimals and Latin abbreviations are not Chinese sentence boundaries.
     if re.search(r'[。！？].+[。！？]', text):
-        raise ValueError('one sentence per structured slot')
+        raise ContractError('sentence_boundaries', 'one sentence per structured slot')
     if re.match(r'^[・•●▪◦\-*]', text):
-        raise ValueError('sentence must not contain a bullet marker')
+        raise ContractError('sentence_bullet', 'sentence must not contain a bullet marker')
     return text
 
 
 def normalise_points(raw, limited=False):
-    if not isinstance(raw, list) or len(raw) > MAX_POINTS or type(limited) is not bool:
-        raise ValueError('invalid summary point count')
+    if not isinstance(raw, list):
+        raise ContractError('points_type', 'invalid summary point count')
+    if len(raw) > MAX_POINTS:
+        raise ContractError('points_range', 'invalid summary point count')
+    if type(limited) is not bool:
+        raise ContractError('limited_type', 'invalid summary point count')
     if not limited and len(raw) != MAX_POINTS:
-        raise ValueError('five points required unless source is limited')
+        raise ContractError('complete_point_count', 'five points required unless source is limited')
     points, support, seen = [], [], set()
     for item in raw:
         if not isinstance(item, dict) or not isinstance(item.get('sentences'), list):
-            raise ValueError('structured sentences required')
+            raise ContractError('sentence_structure', 'structured sentences required')
         values = item['sentences']
         quotes = item.get('quotes')
         if len(values) not in ({1, 2} if limited else {2}):
-            raise ValueError('two sentences required unless source is limited')
-        if not isinstance(quotes, list) or len(quotes) != len(values):
-            raise ValueError('every sentence needs source support')
+            raise ContractError('sentence_count', 'two sentences required unless source is limited')
+        if not isinstance(quotes, list):
+            raise ContractError('quote_type', 'every sentence needs source support')
+        if len(quotes) != len(values):
+            raise ContractError('quote_count', 'every sentence needs source support')
         values = [sentence(value) for value in values]
         quotes = [normalise(quote) for quote in quotes]
         if any(not 8 <= len(quote) <= 500 for quote in quotes):
-            raise ValueError('invalid source quote')
+            raise ContractError('quote_length', 'invalid source quote')
         for value in values:
             identity = re.sub(r'[\W_]+', '', value).casefold()
             if identity in seen:
-                raise ValueError('repeated summary sentence')
+                raise ContractError('duplicate_sentence', 'repeated summary sentence')
             seen.add(identity)
         point = ''.join(values)
         points.append(values)
