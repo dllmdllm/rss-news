@@ -298,11 +298,15 @@ def test_unsafe_article_id_never_becomes_a_git_or_remote_path(tmp_path, monkeypa
 
     def git(*args, **kwargs):
         calls.append(args[0])
+        if 'cat-file' in args[0]:
+            raw = b'{"schema_version":2,"articles":[{"id":"../../.env"}]}'
+            return ('a' * 40 + ' blob ' + str(len(raw)) + '\n').encode()
         return b'{"schema_version":2,"articles":[{"id":"../../.env"}]}'
     monkeypatch.setattr(V.subprocess, 'check_output', git)
     with pytest.raises(ValueError, match='safe article identities'):
         V.expected_snapshot(tmp_path, 'a' * 40)
-    assert len(calls) == 1 and calls[0][-1].endswith(':docs/data/articles.json')
+    assert len(calls) == 2 and calls[1][-1].endswith(':docs/data/articles.json')
+    assert not any('archive' in call for call in calls)
 
 
 def test_workflow_verification_precedes_heartbeat_and_preserves_existing_schedule():

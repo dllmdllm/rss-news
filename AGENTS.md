@@ -213,10 +213,14 @@ GitHub Actions（`.github/workflows/update.yml`）每 20 分鐘執行一次 `bui
   前一版 artifact 保留 3 日。未驗證舊版會明示，唔冒稱 last-good。
 - 推送後 `tools/verify_publication.py` 用實際 commit SHA 比對公開 Pages bytes：
   index 先吻合，再檢查核心 reader assets、metadata 及最多 5 個正文樣本。
-  最多 12 次 / 90 秒 polling（另有最多兩個 20 秒 Git read）；HTTP denial / TLS /
+  最多 12 次 / 90 秒 polling（Git 讀取共享40秒、每指令最多20秒）；HTTP denial / TLS /
   私有 redirect 即停，未吻合報 unverified。verification 唔重跑 paid build、
   dispatch 或 rollback；每 run report 保留 3 日，heartbeat 只喺驗證過先發。
   完整例行 loop 同恢復界線見 [OPERATIONS-LOOP.md](OPERATIONS-LOOP.md)。
+- 發布核對只對自家 `data/articles.json`／`data/articles_index.json` 容許每檔32MiB，
+  整批選定檔案64MiB。Git先查大小，HTTP按該commit預期長度逐段SHA256；gzip／deflate
+  的傳輸及解壓大小都受限，唔緩衝整份HTTP正文。其他asset／sidecar及所有來源仍8MiB，
+  DNS／TLS／redirect、8秒請求、6連線及原有重試界線保留；唔可skip超限檔或當成功。
 - 每日第一個成功 run 發 Telegram heartbeat；失敗 run 發 Telegram 通知
   （**只喺由綠轉紅嗰下發一次**，連炒唔會洗版；持續斷更嘅提醒由 guardian 負責）
 

@@ -46,8 +46,13 @@ flowchart LR
   verification, alongside the full prepublication integrity gate.
 - Public verification has a 90-second overall polling budget, at most twelve attempts,
   5/10/15-second capped backoff, eight-second requests, six parallel connections,
-  guarded redirects/DNS/TLS and 8 MiB responses. Expected bytes use two bounded
-  Git reads (20 seconds each). A denial, unsafe destination or TLS failure stops
+  guarded redirects/DNS/TLS and 8 MiB assets/sidecars. Only the fixed own-site
+  articles.json and articles_index.json aggregates allow32MiB each; selected
+  expected files total at most64MiB. Stream SHA256 and exact Git-expected decoded
+  lengths in64KiB chunks, with bounded encoded/gzip/deflate expansion; never
+  buffer a remote aggregate or change the generic8MiB publisher reader.
+  Git size preflight and canonical archive reads share40seconds, at most20per
+  command. A denial, unsafe destination or TLS failure stops
   polling. Reports contain revision, hashes and public source-health metadata;
   they contain no response bodies or provider credentials.
   Expected hashes use canonical commit bytes, with line-ending conversion
