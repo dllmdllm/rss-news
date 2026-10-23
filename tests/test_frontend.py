@@ -1581,7 +1581,8 @@ def test_contradiction_display_rejects_legacy_pairs_and_tension():
       renderContradictions({topic:{digest:{tension:'unverified',contradictions:[{claim_a:'legacy',claim_b:'legacy'}]}}});
       if (!elements.contraBlock.hidden || elements.contraList.innerHTML) throw Error('legacy data shown');
       renderContradictions({topic:{digest:{contradictions:[{claim_a:'27日',claim_b:'28日',quote_a:'原文27日',quote_b:'原文28日',article_id_a:'a',article_id_b:'b',verified_a:true,verified_b:true,content_hash_a:'a'.repeat(64),content_hash_b:'b'.repeat(64)}]}}});
-      if (elements.contraBlock.hidden || !elements.contraList.innerHTML.includes('原文27日') || !elements.contraList.innerHTML.includes('article.html?id=a')) throw Error('evidence missing');
+      if (elements.contraBlock.hidden || !elements.contraList.innerHTML.includes('27日') || !elements.contraList.innerHTML.includes('article.html?id=a')) throw Error('grounded claim or source navigation missing');
+      if (elements.contraList.innerHTML.includes('原文27日') || elements.contraList.innerHTML.includes('<blockquote>')) throw Error('evidence excerpt UI remains');
     '''
     result = subprocess.run([_require_node(), '-e', script], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

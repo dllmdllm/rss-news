@@ -111,7 +111,7 @@
       .split(/\n|\s+(?=[・•●])/)
       .map((line) => line.replace(/^\s*[・•●]\s*/, "").replace(/\s+/g, " ").trim())
       .filter(Boolean);
-    if (points.length <= 1) {
+    if (points.length <= 1 && !/^[・•●]/.test(raw) && !raw.includes('\n')) {
       const text = points[0] || "";
       points = text
         ? text.split(/。|；|;/).map((line) => line.trim()).filter(Boolean)
@@ -123,14 +123,14 @@
   function pointsHtml(article, limit = 5) {
     const points = summaryPoints(article, limit);
     if (points.length) return points.map((point) => `<li>${summaryPointHtml(article, point)}</li>`).join("");
-    return summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
+    return article.summary_status === 'limited' ? '<li class="summary-pending">來源資料不足，暫無可支持的摘要。</li>'
+      : summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
   }
 
   function summaryPointHtml(article, point) {
     const helper = window.RssSourceEvidence;
     const support = helper?.summarySupport(article, point);
-    const linked = support && helper.href(article, support.quote, 'summary');
-    return `<span class="summary-point">${esc(point)}</span>` + (linked ? '' : ' <span class="summary-unverified" title="未有可核對的原文段落">未核實</span>');
+    return `<span class="summary-point">${esc(point)}</span>` + (support ? '' : ' <span class="summary-unverified">未核實</span>');
   }
 
   function summarySentencesHtml(article) {
@@ -164,16 +164,9 @@
     return label ? `<span class="revision-label" title="與這部裝置上次開頁比較">${label === 'new' ? '新增' : '已更新'}</span>` : '';
   }
 
-  function sourceNotesHtml(article) {
-    const points = summaryPoints(article, 5);
-    if (!points.length) return '';
-    const helper = window.RssSourceEvidence;
-    const scope = helper?.scope(article);
-    return `<details class="source-point-links"><summary>查看依據</summary><p>${esc(scope?.label || '原文段落未能核對')}。依據只供對照原文，不代表已核實摘要的解讀或事實。</p><ul>${points.map((point, index) => {
-      const support = helper?.summarySupport(article, point);
-      const link = support && helper.href(article, support.quote, 'summary');
-      return `<li>重點 ${index + 1}：${link ? `<a href="${esc(link)}">查看原文段落</a><blockquote>${esc(support.quote)}</blockquote>` : '<span class="ai-note">未有可核對的原文段落</span>'}</li>`;
-    }).join('')}</ul></details>`;
+  function summaryNoticeHtml(article) {
+    const text = summaryNotice(article);
+    return text ? `<p class="summary-limits">${esc(text)}</p>` : '';
   }
 
   function translationNotice(article) {
@@ -344,9 +337,10 @@
           <h1>${esc(lead.title || "")}</h1>
           <span class="ai-note">AI 摘要</span>
           <ul class="lead-points">${pointsHtml(lead, 5)}</ul>
+          ${summaryNoticeHtml(lead)}
           <span>${window.RssReaderState?.articleState(lead.id)?.read ? "已讀" : "未讀"}</span>
         </div>
-      </a>${window.RssEventReading?.provenance(lead) || ""}${translationNotice(lead)}${sourceNotesHtml(lead)}${groupDetails(lead)}`;
+      </a>${window.RssEventReading?.provenance(lead) || ""}${translationNotice(lead)}${groupDetails(lead)}`;
   }
 
   function briefItem(article, label) {
@@ -400,8 +394,9 @@
         <h3>${esc(article.title || "")}</h3>
         <span class="ai-note">AI 摘要</span>
         ${cardSummaryBlock(article)}
+        ${summaryNoticeHtml(article)}
       </div>
-    </a>${window.RssEventReading?.provenance(article) || ""}${translationNotice(article)}${sourceNotesHtml(article)}${groupDetails(article)}</div>`;
+    </a>${window.RssEventReading?.provenance(article) || ""}${translationNotice(article)}${groupDetails(article)}</div>`;
   }
 
   const CATEGORY_GROUPS = ["新聞", "國際", "外媒", "娛樂", "科技", "消閒", "網媒"];
@@ -1464,10 +1459,9 @@
   // ── AI 工作台分析元素（方案 C）：各報矛盾位 + 未來事件 ──
   // 兩份都係 build-time 現成數據（panel_digests / upcoming），零新增成本。
   function claimEvidence(row, side) {
-    const quote = row["quote_" + side];
     const id = row["article_id_" + side];
     const url = id ? "article.html?id=" + encodeURIComponent(id) : (/^https?:\/\//i.test(row["url_" + side] || "") ? safeUrl(row["url_" + side]) : "");
-    return `${quote ? `<blockquote>${esc(quote)}</blockquote>` : ""}${url ? `<a href="${esc(url)}">查看來源報道</a>` : ""}`;
+    return url ? `<a href="${esc(url)}">查看來源報道</a>` : "";
   }
 
   function renderContradictions(panelMap) {
@@ -1577,7 +1571,7 @@
     host.innerHTML = events.map((e) => {
       const d = e.date.split("-");
       const article = (e.articles || [])[0];
-      const inner = `<span class="date">${Number(d[1])}/${Number(d[2])}</span><span>${esc(e.title)}${article?.evidence ? `<blockquote>${esc(article.evidence)}</blockquote>` : ""}</span>`;
+      const inner = `<span class="date">${Number(d[1])}/${Number(d[2])}</span><span>${esc(e.title)}</span>`;
       return article && article.id
         ? `<a class="upcoming-item" href="article.html?id=${encodeURIComponent(article.id)}">${inner}</a>`
         : `<div class="upcoming-item">${inner}</div>`;

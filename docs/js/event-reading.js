@@ -15,7 +15,7 @@
       const text = normalise(item.text);
       if (!item.evidence.some(e => text === normalise(e.quote)) || !item.evidence.every(e => normalise(e.quote).includes(text))) return false;
       return !shared || new Set(item.evidence.map(e => outlet(byId.get(e.article_id).source))).size >= 2;
-    }).map(item => `<li>${esc(item.text)}<ul>${item.evidence.map(e => `<li><a href="${href(e.article_id, e.quote)}#source-evidence">${esc(byId.get(e.article_id).source || '來源')}</a><blockquote>${esc(e.quote)}</blockquote></li>`).join('')}</ul></li>`).join('');
+    }).map(item => `<li>${esc(item.text)} <span>${item.evidence.map(e => `<a href="${href(e.article_id)}">${esc(byId.get(e.article_id).source || '來源')}</a>`).join('、')}</span></li>`).join('');
   }
   function healthObservation(info) {
     const value = info.checked_at || info.observed_at;
@@ -24,7 +24,6 @@
     return `<span class="reading-provenance">檢查時間 ${esc(time)}${reason ? ` · 原因：${esc(reason)}` : ''}</span>`;
   }
   function provenance(article) {
-    const stamp = value => value && !Number.isNaN(Date.parse(value)) ? new Date(value).toLocaleString('zh-HK') : '未提供';
     const fallback = article.content_quality?.fallback || article.evidence_status?.fallback;
     const partial = (fallback && !['none', 'unknown'].includes(fallback)) || article.evidence_status === 'partial'
       || ['partial', 'pending-budget'].includes(article.body_status);
@@ -35,7 +34,7 @@
       : partial ? '正文未完整，摘要可能有遺漏。'
       : article.content_retention ? '使用已保存正文，最新更新未核實。'
       : unknown ? '正文完整性未核實，摘要可能有遺漏。' : '';
-    return `${warning ? `<span class="reading-warning">⚠ ${warning}</span>` : ''}<details class="article-details"><summary>資料詳情</summary><span class="reading-provenance">發布 ${esc(stamp(article.published_at || article.date))} · 抓取 ${esc(stamp(article.fetched_at))} · 正文更新 ${esc(stamp(article.content_updated_at))}${article.content_retention ? ' · 使用已保存正文' : ''}</span></details>`;
+    return warning ? `<span class="reading-warning">⚠ ${warning}</span>` : '';
   }
   function render(topics, articles, panels) {
     const byId = new Map(articles.map(a => [a.id, a]));

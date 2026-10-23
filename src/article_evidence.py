@@ -75,11 +75,20 @@ def validate_summary_evidence(article: dict, raw) -> list[dict]:
         if not isinstance(item, dict):
             continue
         point = normalise_text(item.get("point"))
-        quote = verified_quote(item.get("quote"), article)
-        aid = str(item.get("article_id") or article.get("id") or "")
-        if point not in points or point in seen or not quote or aid != article.get("id"):
+        raw_quotes = item.get('quotes', [item.get('quote')])
+        if not isinstance(raw_quotes, list) or not 1 <= len(raw_quotes) <= 2:
             continue
-        result.append({"point": point, "quote": quote, "article_id": aid, "verified": True})
+        quotes = [verified_quote(value, article) for value in raw_quotes]
+        quote = quotes[0]
+        aid = str(item.get("article_id") or article.get("id") or "")
+        if point not in points or point in seen or not all(quotes) or aid != article.get("id"):
+            continue
+        if 'quote' in item and verified_quote(item['quote'], article) != quote:
+            continue
+        entry = {"point": point, "quote": quote, "article_id": aid, "verified": True}
+        if 'quotes' in item:
+            entry['quotes'] = quotes
+        result.append(entry)
         seen.add(point)
     return result
 

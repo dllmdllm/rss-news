@@ -30,20 +30,18 @@ def load(browser, width=390, query=''):
 
 @pytest.mark.parametrize('width', [390, 1280])
 def test_verified_summary_quote_jumps_across_inline_markup(browser, width):
-    context, page = load(browser, width)
+    context, page = load(browser, width, query='&quote=' + quote('政府今日公布新的交通安排，明日起實施。'))
     try:
         page.evaluate('''() => RssArticleEvidence.init({...window.evidenceArticle,date:'2026-10-12T00:00:00Z',
           content_quality:{fallback:'none'}, summary_evidence:[
             {point:'政府公布新安排',quote:'政府今日公布新的交通安排，明日起實施。',article_id:'a',verified:true}
           ]})''')
-        assert page.locator('.summary-source-link').count() == 1
-        assert page.locator('.summary-source-status').inner_text() == '原文依據未提供'
+        assert page.locator('.summary-source-link').count() == 0
+        assert page.locator('.summary-source-status').inner_text() == '未核實'
         before = page.locator('#content').inner_text()
-        page.locator('.summary-source-link').click()
         assert page.locator('#content strong mark.source-evidence-match').inner_text() == '新的交通安排'
         assert page.locator('#content').inner_text() == before
-        assert '已標示' in page.locator('.source-evidence-status').inner_text()
-        assert page.locator('#source-evidence dd').all_inner_texts()[1:] == ['時間未提供', '時間未提供']
+        assert page.locator('#source-evidence').count() == 0
     finally:
         context.close()
 
@@ -56,8 +54,8 @@ def test_unsupported_old_summary_never_matches_key_sentence_by_position(browser)
           content_quality:{fallback:'rss-blocked'},scrape_error:'HTTP 403'})''')
         assert page.locator('.summary-source-link').count() == 0
         assert page.locator('.summary-source-status').count() == 2
-        assert 'RSS 摘要' in page.locator('#source-evidence').inner_text()
-        assert 'HTTP 403' in page.locator('#source-evidence').inner_text()
+        assert page.locator('#source-evidence').count() == 0
+        assert page.locator('mark.source-evidence-match').count() == 0
     finally:
         context.close()
 
@@ -67,10 +65,10 @@ def test_source_link_query_quote_is_verified_and_unavailable_when_absent(browser
     try:
         page.evaluate("() => RssArticleEvidence.init(window.evidenceArticle)")
         assert page.locator('mark.source-evidence-match').count() > 0
-        assert '跨媒體比較' in page.locator('.source-evidence-status').inner_text()
+        assert page.locator('.summary-integrity-warning').count() == 0
         page.evaluate("() => history.replaceState({}, '', '?id=a&quote=' + encodeURIComponent('<img src=x onerror=alert(1)>'))")
         page.evaluate("() => RssArticleEvidence.init(window.evidenceArticle)")
-        assert page.locator('.source-evidence-status').inner_text().endswith('依據不可用。')
+        assert '未能核對' in page.locator('.summary-integrity-warning').inner_text()
         assert page.locator('img').count() == 0
     finally:
         context.close()
@@ -80,26 +78,26 @@ def test_repeated_init_does_not_duplicate_links_or_provenance(browser):
     context, page = load(browser)
     try:
         page.evaluate("async () => { await RssArticleEvidence.init(window.evidenceArticle); await RssArticleEvidence.init(window.evidenceArticle); }")
-        assert page.locator('#source-evidence').count() == 1
+        assert page.locator('#source-evidence').count() == 0
         assert page.locator('.summary-source-status').count() == 2
     finally:
         context.close()
 
 
 @pytest.mark.parametrize('width', [390, 1188, 2200])
-def test_real_article_source_panel_aligns_and_wraps(browser, news_data, width):
+def test_real_article_integrity_warning_aligns_and_wraps(browser, news_data, width):
     with _static_server() as base:
         context = browser.new_context(viewport={'width':width, 'height':920}, service_workers='block')
         page = context.new_page(); _route_data(page, news_data)
         page.goto(base + '/article.html?id=a0')
         page.locator('#content strong').wait_for()
         page.evaluate("() => { const a={id:'a0',scrape_error:'long-token-'.repeat(80),content_quality:{fallback:'rss-blocked'}}; RssArticleEvidence.init(a); RssArticleEvidence.init(a); }")
-        panel = page.locator('#source-evidence').bounding_box()
+        panel = page.locator('#summaryBox .summary-integrity-warning').bounding_box()
         summary = page.locator('#summaryBox').bounding_box()
-        assert abs(panel['x'] - summary['x']) < 1
-        assert abs(panel['width'] - summary['width']) < 1
+        assert panel['x'] >= summary['x']
+        assert panel['width'] <= summary['width']
         assert panel['width'] <= 920
-        assert page.locator('#source-evidence').count() == 1
+        assert page.locator('#source-evidence').count() == 0
         assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
         context.close()
 

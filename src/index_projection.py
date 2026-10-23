@@ -8,6 +8,7 @@ INDEX_FIELDS = (
     'publisher_article_id', 'canonical_url', 'url_aliases', 'id_aliases', 'memberships', 'source_modified_at',
     'translation_status', 'translation_reason', 'title_translation_status', 'analysis_status',
     'body_status',
+    'summary_points', 'summary_format', 'summary_status',
 )
 
 

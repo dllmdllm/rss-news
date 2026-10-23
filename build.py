@@ -52,6 +52,7 @@ from src.analyse import (
     analyse_all,
     looks_like_prompt_schema_summary,
     analysis_input_hash,
+    _same_cached_input,
     ANALYSIS_VERSION,
     _article_text,
 )
@@ -1008,10 +1009,9 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
         "upcoming_events": _normalise_upcoming_events,
     }
     for a in articles:
-        if not a.get("summary") and a["id"] in old:
+        if not a.get("summary") and a["id"] in old and not (a.get("summary_format") == 2 and a.get("summary_status") == "limited"):
             src = old[a["id"]]
-            if (src.get("analysis_version") != ANALYSIS_VERSION
-                    or src.get("analysis_input_hash") != analysis_input_hash(a)):
+            if not _same_cached_input(src, a):
                 continue
             a["analysis_input_hash"] = src["analysis_input_hash"]
             a["analysis_version"] = src["analysis_version"]
@@ -1022,6 +1022,11 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
                 if src.get(field) is not None:
                     a[field] = normaliser(src[field], a) if field == 'key_sentences' else normaliser(src[field])
             a["summary_evidence"] = validate_summary_evidence(a, src.get("summary_evidence"))
+            if src.get("summary_format") != 2:
+                a["summary_status"] = "legacy"
+            for field in ('summary_points', 'summary_format', 'summary_status'):
+                if field in src:
+                    a[field] = src[field]
             restored += 1
     if restored:
         print(f"[build] Restored {restored} summaries from previous articles.json")

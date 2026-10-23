@@ -22,7 +22,9 @@
     return (Array.isArray(article.summary_evidence) ? article.summary_evidence : []).find(entry => entry
       && entry.verified === true && entry.article_id === article.id
       && normalise(entry.point) === normalise(point) && quoteText(entry.quote)
-      && (!entry.content_hash || entry.content_hash === article.content_hash)) || null;
+      && (!entry.content_hash || entry.content_hash === article.content_hash)
+      && (!entry.quotes || (Array.isArray(entry.quotes) && entry.quotes.length >= 1 && entry.quotes.length <= 2
+        && entry.quotes.every(quoteText) && normalise(entry.quotes[0]) === normalise(entry.quote)))) || null;
   }
   function keySupport(article, quote) {
     const text = quoteText(quote);
