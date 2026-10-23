@@ -80,6 +80,8 @@ async def post_messages(
                     metadata[key] = value
     err    = data.get("error") or {}
     blocks = data.get("content") or []
+    if metadata is not None:
+        metadata['text_blocks'] = sum(isinstance(block, dict) and block.get('type') == 'text' for block in blocks)
     raw    = next(
         (b.get("text", "").strip() for b in blocks if b.get("type") == "text"),
         ""

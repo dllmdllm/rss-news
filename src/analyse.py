@@ -16,6 +16,7 @@ from src.enrichment_budget import legacy_source_limit
 from src.summary_contract import SUMMARY_FORMAT, normalise_points, validate_record
 from src.analysis_input import input_hash, source_text
 from src.analysis_statistics import CURRENT, RESPONSE_METADATA, count
+from src import analysis_diagnostics as diagnostic
 
 from src.minimax_client import (
     MINIMAX_API_KEY,
@@ -304,6 +305,7 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
     """Coerce a parsed JSON object into our canonical analysis dict."""
     if not isinstance(data, dict):
         count('validation_rejections', 'not_object')
+        diagnostic.contract_rejection('object_type')
         return None
     try:
         score_raw = data.get("score")
@@ -323,13 +325,16 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
         rich = normalise_points(data['summary_points'], data.get('summary_limited', False)) if 'summary_points' in data else None
         if require_rich and rich is None:
             count('validation_rejections', 'missing_rich_points')
+            diagnostic.contract_rejection('missing_rich_points')
             return None
         summary = rich['summary'] if rich else _normalise_summary(data.get("summary"))
         if looks_like_prompt_schema_summary(summary):
             count('validation_rejections', 'prompt_schema_echo')
+            diagnostic.contract_rejection('schema_echo')
             return None
         if not _summary_looks_acceptable(summary):
             count('validation_rejections', 'summary_shape')
+            diagnostic.contract_rejection('summary_shape')
             return None
         # headline_fit 係 optional——舊 cache entry / 模型漏答就係 None，
         # 前端 None 唔顯示 badge。
@@ -368,6 +373,7 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
             'structured sentences required': 'sentence_structure',
         }
         count('validation_rejections', reasons.get(str(exc), 'malformed_object'))
+        diagnostic.contract_rejection(getattr(exc, 'code', 'malformed_object'))
         return None
 
 
@@ -378,16 +384,57 @@ def _strip_fences(text: str) -> str:
     return text
 
 
-def _parse_analysis(raw: str, *, require_rich=False) -> dict | None:
-    """Parse a single JSON object from model output."""
+MAX_ANALYSIS_RESPONSE_CHARS = 128 * 1024  # parser resource guard, not a token-budget change
+
+
+def _decode_document(raw):
+    if not isinstance(raw, str): return None, 'json_decode'
+    if len(raw) > MAX_ANALYSIS_RESPONSE_CHARS: return None, 'response_excess'
     text = _strip_fences(raw)
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return None
     try:
-        return _normalise_parsed(json.loads(m.group(0)), require_rich=require_rich)
-    except Exception:
+        return json.loads(text), None
+    except (ValueError, RecursionError):
+        # Preserve harmless prose/fence wrappers, but never scan inside a bad
+        # outer document for a valid nested array or salvage truncated output.
+        decoder = json.JSONDecoder()
+        try:
+            value, end = decoder.raw_decode(text)
+        except (ValueError, RecursionError):
+            if text.startswith(('[', '{', '"')): return None, 'json_decode'
+            start = re.search(r'[\[{]', text)
+            if start is None: return None, 'missing_document'
+            try:
+                value, end = decoder.raw_decode(text, start.start())
+            except (ValueError, RecursionError):
+                return None, 'json_decode'
+        suffix = text[end:].strip()
+        if suffix:
+            try:
+                decoder.raw_decode(suffix)
+            except (ValueError, RecursionError):
+                pass
+            else:
+                return None, 'extra_document'
+        if re.search(r'[\[\]{}]', text[end:]): return None, 'extra_document'
+        return value, None
+
+
+def _parse_analysis(raw: str, *, require_rich=False) -> dict | None:
+    """Legacy single-record reader, separate from generation index binding."""
+    value, error = _decode_document(raw)
+    if error: return None
+    if isinstance(value, list) and len(value) == 1: value = value[0]
+    return _normalise_parsed(value, require_rich=require_rich) if isinstance(value, dict) else None
+
+
+def _article_index(value, expected):
+    if type(value) is int:
+        idx = value
+    elif isinstance(value, str) and len(value.strip()) <= 8 and re.fullmatch(r'[+-]?[0-9]+', value.strip()):
+        idx = int(value)
+    else:
         return None
+    return idx if 1 <= idx <= expected else None
 
 
 def _parse_batch(raw: str, expected: int, *, require_rich=False) -> list[dict | None] | None:
@@ -396,53 +443,63 @@ def _parse_batch(raw: str, expected: int, *, require_rich=False) -> list[dict | 
     individual items are malformed, returns a list of same length with
     None at the failed slots — caller applies successes, fills failures
     via per-article fallback."""
-    text = _strip_fences(raw)
-    m_arr = re.search(r"\[.*\]", text, re.DOTALL)
-    if m_arr:
+    if type(expected) is not int or not 1 <= expected <= BATCH_SIZE:
+        count('validation_rejections', 'batch_shape_or_json')
+        count('results', 'whole_batch_rejections')
+        diagnostic.envelope_rejection('batch_length')
+        return None
+    value, error = _decode_document(raw)
+    if not error:
+        diagnostic.root_shape(value, expected)
+        if isinstance(value, dict) and expected == 1:
+            bare = True
+            arr = [value]
+        elif isinstance(value, list):
+            bare = False
+            arr = value
+            if len(arr) != expected: error = 'batch_length'
+        else:
+            error = 'root_type'
+    if error:
+        count('validation_rejections', 'batch_shape_or_json')
+        count('results', 'whole_batch_rejections')
+        diagnostic.envelope_rejection(error)
+        return None
+    by_idx, seen = {}, set()
+    binding_failed = False
+    for obj in arr:
+        if not isinstance(obj, dict):
+            count('validation_rejections', 'not_object')
+            count('results', 'rejected_slots')
+            diagnostic.binding_rejection('object_type')
+            binding_failed = True
+            continue
+        diagnostic.object_shape(obj)
+        # A bare single-object response without idx was already supported.
+        # A supplied wrong idx must never bypass the array-path checks.
+        idx = 1 if bare and 'idx' not in obj else _article_index(obj.get('idx'), expected)
+        if idx is None or idx in seen:
+            missing = 'idx' not in obj
+            reason = 'missing_index' if missing else 'duplicate_index' if idx in seen else 'invalid_index'
+            count('validation_rejections', 'missing_index' if missing else 'invalid_or_duplicate_index')
+            count('results', 'rejected_slots')
+            diagnostic.binding_rejection(reason)
+            binding_failed = True
+            continue
+        seen.add(idx)
+        observation = diagnostic.ATTEMPT.get()
+        if observation is not None: observation.bound_index = idx
         try:
-            arr = json.loads(m_arr.group(0))
-        except Exception:
-            arr = None
-        if isinstance(arr, list) and len(arr) == expected:
-            # 2026-07-21 audit finding: 之前純粹信 array 順序同輸入順序
-            # 一致（caller 用 zip(batch, parsed)）——如果 model 保留咗
-            # count 但 reorder 咗 item（保持長度一致嘅 instruction-
-            # following 失誤），會靜靜哋將 A 篇嘅分析結果貼咗落 B 篇，
-            # 冇任何機制偵測到。而家用 model 自己喺每個 object 入面回報
-            # 嘅 "idx"（對應 prompt 入面「第X篇」嘅 X）核對、重新排位；
-            # 冇 idx / 重複 / 出範圍嘅 slot 當 parse 失敗（None），交返
-            # 俾現有嘅 per-article fallback 補（呢個 mechanism 本身冇變，
-            # 只係輸入嗰個 list 可能有 None gap）。
-            by_idx: dict[int, dict] = {}
-            for obj in arr:
-                if not isinstance(obj, dict):
-                    count('validation_rejections', 'not_object')
-                    count('results', 'rejected_slots')
-                    continue
-                try:
-                    idx = int(obj.get("idx"))
-                except (TypeError, ValueError):
-                    count('validation_rejections', 'missing_index')
-                    count('results', 'rejected_slots')
-                    continue
-                if not (1 <= idx <= expected) or idx in by_idx:
-                    count('validation_rejections', 'invalid_or_duplicate_index')
-                    count('results', 'rejected_slots')
-                    continue
-                normalised = _normalise_parsed(obj, require_rich=require_rich)
-                if normalised:
-                    by_idx[idx] = normalised
-                else:
-                    count('results', 'rejected_slots')
-            return [by_idx.get(i) for i in range(1, expected + 1)]
-    # Accept a bare object when batch size is 1 (some models drop the array)
-    if expected == 1:
-        single = _parse_analysis(text, require_rich=require_rich)
-        if single:
-            return [single]
-    count('validation_rejections', 'batch_shape_or_json')
-    count('results', 'whole_batch_rejections')
-    return None
+            normalised = _normalise_parsed(obj, require_rich=require_rich)
+        finally:
+            if observation is not None: observation.bound_index = None
+        if normalised:
+            by_idx[idx] = normalised
+        else:
+            count('results', 'rejected_slots')
+    diagnostic.request_outcome('accepted' if len(by_idx) == expected else 'partial' if by_idx else
+                               'binding_rejected' if binding_failed else 'contract_rejected')
+    return [by_idx.get(i) for i in range(1, expected + 1)]
 
 
 def _needs_full_analysis(cached: dict, article: dict | None = None) -> bool:
@@ -525,16 +582,20 @@ async def _observed_post(session, articles, user_text, max_tokens, timeout, kind
     try:
         result = await _post_messages(session, user_text, max_tokens, timeout)
         metadata.setdefault('http_status', result[2])
+        diagnostic.returned(result[0], result[1], metadata)
         count('requests', 'returned')
         return result
     except asyncio.CancelledError:
         count('requests', 'cancelled')
+        diagnostic.request_outcome('cancelled')
         raise
     except TimeoutError:
         count('requests', 'timed_out')
+        diagnostic.request_outcome('request_timeout')
         raise
     except Exception:
         count('requests', 'transport_error')
+        diagnostic.request_outcome('transport_error')
         raise
     finally:
         if stats is not None:
@@ -566,6 +627,7 @@ async def _apply_results(
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
         _retain_supported_points(p)
         count('results', 'unsupported_points_removed', original_points - len(p.get('summary_points') or []))
+        if original_points > len(p.get('summary_points') or []): diagnostic.support_removed(a['id'])
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
         a['analysis_status'] = 'available'
@@ -617,42 +679,43 @@ async def _analyse_one(
     async with sem:
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
-            try:
-                raw, err, status = await _observed_post(session, [article], user_content, 1200, 30, 'fallback')
-                if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
-                    delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
+            with diagnostic.observe_attempt([article], 'fallback'):
+                try:
+                    raw, err, status = await _observed_post(session, [article], user_content, 1200, 30, 'fallback')
+                    if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
+                        delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
+                        if delay <= 0:
+                            break
+                        await asyncio.sleep(delay)
+                        total_waited += delay
+                        continue
+                    if raw:
+                        parsed = _parse_batch(raw, 1, require_rich=True)
+                        if parsed and parsed[0]:
+                            await _apply_results([article], parsed, cache, save_lock, counter)
+                            return
+                        if attempt < MAX_ATTEMPTS - 1:
+                            delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
+                            if delay > 0:
+                                await asyncio.sleep(delay)
+                                total_waited += delay
+                            continue
+                        print('[WARN] analyse item rejected after bounded attempts')
+                        return
+                    if err:
+                        print(f'[WARN] analyse item request failed (status {status})')
+                    else:
+                        print(f'[WARN] analyse item empty response (status {status})')
+                    return
+                except Exception as exc:
+                    if attempt == MAX_ATTEMPTS - 1:
+                        print(f'[WARN] analyse item request failed ({type(exc).__name__})')
+                        return
+                    delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
-                        break
+                        return
                     await asyncio.sleep(delay)
                     total_waited += delay
-                    continue
-                if raw:
-                    parsed = _parse_batch(raw, 1, require_rich=True)
-                    if parsed and parsed[0]:
-                        await _apply_results([article], parsed, cache, save_lock, counter)
-                        return
-                    if attempt < MAX_ATTEMPTS - 1:
-                        delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
-                        if delay > 0:
-                            await asyncio.sleep(delay)
-                            total_waited += delay
-                        continue
-                    print('[WARN] analyse item rejected after bounded attempts')
-                    return
-                if err:
-                    print(f'[WARN] analyse item request failed (status {status})')
-                else:
-                    print(f'[WARN] analyse item empty response (status {status})')
-                return
-            except Exception as exc:
-                if attempt == MAX_ATTEMPTS - 1:
-                    print(f'[WARN] analyse item request failed ({type(exc).__name__})')
-                    return
-                delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
-                if delay <= 0:
-                    return
-                await asyncio.sleep(delay)
-                total_waited += delay
 
 
 async def _analyse_batch(
@@ -686,53 +749,54 @@ async def _analyse_batch(
     async with sem:
         total_waited = 0.0
         for attempt in range(MAX_ATTEMPTS):
-            try:
-                raw, err, status = await _observed_post(session, batch, user_content, max_tokens, timeout, 'batch')
-                if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
-                    delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
+            with diagnostic.observe_attempt(batch, 'batch'):
+                try:
+                    raw, err, status = await _observed_post(session, batch, user_content, max_tokens, timeout, 'batch')
+                    if _should_retry(err, status) and attempt < MAX_ATTEMPTS - 1:
+                        delay = min(2 ** (attempt + 2), MAX_BACKOFF_BUDGET - total_waited)
+                        if delay <= 0:
+                            break
+                        await asyncio.sleep(delay)
+                        total_waited += delay
+                        continue
+                    if raw:
+                        parsed = _parse_batch(raw, len(batch), require_rich=True)
+                        if parsed:
+                            # parsed has same length as batch; items may be None
+                            # when a single element was malformed — apply the
+                            # good ones and let per-article fallback fill gaps.
+                            ok_arts = [a for a, p in zip(batch, parsed) if p]
+                            ok_parsed = [p for p in parsed if p]
+                            if ok_arts:
+                                await _apply_results(ok_arts, ok_parsed, cache, save_lock, counter)
+                                applied_ids.update(a["id"] for a in ok_arts)
+                            if len(ok_arts) == len(batch):
+                                batch_ok = True
+                            break
+                        # Total shape mismatch — retry in batch mode, then fall
+                        # back to per-article for the whole batch.
+                        if attempt < MAX_ATTEMPTS - 1:
+                            delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
+                            if delay > 0:
+                                await asyncio.sleep(delay)
+                                total_waited += delay
+                            continue
+                        print(f"[WARN] batch({len(batch)}) parse failed → per-article fallback")
+                        break
+                    if err:
+                        print(f'[WARN] batch({len(batch)}) request failed (status {status})')
+                    else:
+                        print(f"[WARN] batch({len(batch)}) analyse: empty response (status {status})")
+                    break
+                except Exception as exc:
+                    if attempt == MAX_ATTEMPTS - 1:
+                        print(f'[WARN] batch({len(batch)}) request failed ({type(exc).__name__})')
+                        break
+                    delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
                     if delay <= 0:
                         break
                     await asyncio.sleep(delay)
                     total_waited += delay
-                    continue
-                if raw:
-                    parsed = _parse_batch(raw, len(batch), require_rich=True)
-                    if parsed:
-                        # parsed has same length as batch; items may be None
-                        # when a single element was malformed — apply the
-                        # good ones and let per-article fallback fill gaps.
-                        ok_arts = [a for a, p in zip(batch, parsed) if p]
-                        ok_parsed = [p for p in parsed if p]
-                        if ok_arts:
-                            await _apply_results(ok_arts, ok_parsed, cache, save_lock, counter)
-                            applied_ids.update(a["id"] for a in ok_arts)
-                        if len(ok_arts) == len(batch):
-                            batch_ok = True
-                        break
-                    # Total shape mismatch — retry in batch mode, then fall
-                    # back to per-article for the whole batch.
-                    if attempt < MAX_ATTEMPTS - 1:
-                        delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
-                        if delay > 0:
-                            await asyncio.sleep(delay)
-                            total_waited += delay
-                        continue
-                    print(f"[WARN] batch({len(batch)}) parse failed → per-article fallback")
-                    break
-                if err:
-                    print(f'[WARN] batch({len(batch)}) request failed (status {status})')
-                else:
-                    print(f"[WARN] batch({len(batch)}) analyse: empty response (status {status})")
-                break
-            except Exception as exc:
-                if attempt == MAX_ATTEMPTS - 1:
-                    print(f'[WARN] batch({len(batch)}) request failed ({type(exc).__name__})')
-                    break
-                delay = min(2 ** attempt, MAX_BACKOFF_BUDGET - total_waited)
-                if delay <= 0:
-                    break
-                await asyncio.sleep(delay)
-                total_waited += delay
 
     if batch_ok:
         return

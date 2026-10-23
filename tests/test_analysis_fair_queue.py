@@ -187,7 +187,7 @@ def test_provider_metadata_is_bounded_and_allowlisted():
     metadata = {}
     assert asyncio.run(minimax_client.post_messages(Session(), system='prompt', user_text='body', max_tokens=1200,
         timeout=30, metadata=metadata)) == ('data', {}, 200)
-    assert metadata == {'http_status': 200, 'stop_reason': 'other', 'input_tokens': 12}
+    assert metadata == {'http_status': 200, 'stop_reason': 'other', 'input_tokens': 12, 'text_blocks': 1}
 
 
 def test_timeout_is_counted_without_logging_exception_text(monkeypatch):

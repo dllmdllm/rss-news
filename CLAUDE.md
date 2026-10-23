@@ -895,6 +895,18 @@ strict whole-snapshot checks, exact public bytes and retained eligible backlog
 cohorts. Local tests, exact-head CI, Pages assets and data recovery are separate
 acceptance gates; guidance alone cannot guarantee correctness.
 
+Generation parsing decodes the outer document before nested arrays and checks a
+supplied article index consistently for objects and arrays. Never salvage a
+truncated/ambiguous document or infer a limited flag to satisfy the contract.
+`format_diagnostics.classification_version=2` separates envelope, binding and
+typed contract failures. Existing broad counters are compatibility fields, not
+unique-article counts. New fixed-enum histograms contain no content or IDs; unique
+IDs stay in memory. Binding/envelope-affected cohorts are distinct from uniquely
+identified contract rejections. The32KiB diagnostic cap and8192-ID tracking cap
+set explicit truncation/lower-bound flags, never limit article publication.
+This parser/statistics change leaves the prompt, analysis version and all paid
+request/concurrency/token/time/retry/source budgets unchanged.
+
 Analysis input hashes include the actual supplied title/text, publication date,
 source/URL and prompt/model version. Corrected input cannot reuse an ID-only
 cache or restore an old summary after a failed refresh. Panel and entity digests

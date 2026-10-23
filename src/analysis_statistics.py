@@ -2,6 +2,7 @@
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
+from src.analysis_diagnostics import DIAGNOSTICS, Diagnostics
 
 CURRENT = ContextVar('rss_analysis_statistics', default=None)
 RESPONSE_METADATA = ContextVar('rss_analysis_response_metadata', default=None)
@@ -21,6 +22,7 @@ class Statistics:
         self.active = 0
         self.peak_active = 0
         self.request_seconds = 0.0
+        self.diagnostics = Diagnostics()
 
     def count(self, group, reason, amount=1):
         self.counts[group][reason] += amount
@@ -54,7 +56,8 @@ class Statistics:
                           'completed': len(self.applied_ids),
                           'started_incomplete': len(self.started_ids - self.applied_ids)},
                 'peak_active_requests': self.peak_active,
-                'request_seconds_total': round(self.request_seconds, 3)}
+                'request_seconds_total': round(self.request_seconds, 3),
+                'format_diagnostics': self.diagnostics.snapshot()}
 
 
 def count(group, reason, amount=1):
@@ -67,7 +70,9 @@ def count(group, reason, amount=1):
 def collect_analysis_statistics():
     stats = Statistics()
     token = CURRENT.set(stats)
+    diagnostic_token = DIAGNOSTICS.set(stats.diagnostics)
     try:
         yield stats
     finally:
+        DIAGNOSTICS.reset(diagnostic_token)
         CURRENT.reset(token)
