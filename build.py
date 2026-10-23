@@ -56,6 +56,7 @@ from src.analyse import (
     ANALYSIS_VERSION,
     _article_text,
 )
+from src.analysis_statistics import collect_analysis_statistics
 from src.event_dates import event_identity, validate_event
 from src.article_evidence import bind_current_body_hash, update_provenance, validate_summary_evidence
 from src.translate_content import translate_english_content
@@ -809,53 +810,65 @@ def _prepare_article_media(article):
     repair_thumbnail(article)
 
 
+def _finalize_article_body(a):
+    """Use the same idempotent reader body before AI and before serialization."""
+    _prepare_article_media(a)
+    flags = a.setdefault('_content_write_flags', {})
+    content = a.get('content')
+    old_record = _load_old_content_record(a['id'])
+    # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
+    # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
+    # remove_duplicate_leading_thumbnail 重算 quality 就會覆蓋走原標籤，
+    # 令大半 source 喺數據入面睇落好似「不明 fallback」，審計時全部誤鳴。
+    fallback = (a.get('content_quality') or {}).get('fallback') or 'unknown'
+    if not content:
+        content = old_record.get('content') if old_record else None
+        if not content:
+            content = _minimal_content(a)
+            flags['minimal'] = True
+            fallback = 'minimal'
+        else:
+            flags['reused'] = True
+            fallback = 'reused'
+        a['content'] = content
+        a['content_quality'] = content_quality(content, source=a.get('source', ''), fallback=fallback)
+    content, was_deduped = remove_duplicate_leading_thumbnail(content, a.get('thumbnail'))
+    if was_deduped:
+        flags['deduped'] = True
+        # An RSS fallback can contain only the hero image. Removing that
+        # duplicate must not publish an empty sidecar.
+        remainder = BeautifulSoup(content, "html.parser")
+        if not remainder.get_text(strip=True) and not remainder.find(["img", "video", "audio"]):
+            content = _minimal_content(a)
+            flags['minimal'] = True
+            fallback = "minimal"
+        a["content"] = content
+        previous_quality = a.get('content_quality') or {}
+        a["content_quality"] = content_quality(
+            content,
+            source=a.get("source", ""),
+            fallback=fallback,
+        )
+        for key in ('origin', 'completeness', 'omitted_invalid_images'):
+            if key in previous_quality:
+                a['content_quality'][key] = previous_quality[key]
+    return flags
+
+
 def _write_content_sidecars(articles: list) -> dict[str, int]:
     _retain_verified_content(articles, _load_old_articles())
-    written = 0
-    unchanged = 0
-    reused = 0
-    minimal = 0
-    deduped = 0
+    written = unchanged = reused = minimal = deduped = 0
     for a in articles:
-        _prepare_article_media(a)
-        content = a.get("content")
-        old_record = _load_old_content_record(a["id"])
-        # 正常 scrape 成功嘅文章，content_quality 已由 scrape.py 寫低咗真正嘅
-        # fallback 標籤（多數係 "none"）——之前呢度寫死 "unknown"，一經
-        # remove_duplicate_leading_thumbnail 重算 quality 就會覆蓋走原標籤，
-        # 令大半 source 喺數據入面睇落好似「不明 fallback」，審計時全部誤鳴。
-        fallback = (a.get("content_quality") or {}).get("fallback") or "unknown"
-        if not content:
-            old_record = _load_old_content_record(a["id"])
-            content = old_record.get("content") if old_record else None
-            if not content:
-                content = _minimal_content(a)
-                minimal += 1
-                fallback = "minimal"
-            else:
-                reused += 1
-                fallback = "reused"
-            a["content"] = content
-        content, was_deduped = remove_duplicate_leading_thumbnail(content, a.get("thumbnail"))
-        if was_deduped:
-            deduped += 1
-            # An RSS fallback can contain only the hero image. Removing that
-            # duplicate must not publish an empty sidecar.
-            remainder = BeautifulSoup(content, "html.parser")
-            if not remainder.get_text(strip=True) and not remainder.find(["img", "video", "audio"]):
-                content = _minimal_content(a)
-                minimal += 1
-                fallback = "minimal"
-            a["content"] = content
-            previous_quality = a.get('content_quality') or {}
-            a["content_quality"] = content_quality(
-                content,
-                source=a.get("source", ""),
-                fallback=fallback,
-            )
-            for key in ('origin', 'completeness', 'omitted_invalid_images'):
-                if key in previous_quality:
-                    a['content_quality'][key] = previous_quality[key]
+        flags = _finalize_article_body(a)
+        reused += 'reused' in flags
+        minimal += 'minimal' in flags
+        deduped += 'deduped' in flags
+        content = a['content']
+        old_record = _load_old_content_record(a['id'])
+        fallback = (a.get('content_quality') or {}).get('fallback') or 'unknown'
+        if (a.get('summary_format') == 2 and
+                analysis_input_hash(a, version=a.get('analysis_version')) != a.get('analysis_input_hash')):
+            raise ValueError('analysis input changed before publication: ' + a['id'])
         cpath = CONTENT_DIR / f"{a['id']}.json"
         quality = a.get("content_quality") or {}
         if not quality and old_record:
@@ -1231,7 +1244,7 @@ async def main():
         _retain_verified_content(articles, old_articles)
 
         for article in articles:
-            _prepare_article_media(article)
+            _finalize_article_body(article)
             if (article.get('content_quality') or {}).get('fallback') == 'minimal':
                 article['_paid_enrichment_deferred'] = True
         # Pure boundaries before any paid enrichment. Existing strict snapshot
@@ -1267,16 +1280,21 @@ async def main():
         # Preserve completed analyses and save before optional enrichments.
         # Restore exact-input prior output before admission, so a torn cache
         # does not turn already-published results into new paid work.
+        backlog = {a['id'] for a in old_articles if not a.get('summary')}
+        for article in articles:
+            article['_analysis_backlog'] = article['id'] in backlog
         _apply_fallback_summaries(articles, old_articles)
         t = time.monotonic()
         _tlog("analyse start")
-        try:
-            articles = await core_step(lambda: analyse_all(articles), 280)
-            mark_step("analyse", seconds=time.monotonic() - t)
-        except (asyncio.TimeoutError, TimeoutError):
-            _tlog("analyse timed out — using partial")
-            _ensure_analysis_defaults(articles)
-            mark_step("analyse", ok=False, error="timeout", seconds=time.monotonic() - t)
+        with collect_analysis_statistics() as stats:
+            try:
+                articles = await core_step(lambda: analyse_all(articles), 280)
+                mark_step("analyse", seconds=time.monotonic() - t, statistics=stats.snapshot())
+            except (asyncio.TimeoutError, TimeoutError):
+                _tlog("analyse timed out — using partial")
+                _ensure_analysis_defaults(articles)
+                mark_step("analyse", ok=False, error="timeout", seconds=time.monotonic() - t, statistics=stats.snapshot())
+            print('[analyse-statistics] ' + json.dumps(stats.snapshot(), sort_keys=True))
         _tlog(f"analyse done {time.monotonic()-t:.1f}s")
 
         _tlog("save_json start")

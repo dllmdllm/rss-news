@@ -1,4 +1,4 @@
-"""Read-only, dependency-free checks of a generated Pages publication snapshot."""
+"""Read-only checks of generated data, evidence and actual analysis inputs."""
 import argparse
 import hashlib
 import json
@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.analysis_input import input_hash
 from src.article_urls import valid_article_url
 from src.index_projection import project_article
 from src.summary_contract import validate_record as validate_summary_record
@@ -176,6 +177,12 @@ def validate_site(docs: Path, require_current=False):
         hashes[aid] = hashlib.sha256(content.encode("utf-8")).hexdigest()
         if record.get('content_hash') != hashes[aid] or articles[aid].get('content_hash') != hashes[aid]:
             raise ValueError(f'{aid}: metadata/sidecar content_hash must equal actual body SHA256')
+        article = articles[aid]
+        if article.get('summary_format') == 2:
+            version = article.get('analysis_version')
+            if (not isinstance(version, str) or not re.fullmatch(r'p-[a-f0-9]{8,64}', version)
+                    or input_hash(dict(article, content=content), version) != article.get('analysis_input_hash')):
+                raise ValueError(f'{aid}: analysis input hash must match actual published body and metadata')
         quality = record.get("quality")
         fallbacks[aid] = quality.get("fallback") if isinstance(quality, dict) else None
     for aid, article in articles.items():

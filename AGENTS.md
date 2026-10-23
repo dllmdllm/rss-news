@@ -863,6 +863,22 @@ than treating every name interpunct as a new item.
 
 ### Source evidence and cache freshness (2026-10 review)
 
+The final reader body is normalized before translation/analysis as well as on
+write. Leading-thumbnail cleanup must be idempotent; image-only/minimal source
+bodies never admit paid analysis. Rich input hashes must match the actual final
+body/title/date/source/URL and recorded analysis version, not merely another
+metadata field. Never rebind an old summary to corrected input by changing its hash.
+
+Missing summaries precede format upgrades inside unchanged per-source AI caps.
+Missing work alternates prior backlog/new articles and rotates sources. At most
+five batch workers run; each completes its existing bounded fallback before
+taking another batch. Request concurrency, attempts, token/time limits, model,
+prompt and schedules remain unchanged. Cancellation drains work and flushes
+completed cache results. Build status includes sanitized aggregate analysis
+admission/request/rejection/cancellation counters; provider token/stop-reason
+metadata is recorded only when supplied. No source/model text or credentials
+belong in those statistics. An empty limited result is not a recovered summary.
+
 Analysis input hashes include the actual supplied title/text, publication date,
 source/URL and prompt/model version. Corrected input cannot reuse an ID-only
 cache or restore an old summary after a failed refresh. Panel and entity digests
