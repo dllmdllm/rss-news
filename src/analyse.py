@@ -46,12 +46,9 @@ SYSTEM_PROMPT = (
     "每個 object 格式：\n"
     '{"idx":整數（對應輸入嘅「第X篇」入面嘅X，必須逐個對應、唔可以漏或者重複，'
     '呢個field唔理你輸出嘅array順序係點，我哋都靠佢核對邊個object屬於邊篇新聞）,'
-    '"summary_points":[{"sentences":["第一句完整自然句子。","第二句完整自然句子。"],'
-    '"quotes":["支持第一句嘅內文逐字引句","支持第二句嘅內文逐字引句"]}],'
-    '"summary_limited":false（目標正好五點，每點兩句有實質資料嘅完整自然句子；每句交代主體、事實同必要背景，'
-    '唔好用標語或十字片語。只可以用輸入正文直接支持嘅事實，每句附一條最短足夠嘅逐字引句；'
-    '禁止外加知識、推測、重複改寫同湊數。來源不足時設true，少寫點數或只保留有根據嘅一句；完全冇資料可用[]。'
-    '句子保留句號；人物名字中間嘅・唔係分點。無須再輸出summary字串或重複summary_evidence）,'
+    '"summary":"單一字串（非array），5至8個重點，每點用「・」開頭，每點之間用換行符\\n分隔，每點唔超過10個字",'
+    '"summary_limited":false（只用輸入正文支持嘅事實；來源資料不足就設true並少寫，完全冇資料用空字串。'
+    '唔需要每點兩句，禁止外加知識、推測、重複改寫或為湊點數加作）,'
     '"score":整數1到10（10=突發重大，5=一般新聞，1=普通資訊）,'
     '"tags":["標籤1","標籤2"]（最多3個中文標籤，唔帶#）,'
     '"sentiment":"positive"或"negative"或"neutral",'
@@ -60,6 +57,8 @@ SYSTEM_PROMPT = (
     '"event_type":"事件類型，2至6字，例如事故/政治/財經/天氣/娛樂/科技/法庭",'
     '"entities":{"people":["最多2個人物"],"companies":["最多2個公司/機構"],"places":["最多2個地點"],"dates":["最多2個日期"],"numbers":["最多2個關鍵數字"]},'
     '"key_sentences":["原文逐字摘錄最關鍵嘅 3 至 5 句句子（必須完全一致，唔好改寫，每句 10-80 字）"],'
+    '"summary_evidence":[{"point":"照抄summary其中一點文字（唔帶・）","quote":"直接支持呢一點嘅內文逐字原句，10至120字"}]'
+    '（可選；冇可核對引文就留空，唔可以引用摘要本身或猜配原文）,'
     '"upcoming_events":[{"date":"YYYY-MM-DD或null","date_expression":"原文日期字眼",'
     '"evidence":"逐字摘錄包括日期同事件嘅原文句子","title":"短描述，唔超過20字"}]'
     '（最多2個；日期相對輸入嘅出版日期，以香港時間計算；月底、年初等唔可以猜某一日，date用null；無就[]）}'
@@ -145,7 +144,11 @@ def _retain_supported_points(record, article=None):
 
 
 def _same_cached_input(cached, article):
-    if cached.get('summary_format') == SUMMARY_FORMAT:
+    summary = cached.get('summary') or ''
+    if (not isinstance(summary, str) or
+            summary.startswith('[') and summary.endswith(']') and "', '" in summary):
+        return False
+    if cached.get('summary_format') in (1, SUMMARY_FORMAT):
         try:
             validate_record(cached)
         except (ValueError, TypeError):
@@ -154,7 +157,7 @@ def _same_cached_input(cached, article):
     digest = cached.get('input_hash', cached.get('analysis_input_hash'))
     return (isinstance(version, str) and re.fullmatch(r'p-[a-f0-9]{8,64}', version) is not None
             and digest == analysis_input_hash(article, version=version)
-            and (bool(cached.get('summary')) or cached.get('summary_format') == SUMMARY_FORMAT
+            and (bool(cached.get('summary')) or cached.get('summary_format') in (1, SUMMARY_FORMAT)
                  and cached.get('summary_status') == 'limited')
             and not looks_like_prompt_schema_summary(cached.get('summary', ''))
             and _summary_looks_acceptable(cached.get('summary', '')))
@@ -179,7 +182,7 @@ def _restore_cached(article, cached):
     article['analysis_input_hash'] = cached.get('input_hash', cached.get('analysis_input_hash'))
     article['analysis_version'] = cached.get('version', cached.get('analysis_version'))
     article['analysis_status'] = 'available'
-    if article.get('summary_format') != SUMMARY_FORMAT:
+    if article.get('summary_format') not in (1, SUMMARY_FORMAT):
         article['summary_status'] = 'legacy'
     article['summary_evidence'] = validate_summary_evidence(article, cached.get('summary_evidence'))
     article['key_sentences'] = _normalise_key_sentences(cached.get('key_sentences'), article)
@@ -383,6 +386,11 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
         }
         if rich:
             result.update(rich)
+        else:
+            limited = data.get('summary_limited', False)
+            if type(limited) is not bool or not summary and not limited:
+                raise ValueError('short summary requires content or an explicit source limit')
+            result.update(summary_format=1, summary_status='limited' if limited else 'short')
         return result
     except Exception as exc:
         reasons = {
@@ -531,13 +539,15 @@ def _needs_full_analysis(cached: dict, article: dict | None = None) -> bool:
     """Return True if cached entry is stale/malformed and should be re-analysed."""
     if not isinstance(cached, dict) or cached.get("score") is None:
         return True
-    if article is not None and cached.get("input_hash") != analysis_input_hash(article):
-        return True
+    if article is not None:
+        # The owner returned to compact output, not a bulk format migration.
+        # Keep usable short/rich output bound to its own version and actual input.
+        return not _same_cached_input(cached, article)
     # Auto-invalidate when the prompt hash embedded in the cache entry no
     # longer matches the current ANALYSIS_VERSION hash.
     if cached.get("version") != ANALYSIS_VERSION:
         return True
-    if cached.get('summary_format') != SUMMARY_FORMAT:
+    if cached.get('summary_format') not in (1, SUMMARY_FORMAT):
         return True
     try:
         validate_record(cached)
@@ -651,7 +661,7 @@ async def _apply_results(
             usable = _retain_supported_points(p, a)
         else:
             p['summary_evidence'] = validate_summary_evidence({**a, 'summary': p['summary']}, p.get('summary_evidence'))
-            usable = True
+            usable = bool(p.get('summary')) or p.get('summary_status') == 'limited'
         count('results', 'unsupported_points_removed', original_points - len(p.get('summary_points') or []))
         removed_sentences = original_sentences - sum(map(len, p.get('summary_points') or []))
         count('results', 'unsupported_sentences_removed', removed_sentences)
@@ -662,7 +672,8 @@ async def _apply_results(
         if not usable:
             continue
         if (a.get('summary') and _same_cached_input(a, a) and
-                (not p.get('summary') or a.get('summary_status') == 'complete'
+                (not p.get('summary') or p.get('summary_format') == 1
+                 or a.get('summary_status') == 'complete'
                  and p.get('summary_status') != 'complete')):
             continue
         a["analysis_input_hash"] = p["input_hash"]
@@ -727,7 +738,7 @@ async def _analyse_one(
                         total_waited += delay
                         continue
                     if raw:
-                        parsed = _parse_batch(raw, 1, require_rich=True)
+                        parsed = _parse_batch(raw, 1)
                         if parsed and parsed[0]:
                             await _apply_results([article], parsed, cache, save_lock, counter)
                             return
@@ -797,7 +808,7 @@ async def _analyse_batch(
                         total_waited += delay
                         continue
                     if raw:
-                        parsed = _parse_batch(raw, len(batch), require_rich=True)
+                        parsed = _parse_batch(raw, len(batch))
                         if parsed:
                             # parsed has same length as batch; items may be None
                             # when a single element was malformed — apply the
@@ -911,7 +922,7 @@ async def analyse_all(articles: list) -> list:
             if original and article.get('analysis_input_hash') == analysis_input_hash(dict(article, content=original)):
                 article['analysis_input_hash'] = analysis_input_hash(article)
             if _same_cached_input(article, article):
-                if article.get('summary_format') != SUMMARY_FORMAT:
+                if article.get('summary_format') not in (1, SUMMARY_FORMAT):
                     article['summary_status'] = 'legacy'
             elif article.get("analysis_input_hash") != analysis_input_hash(article) or article.get("analysis_version") != ANALYSIS_VERSION:
                 for field in ANALYSIS_FIELDS:
@@ -953,7 +964,7 @@ async def analyse_all(articles: list) -> list:
             if not _needs_full_analysis(cached, a):
                 pass  # Already migrated in a prior ordinary cycle.
             elif not _needs_full_analysis(cached, previous):
-                cached['input_hash'] = analysis_input_hash(a)
+                cached['input_hash'] = analysis_input_hash(a, version=cached['version'])
                 cached['summary_evidence'] = validate_summary_evidence(dict(a, summary=cached.get('summary')), cached.get('summary_evidence'))
                 cached['key_sentences'] = [s for s in cached.get('key_sentences', []) if verified_quote(s, a)]
             else:
@@ -965,10 +976,13 @@ async def analyse_all(articles: list) -> list:
         # An interrupted prior cycle may have published a successful result
         # before its final cache flush. Reuse its exact input-bound record
         # rather than paying to generate the same result again.
-        if _needs_full_analysis(cache.get(aid), a):
-            published = _published_cache_record(a)
-            if published is not None:
-                cache[aid] = published
+        published = _published_cache_record(a)
+        stored = cache.get(aid) or {}
+        if published is not None and (
+                _needs_full_analysis(stored, a) or
+                published.get('summary_format') == SUMMARY_FORMAT and stored.get('summary_format') != SUMMARY_FORMAT or
+                published.get('summary_status') == 'complete' and stored.get('summary_status') != 'complete'):
+            cache[aid] = published
         if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
             corrected = complete_metadata(c, a)
@@ -978,7 +992,7 @@ async def analyse_all(articles: list) -> list:
             a['analysis_status'] = 'available'
             a.pop('_paid_enrichment_deferred', None)
             a["analysis_input_hash"] = c["input_hash"]
-            a["analysis_version"] = ANALYSIS_VERSION
+            a["analysis_version"] = c["version"]
             a["summary"]   = c.get("summary", "")
             a["summary_evidence"] = validate_summary_evidence(a, c.get("summary_evidence"))
             for field in SUMMARY_FIELDS:
@@ -986,6 +1000,8 @@ async def analyse_all(articles: list) -> list:
                     a[field] = c[field]
                 else:
                     a.pop(field, None)
+            if a.get('summary_format') not in (1, SUMMARY_FORMAT):
+                a['summary_status'] = 'legacy'
             a["score"]     = c["score"] if c.get("score") is not None else 5
             a["tags"]      = c.get("tags", [])
             a["sentiment"] = c.get("sentiment", "neutral")
@@ -1009,8 +1025,8 @@ async def analyse_all(articles: list) -> list:
                 _restore_cached(a, legacy)
             candidates.append(a)
 
-    # A safe compact summary remains useful while its format is upgraded.
-    # Admit genuinely missing summaries first, inside the same source caps.
+    # Reuse valid summaries without paid format upgrades. Changed/missing inputs
+    # still enter the existing fair queue and per-source caps.
     for a in _fair_candidates(candidates):
         source = a.get('source', '')
         admitted = admitted_by_source.get(source, 0)

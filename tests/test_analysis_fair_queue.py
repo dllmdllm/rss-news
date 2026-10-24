@@ -111,7 +111,11 @@ def test_fallback_gets_a_slot_before_queued_original_batches(monkeypatch, tmp_pa
             elif 'https://' in text:
                 pytest.fail('the prompt should not need a source URL')
             elif '### 第 1 篇' in text and '標題：車站服務安排' in text and len(events) == 1:
-                return raw(count, invalid=True), {}, 200
+                # Compact summaries are now valid. Use an actual prose/schema
+                # failure so this still exercises bounded fallback scheduling.
+                broken = json.loads(raw(count, invalid=True))
+                for item in broken: item['summary'] *= 4
+                return json.dumps(broken), {}, 200
             else:
                 await fallback_started.wait()
             await asyncio.sleep(0)

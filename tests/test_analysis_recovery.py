@@ -94,7 +94,7 @@ def test_published_result_of_corrected_input_is_not_restored(monkeypatch, tmp_pa
     assert json.loads(path.read_text(encoding='utf-8')) == {}
 
 
-def test_missing_summary_precedes_format_upgrade_with_same_source_cap(monkeypatch, tmp_path):
+def test_missing_summary_uses_source_cap_without_regenerating_valid_legacy(monkeypatch, tmp_path):
     path = offline(monkeypatch, tmp_path)
     legacy, missing = article('legacy'), article('missing')
     cached = dict(summary='・車站今晚提早關門', score=6, tags=[], sentiment='neutral',
@@ -111,7 +111,7 @@ def test_missing_summary_precedes_format_upgrade_with_same_source_cap(monkeypatc
     asyncio.run(analyse.analyse_all([legacy, missing]))
     assert calls == ['missing']
     assert legacy['summary'] == cached['summary']
-    assert legacy['analysis_status'] == 'pending-budget'
+    assert legacy['analysis_status'] == 'available'
     assert missing['analysis_status'] == 'failed'
 
 

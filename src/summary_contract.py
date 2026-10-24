@@ -119,6 +119,12 @@ def normalise_generated_points(raw, limited=False):
 
 def validate_record(record):
     """New records must remain structurally honest; legacy records stay readable."""
+    if record.get('summary_format') == 1:
+        status, summary = record.get('summary_status'), record.get('summary')
+        if (status not in {'short', 'limited'} or not isinstance(summary, str)
+                or not summary.strip() and status != 'limited' or record.get('summary_points')):
+            raise ValueError('invalid short summary status or content')
+        return
     if record.get('summary_format') != SUMMARY_FORMAT:
         return
     points = record.get('summary_points')

@@ -178,7 +178,7 @@ def validate_site(docs: Path, require_current=False):
         if record.get('content_hash') != hashes[aid] or articles[aid].get('content_hash') != hashes[aid]:
             raise ValueError(f'{aid}: metadata/sidecar content_hash must equal actual body SHA256')
         article = articles[aid]
-        if article.get('summary_format') == 2:
+        if article.get('summary_format') in (1, 2):
             version = article.get('analysis_version')
             if (not isinstance(version, str) or not re.fullmatch(r'p-[a-f0-9]{8,64}', version)
                     or input_hash(dict(article, content=content), version) != article.get('analysis_input_hash')):

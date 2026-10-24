@@ -64,6 +64,48 @@ def route_body(page, data, body):
 
 
 @pytest.mark.parametrize('width', [390, 1280])
+@pytest.mark.parametrize('title_match', [False, True])
+def test_accepted_short_summary_keeps_search_reader_and_honest_evidence_status(browser, news_data, width, title_match):
+    data, _, body = fixture_data(news_data)
+    row = data['articles'][0]
+    row.update(summary='・政府公布交通安排\n・巴士加開班次', summary_format=1,
+               summary_status='short', summary_evidence=[])
+    expected = ['政府公布交通安排', '巴士加開班次']
+    if title_match:
+        row.update(title=expected[0], summary='・'+expected[0])
+        expected = expected[:1]
+    row.pop('summary_points', None)
+    raw = json.dumps({'a0': {'saved': True, 'read': False, 'position': .43, 'updated': 1}})
+    with _static_server() as base:
+        context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
+        _route_fixture(context, base, {'payload': data})
+        context.add_init_script('if(localStorage.getItem("rss_reader_state_v1")===null)localStorage.setItem("rss_reader_state_v1",'+json.dumps(raw)+')')
+        page = context.new_page(); page.set_default_timeout(6000); route_body(page, data, body)
+        try:
+            page.goto(base+'/index.html'); page.locator('#leadStory h1').wait_for()
+            if width == 390: page.locator('#mobileTabs [data-view="search"]').click()
+            page.locator('#search').fill(row['title'])
+            page.wait_for_function('document.querySelector("#resultCount").textContent.includes("1 篇匹配報道")')
+            lead = page.locator('#leadStory')
+            assert lead.locator('.summary-point').all_inner_texts() == expected
+            assert lead.locator('.summary-unverified').count() == len(expected)
+            assert lead.locator('.summary-limits').count() == 0
+            assert '五點' not in lead.inner_text() and '待例行更新' not in lead.inner_text()
+            assert page.evaluate('localStorage.getItem("rss_reader_state_v1")') == raw
+            page.goto(base+'/article.html?id=a0')
+            page.wait_for_function('document.querySelector("#summaryBox").dataset.bodyCheck === "matched"')
+            assert page.locator('#summaryBox li').all_inner_texts() == [point+'未核實' for point in expected]
+            assert page.locator('#summaryBox .summary-source-status').count() == len(expected)
+            assert page.locator('#summaryBox .summary-limits').count() == 0
+            assert page.locator('#content figcaption').inner_text() == '來源原有圖片說明'
+            state = page.evaluate('RssReaderState.get("a0")')
+            assert state['saved'] and state['position'] == .43
+            assert page.locator(REMOVED).count() == 0
+            assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
+        finally: context.close()
+
+
+@pytest.mark.parametrize('width', [390, 1280])
 def test_removed_evidence_rich_summary_and_last_updated_preserve_reader(browser, news_data, width):
     data, sentences, body = fixture_data(news_data)
     raw = json.dumps({'a0': {'saved': True, 'read': False, 'position': .43, 'updated': 1}})
