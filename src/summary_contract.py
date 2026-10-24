@@ -66,14 +66,55 @@ def normalise_points(raw, limited=False):
             'summary_evidence': support}
 
 
+def normalise_generated_points(raw, limited=False):
+    """Keep valid points without mistaking a formatting miss for source scarcity.
+
+    Publication/cache validation stays strict. Generation may omit or damage a
+    point; it must not erase independently usable siblings or invent padding.
+    Quotes stay paired inside their original point, never guessed/reassigned.
+    """
+    if not isinstance(raw, list):
+        raise ContractError('points_type', 'invalid summary point count')
+    if not raw:
+        return normalise_points(raw, limited)
+    points, support, seen = [], [], set()
+    repaired = type(limited) is not bool or len(raw) != MAX_POINTS
+    for item in raw[:MAX_POINTS * 2]:
+        if len(points) == MAX_POINTS:
+            break
+        try:
+            parsed = normalise_points([item], True)
+        except ContractError:
+            repaired = True
+            continue
+        values = parsed['summary_points'][0]
+        identities = {re.sub(r'[\W_]+', '', value).casefold() for value in values}
+        if identities & seen:
+            repaired = True
+            continue
+        seen.update(identities)
+        points.append(values)
+        support.extend(parsed['summary_evidence'])
+        repaired |= len(values) != 2
+    if not points:
+        raise ContractError('sentence_structure', 'no usable structured summary points')
+    return {'summary': '\n'.join('・' + ''.join(point) for point in points),
+            'summary_points': points, 'summary_format': SUMMARY_FORMAT,
+            'summary_status': ('limited' if limited is True else
+                               'partial' if repaired or len(points) != MAX_POINTS else 'complete'),
+            'summary_evidence': support}
+
+
 def validate_record(record):
     """New records must remain structurally honest; legacy records stay readable."""
     if record.get('summary_format') != SUMMARY_FORMAT:
         return
     points = record.get('summary_points')
     status = record.get('summary_status')
-    if status not in {'complete', 'limited'} or not isinstance(points, list):
+    if status not in {'complete', 'limited', 'partial'} or not isinstance(points, list):
         raise ValueError('invalid rich summary status')
+    if status == 'partial' and not points:
+        raise ValueError('partial summary requires usable content')
     evidence = record.get('summary_evidence')
     if not isinstance(evidence, list) or len(evidence) != len(points):
         raise ValueError('rich summary requires support for every point')
@@ -86,6 +127,6 @@ def validate_record(record):
         raw.append({'sentences': point, 'quotes': support.get('quotes')})
         if not isinstance(support.get('quotes'), list) or not support['quotes'] or support.get('quote') != support['quotes'][0]:
             raise ValueError('summary primary quote differs from sentence support')
-    canonical = normalise_points(raw, status == 'limited')
+    canonical = normalise_points(raw, status != 'complete')
     if record.get('summary') != canonical['summary']:
         raise ValueError('summary string differs from structured points')

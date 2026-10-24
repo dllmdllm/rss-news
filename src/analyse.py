@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from src.event_dates import EVENT_DATE_VERSION, validate_event
 from src.article_evidence import validate_summary_evidence, body_text, normalise_text, verified_quote
 from src.enrichment_budget import legacy_source_limit
-from src.summary_contract import SUMMARY_FORMAT, normalise_points, validate_record
+from src.summary_contract import SUMMARY_FORMAT, normalise_generated_points, validate_record
 from src.analysis_input import input_hash, source_text
 from src.analysis_statistics import CURRENT, RESPONSE_METADATA, count
 from src import analysis_diagnostics as diagnostic
@@ -110,16 +110,20 @@ ANALYSIS_FIELDS = ('summary', 'summary_evidence', 'score', 'tags', 'sentiment', 
 
 def _retain_supported_points(record):
     if record.get('summary_format') != SUMMARY_FORMAT:
-        return
+        return True
     supported = {entry['point']: entry for entry in record.get('summary_evidence', [])}
     original = record['summary_points']
     kept = [point for point in original if ''.join(point) in supported]
     record['summary_points'] = kept
     record['summary'] = '\n'.join('・' + ''.join(point) for point in kept)
     record['summary_evidence'] = [supported[''.join(point)] for point in kept]
-    if len(kept) != len(original) or len(kept) < 5 or any(len(point) != 2 for point in kept):
-        record['summary_status'] = 'limited'
+    if original and not kept:
+        return False
+    if record.get('summary_status') != 'limited' and (
+            len(kept) != len(original) or len(kept) < 5 or any(len(point) != 2 for point in kept)):
+        record['summary_status'] = 'partial'
     validate_record(record)
+    return True
 
 
 def _same_cached_input(cached, article):
@@ -322,7 +326,7 @@ def _normalise_parsed(data: dict, *, require_rich=False) -> dict | None:
             tags_raw = [t for t in re.split(r"[,，、\s]+", tags_raw) if t]
         elif not isinstance(tags_raw, list):
             tags_raw = []
-        rich = normalise_points(data['summary_points'], data.get('summary_limited', False)) if 'summary_points' in data else None
+        rich = normalise_generated_points(data['summary_points'], data.get('summary_limited', False)) if 'summary_points' in data else None
         if require_rich and rich is None:
             count('validation_rejections', 'missing_rich_points')
             diagnostic.contract_rejection('missing_rich_points')
@@ -625,9 +629,18 @@ async def _apply_results(
             p['summary_evidence'] = [e for e in p['summary_evidence']
                                      if all(q in supplied for q in e.get('quotes', []))]
         p["summary_evidence"] = validate_summary_evidence({**a, "summary": p["summary"]}, p.get("summary_evidence"))
-        _retain_supported_points(p)
+        usable = _retain_supported_points(p)
         count('results', 'unsupported_points_removed', original_points - len(p.get('summary_points') or []))
         if original_points > len(p.get('summary_points') or []): diagnostic.support_removed(a['id'])
+        # A parsed reply with no verified content is not a successful empty
+        # summary and must not overwrite an existing usable result or its cache.
+        # Keep the existing per-cycle request policy; ordinary cycles may retry.
+        if not usable:
+            continue
+        if (a.get('summary') and _same_cached_input(a, a) and
+                (not p.get('summary') or a.get('summary_status') == 'complete'
+                 and p.get('summary_status') != 'complete')):
+            continue
         a["analysis_input_hash"] = p["input_hash"]
         a["analysis_version"] = ANALYSIS_VERSION
         a['analysis_status'] = 'available'
@@ -833,7 +846,10 @@ def _ensure_analysis_defaults(articles: list) -> None:
         a["key_sentences"] = _normalise_key_sentences(a.get("key_sentences"))
         a["upcoming_events"] = _validated_events(a, a.get("upcoming_events"))
         a["summary_evidence"] = validate_summary_evidence(a, a.get("summary_evidence"))
-        _retain_supported_points(a)
+        if not _retain_supported_points(a):
+            for field in (*SUMMARY_FIELDS, 'analysis_input_hash', 'analysis_version'):
+                a.pop(field, None)
+            a['analysis_status'] = 'pending'
         a["summary_evidence_status"] = "available" if a["summary_evidence"] else "unavailable"
 
 

@@ -29,6 +29,9 @@ def changed(kind):
     if kind == 'quote-type': obj['summary_points'][0]['quotes'] = 'text'
     if kind == 'sentence-count': obj['summary_points'][0]['sentences'].pop()
     if kind == 'sentence-type': obj['summary_points'][0]['sentences'] = 'text'
+    if kind == 'empty-unlimited': obj['summary_points'] = []
+    if kind == 'all-invalid':
+        for point in obj['summary_points']: point['quotes'] = []
     if kind == 'one-limited':
         obj['summary_points'] = obj['summary_points'][:1]
         obj['summary_limited'] = True
@@ -73,8 +76,8 @@ def test_valid_limited_bare_object_is_not_mistaken_for_its_nested_array():
     assert parsed[0]['summary_status'] == 'limited'
 
 
-@pytest.mark.parametrize('kind,reason', [('four-points', 'point_count'),
-    ('quote-count', 'quote_count'), ('sentence-count', 'sentence_count')])
+@pytest.mark.parametrize('kind,reason', [('empty-unlimited', 'point_count'),
+    ('points-type', 'point_count'), ('all-invalid', 'malformed_object')])
 def test_decoded_object_contract_rejection_is_not_a_json_decode_failure(kind, reason):
     raw = json.dumps(changed(kind))
     assert isinstance(json.loads(raw), dict)
@@ -87,9 +90,8 @@ def test_decoded_object_contract_rejection_is_not_a_json_decode_failure(kind, re
     assert snapshot['results']['whole_batch_rejections'] == 0
 
 
-@pytest.mark.parametrize('kind', ['four-points', 'over-five', 'points-type',
-    'flag-type', 'quote-count', 'quote-type', 'sentence-count', 'sentence-type'])
-def test_invalid_contracts_remain_rejected_without_padding_or_coercion(kind):
+@pytest.mark.parametrize('kind', ['points-type', 'all-invalid', 'empty-unlimited'])
+def test_unusable_contracts_remain_rejected_without_padding_or_coercion(kind):
     parsed = analyse._parse_batch(json.dumps([changed(kind)]), 1, require_rich=True)
     assert not parsed or not parsed[0]
 
@@ -118,7 +120,7 @@ def test_parser_correction_cannot_bypass_verbatim_source_support():
     parsed = analyse._parse_batch(json.dumps([obj]), 1, require_rich=True)
     row = article(); original_body = row['content']
     asyncio.run(analyse._apply_results([row], parsed, {}, asyncio.Lock(), [0]))
-    assert len(row['summary_points']) == 4 and row['summary_status'] == 'limited'
+    assert len(row['summary_points']) == 4 and row['summary_status'] == 'partial'
     assert row['content'] == original_body
     assert obj['summary_points'][0]['sentences'][0] not in row['summary']
 
@@ -163,11 +165,9 @@ def test_existing_single_object_and_integer_string_compatibility():
     assert analyse._parse_batch(json.dumps([obj]), 1, require_rich=True)[0]
 
 
-@pytest.mark.parametrize('kind,detail', [('four-points', 'complete_point_count'),
-    ('over-five', 'points_range'), ('points-type', 'points_type'), ('flag-type', 'limited_type'),
-    ('quote-count', 'quote_count'), ('quote-type', 'quote_type'),
-    ('sentence-count', 'sentence_count'), ('sentence-type', 'sentence_structure')])
-def test_distinct_contract_details_preserve_rejection_policy(kind, detail):
+@pytest.mark.parametrize('kind,detail', [('empty-unlimited', 'complete_point_count'),
+    ('points-type', 'points_type'), ('all-invalid', 'sentence_structure')])
+def test_distinct_contract_details_preserve_unusable_rejection_policy(kind, detail):
     with collect_analysis_statistics() as stats:
         assert analyse._parse_batch(json.dumps([changed(kind)]), 1, require_rich=True) == [None]
     report = stats.snapshot()['format_diagnostics']
@@ -178,7 +178,7 @@ def test_distinct_contract_details_preserve_rejection_policy(kind, detail):
 def test_four_retries_of_one_article_are_four_events_but_one_unique_rejection(monkeypatch):
     async def fake_post(*args):
         analyse.RESPONSE_METADATA.get().update(stop_reason='end_turn', text_blocks=1)
-        return json.dumps([changed('four-points')]), {}, 200
+        return json.dumps([changed('points-type')]), {}, 200
     monkeypatch.setattr(analyse, '_post_messages', fake_post)
     monkeypatch.setattr(analyse, 'MAX_BACKOFF_BUDGET', 0)
     async def run():
@@ -188,21 +188,21 @@ def test_four_retries_of_one_article_are_four_events_but_one_unique_rejection(mo
     report = asyncio.run(run()); details = report['format_diagnostics']
     assert report['requests']['attempted'] == report['requests']['returned'] == 4
     assert report['queue']['started'] == 1
-    assert details['counts']['validation']['complete_point_count'] == 4
+    assert details['counts']['validation']['points_type'] == 4
     assert details['unique_articles']['contract_rejected'] == 1
-    assert details['unique_contract_rejections'] == {'complete_point_count': 1}
+    assert details['unique_contract_rejections'] == {'points_type': 1}
     assert details['counts']['parse_outcomes'] == {'fallback|end_turn|contract_rejected': 4}
-    assert details['counts']['point_count'] == {'4': 4}
+    assert details['counts']['point_type'] == {'object': 4}
 
 
 def test_batch_and_fallback_unique_counts_do_not_guess_invalid_index_ownership():
     a, b = dict(article(), id='PRIVATE_A'), dict(article(), id='PRIVATE_B')
-    bad = changed('four-points'); bad['idx'] = 2
+    bad = changed('points-type'); bad['idx'] = 2
     with collect_analysis_statistics() as stats:
         with diagnostic.observe_attempt([a, b], 'batch'):
             assert analyse._parse_batch(json.dumps([complete(), bad]), 2, require_rich=True)[1] is None
         with diagnostic.observe_attempt([b], 'fallback'):
-            analyse._parse_batch(json.dumps([changed('four-points')]), 1, require_rich=True)
+            analyse._parse_batch(json.dumps([changed('points-type')]), 1, require_rich=True)
         with diagnostic.observe_attempt([a, b], 'batch'):
             invalid = complete(); invalid['idx'] = 99
             analyse._parse_batch(json.dumps([invalid, bad]), 2, require_rich=True)
@@ -217,12 +217,12 @@ def test_batch_and_fallback_unique_counts_do_not_guess_invalid_index_ownership()
 
 def test_one_article_can_have_two_distinct_reasons_without_becoming_two_articles():
     with collect_analysis_statistics() as stats:
-        for kind in ['four-points', 'flag-type', 'four-points']:
+        for kind in ['empty-unlimited', 'points-type', 'empty-unlimited']:
             with diagnostic.observe_attempt([article()], 'fallback'):
                 analyse._parse_batch(json.dumps([changed(kind)]), 1, require_rich=True)
     details = stats.snapshot()['format_diagnostics']
     assert details['unique_articles']['contract_rejected'] == 1
-    assert details['unique_contract_rejections'] == {'complete_point_count': 1, 'limited_type': 1}
+    assert details['unique_contract_rejections'] == {'complete_point_count': 1, 'points_type': 1}
 
 
 def test_cancelled_request_records_one_terminal_outcome_and_restores_context(monkeypatch):
