@@ -48,7 +48,7 @@ def test_five_points_keep_two_full_sentences_through_parser_and_application():
 
 
 @pytest.mark.parametrize('change', ['missing', 'fragment', 'duplicate', 'three', 'quote-count', 'over-five'])
-def test_invalid_rich_structure_is_rejected(change):
+def test_format_misses_keep_valid_points_without_padding(change):
     points = raw_points()
     if change == 'missing': points.pop()
     if change == 'fragment': points[0]['sentences'][0] = '政府新交通安排'
@@ -56,7 +56,10 @@ def test_invalid_rich_structure_is_rejected(change):
     if change == 'three': points[0]['sentences'].append('不得額外加入第三句話。')
     if change == 'quote-count': points[0]['quotes'].pop()
     if change == 'over-five': points.append(copy.deepcopy(points[0]))
-    assert parsed(points) is None
+    result = parsed(points)
+    assert result['summary_status'] == 'partial'
+    assert len(result['summary_points']) == (4 if change == 'missing' else 5)
+    validate_record(result)
 
 
 def test_generation_rejects_legacy_fragments_but_legacy_parser_remains_readable():
@@ -102,19 +105,21 @@ def test_source_limit_never_pads_or_retries_to_meet_counts(points):
     assert not analyse._needs_full_analysis(cache['a'], current)
 
 
-def test_missing_second_sentence_support_discards_whole_point():
+def test_missing_second_sentence_support_preserves_verified_first_sentence():
     points = raw_points(); points[0]['quotes'][1] = '這句原文根本不存在，不能充當支持。'
     result = parsed(points); current = article()
     asyncio.run(analyse._apply_results([current], [result], {}, asyncio.Lock(), [0]))
-    assert len(current['summary_points']) == 4
-    assert current['summary_status'] == 'limited'
-    assert SENTENCES[0][0] not in current['summary']
+    assert len(current['summary_points']) == 5
+    assert current['summary_status'] == 'partial'
+    assert current['summary_points'][0] == SENTENCES[0][:1]
+    assert SENTENCES[0][1] not in current['summary']
 
 
 def test_source_quote_outside_supplied_prefix_is_not_generation_support():
     current = article(); current['content'] = '<p>' + '無關的已提供文字。' * 350 + ''.join(sum(SENTENCES, [])) + '</p>'
     asyncio.run(analyse._apply_results([current], [parsed()], {}, asyncio.Lock(), [0]))
-    assert current['summary_points'] == [] and current['summary_status'] == 'limited'
+    assert not current.get('summary') and not current.get('summary_points')
+    assert current.get('analysis_status') != 'available'
 
 
 def test_second_quote_is_validated_internally():
