@@ -888,7 +888,7 @@ def _write_content_sidecars(articles: list) -> dict[str, int]:
         content = a['content']
         old_record = _load_old_content_record(a['id'])
         fallback = (a.get('content_quality') or {}).get('fallback') or 'unknown'
-        if (a.get('summary_format') == 2 and
+        if (a.get('summary_format') in (1, 2) and
                 analysis_input_hash(a, version=a.get('analysis_version')) != a.get('analysis_input_hash')):
             raise ValueError('analysis input changed before publication: ' + a['id'])
         cpath = CONTENT_DIR / f"{a['id']}.json"
@@ -1035,7 +1035,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
     old = {
         a["id"]: a
         for a in old_articles
-        if (a.get("summary") or a.get('summary_format') == 2 and a.get('summary_status') == 'limited')
+        if (a.get("summary") or a.get('summary_format') in (1, 2) and a.get('summary_status') == 'limited')
         and not looks_like_prompt_schema_summary(a.get("summary", ""))
     }
     restored = 0
@@ -1045,7 +1045,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
         "upcoming_events": _normalise_upcoming_events,
     }
     for a in articles:
-        if not a.get("summary") and a["id"] in old and not (a.get("summary_format") == 2 and a.get("summary_status") == "limited"):
+        if not a.get("summary") and a["id"] in old and not (a.get("summary_format") in (1, 2) and a.get("summary_status") == "limited"):
             src = old[a["id"]]
             if not _same_cached_input(src, a):
                 continue
@@ -1058,7 +1058,7 @@ def _apply_fallback_summaries(articles: list, old_articles: list) -> list:
                 if src.get(field) is not None:
                     a[field] = normaliser(src[field], a) if field == 'key_sentences' else normaliser(src[field])
             a["summary_evidence"] = validate_summary_evidence(a, src.get("summary_evidence"))
-            if src.get("summary_format") != 2:
+            if src.get("summary_format") not in (1, 2):
                 a["summary_status"] = "legacy"
             for field in ('summary_points', 'summary_format', 'summary_status'):
                 if field in src:

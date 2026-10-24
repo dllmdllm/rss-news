@@ -116,9 +116,14 @@ def test_missing_summary_uses_source_cap_without_regenerating_valid_legacy(monke
 
 
 @pytest.mark.parametrize('empty', [False, True])
-def test_previous_publication_can_repair_cache_after_fresh_fetch(monkeypatch, tmp_path, empty):
+@pytest.mark.parametrize('compact', [False, True])
+def test_previous_publication_can_repair_cache_after_fresh_fetch(monkeypatch, tmp_path, empty, compact):
     path = offline(monkeypatch, tmp_path)
     previous = published(article('fetched'), empty=empty)
+    if compact:
+        previous.update(summary_format=1, summary_status='limited' if empty else 'short',
+                        summary='' if empty else '・車站提早關門', summary_evidence=[])
+        previous.pop('summary_points', None)
     incoming = article('fetched')
     build._apply_fallback_summaries([incoming], [previous])
 
