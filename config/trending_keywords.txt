@@ -1,4 +1,5 @@
-# synced 2026-10-25T06:37:51.621237+08:00
+# synced 2026-10-25T06:58:51.589139+08:00
+f1
 西甲
 香港財經時報
 cfo
@@ -6,6 +7,5 @@ lol worlds
 twitch
 泥面人
 ufc
-chelsea
 車路士
-足球
+chelsea vs spurs
