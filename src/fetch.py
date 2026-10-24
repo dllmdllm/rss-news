@@ -27,7 +27,8 @@ from src.feeds import (
     RSS_FEEDS,
     SIMPLIFIED_SOURCES,
 )
-from src.minimax_client import MINIMAX_API_KEY, post_messages
+from src.minimax_client import MINIMAX_API_KEY, MINIMAX_MODEL, post_messages
+from src.title_translation import bind_translation, reuse_translation, published_titles
 
 ARTICLE_MAX_AGE_HOURS = 30
 
@@ -194,6 +195,19 @@ def _parse_title_translations(raw: str, expected: int) -> list[str] | None:
     return [to_hk(str(item).strip()) for item in data]
 
 
+_TITLE_SYSTEM = 'You are a concise news title translator. Output valid JSON only.'
+_TITLE_PREFIX = (
+    "Translate the following news titles into Hong Kong Traditional Chinese.\n"
+    "Use Hong Kong conventions, not Taiwan or mainland ones. For a person, "
+    "place or work whose Hong Kong Chinese name you are not confident about, "
+    "keep the original English name rather than inventing a transliteration.\n"
+    "Return only a JSON array of strings, same order and same length. "
+    "Do not add explanations.\n\n"
+)
+TITLE_TRANSLATION_VERSION = 'title1-' + hashlib.sha256(
+    (_TITLE_SYSTEM + _TITLE_PREFIX + MINIMAX_MODEL + 'to_hk-v1').encode('utf-8')).hexdigest()[:16]
+
+
 async def _translate_titles_minimax(
     session: aiohttp.ClientSession,
     titles: list[str],
@@ -209,22 +223,14 @@ async def _translate_titles_minimax(
     # 「唔肯定」條分支根本冇觸發）：同一次測試 Scorsese 好咗、DiCaprio 差咗，
     # 係 noise 唔係 fix。留住係因為「用香港唔用台灣／大陸」本身資訊量多咗，
     # 但唔好當個問題解決咗。「咸 → 鹹」嗰個係另一件事，由 hk_text.to_hk() 修。
-    user_text = (
-        "Translate the following news titles into Hong Kong Traditional Chinese.\n"
-        "Use Hong Kong conventions, not Taiwan or mainland ones. For a person, "
-        "place or work whose Hong Kong Chinese name you are not confident about, "
-        "keep the original English name rather than inventing a transliteration.\n"
-        "Return only a JSON array of strings, same order and same length. "
-        "Do not add explanations.\n\n"
-        f"{numbered}"
-    )
+    user_text = _TITLE_PREFIX + numbered
     try:
         # Translation is a simple structured-output task — M3 thinking adds
         # latency with no quality benefit. Disabling it brings M3 back to
         # M2.7 speed (~5-10s) so the 30s timeout is safe again.
         raw, err, _status = await post_messages(
             session,
-            system="You are a concise news title translator. Output valid JSON only.",
+            system=_TITLE_SYSTEM,
             user_text=user_text,
             max_tokens=max(1200, len(titles) * 200),
             timeout=30,
@@ -1407,6 +1413,8 @@ async def _fetch_one(
                 # Consumed by retranslate_english_titles before publication;
                 # prevents the second title pass from spending twice this run.
                 article['_title_translation_skip_cycle'] = True
+                if reuse_translation(article, feed_info.get('_title_reuse'), TITLE_TRANSLATION_VERSION):
+                    continue
                 if len(pending_title_translations) < title_budget:
                     pending_title_translations.append(article)
                     article['_title_translation_attempted'] = True
@@ -1415,9 +1423,8 @@ async def _fetch_one(
         if pending_title_translations:
             titles = [article["title"] for article in pending_title_translations]
             translated = await _translate_titles_minimax(session, titles)
-            for article, title in zip(pending_title_translations, translated):
-                article['title_translation_status'] = 'translated' if title != article['title'] else 'original'
-                article["title"] = title
+            for article, original, title in zip(pending_title_translations, titles, translated):
+                bind_translation(article, original, title, TITLE_TRANSLATION_VERSION)
         if not valid_entries:
             http_cache.pop(url, None)
             return articles, 'feed contains no valid URL/date metadata', False
@@ -1468,33 +1475,25 @@ async def retranslate_english_titles(articles: list) -> None:
         pending.append(article)
     if not pending:
         return
-    titles = [a["title"] for a in pending]
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=public_connector()) as session:
         # Translate in chunks of 10 to keep each response well under the token
         # budget. Chunks run concurrently so one slow straggler does not
         # serialize the whole retrofix pass.
-        chunks = [titles[i:i + 10] for i in range(0, len(titles), 10)]
-        # return_exceptions=True so one chunk's failure (network blip, parse
-        # error) doesn't cancel the others. _translate_titles_minimax already
-        # returns the original titles on internal error; only an unexpected
-        # crash bubbles up here, in which case we fall back to originals too.
-        results = await asyncio.gather(
-            *[_translate_titles_minimax(session, chunk) for chunk in chunks],
-            return_exceptions=True,
-        )
-        translated: list[str] = []
-        for chunk, out in zip(chunks, results):
-            if isinstance(out, BaseException):
-                print(f"[fetch] title translation chunk failed: {out!r}")
-                translated.extend(chunk)
-            else:
-                translated.extend(out)
-    changed = 0
-    for article, new_title in zip(pending, translated):
-        article['title_translation_status'] = 'translated' if new_title and new_title != article['title'] else 'original'
-        if new_title and new_title != article["title"]:
-            article["title"] = new_title
-            changed += 1
+        chunks = [pending[i:i + 10] for i in range(0, len(pending), 10)]
+        # Isolate unexpected chunk errors; cancellation still propagates.
+        # The provider helper already returns originals on ordinary failures.
+        async def translate_chunk(chunk):
+            originals = [a['title'] for a in chunk]
+            try:
+                out = await _translate_titles_minimax(session, originals)
+            except Exception as exc:
+                print(f'[fetch] title translation chunk failed: {exc!r}')
+                return 0
+            return sum(bind_translation(a, raw, title, TITLE_TRANSLATION_VERSION)
+                       for a, raw, title in zip(chunk, originals, out))
+        # Apply each completed chunk before another chunk can time out/cancel.
+        results = await asyncio.gather(*(translate_chunk(chunk) for chunk in chunks))
+    changed = sum(results)
     if changed:
         print(f"[fetch] retranslated {changed}/{len(pending)} stale English titles")
 
@@ -1515,10 +1514,14 @@ async def _fetch_one_capped(
 ) -> tuple[list, str | None, bool]:
     _intake(feed_info)['started_at'] = datetime.now(timezone.utc).isoformat()
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             _fetch_one(session, feed_info, cutoff, http_cache),
             timeout=_PER_FEED_TIMEOUT,
         )
+        for article in result[0]:
+            if article.get('source') in ENGLISH_SOURCES and _looks_untranslated(article.get('title', '')):
+                reuse_translation(article, feed_info.get('_title_reuse'), TITLE_TRANSLATION_VERSION)
+        return result
     except (asyncio.TimeoutError, TimeoutError):
         print(f"[WARN] fetch {feed_info['name']}: feed timeout after {_PER_FEED_TIMEOUT}s")
         partial = feed_info.get('_partial_batch') or []
@@ -1534,10 +1537,12 @@ async def fetch_all() -> tuple[list, dict]:
     cutoff     = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
     http_cache = _load_feed_http_cache()
     previous_sources = _load_collection_resume()
+    title_reuse = published_titles(_FEED_CACHE_PATH.parent / 'articles.json')
     connector  = public_connector(limit=30)
     async with aiohttp.ClientSession(headers=HTTP_HEADERS, connector=connector) as session:
         feeds = [dict(f) for f in RSS_FEEDS]
         for feed in feeds:
+            feed['_title_reuse'] = title_reuse
             prior = previous_sources.get(feed['name'])
             if isinstance(prior, dict) and prior.get('feed_url') == feed['url']:
                 intake = prior.get('intake')

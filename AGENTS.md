@@ -551,6 +551,15 @@ img.referrerPolicy = "no-referrer";
   checkpoint。付費分析前先按原輸入 hash 還原已發布結果（包括明示 limited 空結果），
   修復缺失 cache；更正過嘅正文／標題仍須重新核對。相同來源配額內先處理缺摘要，
   再升級仍有可用舊摘要嘅格式，唔增加並發、重試、token 或時限。
+- **標題翻譯重用（2026-10-24）**：英文來源嘅 fresh RSS 回應唔代表每篇標題改咗。
+  `title_translation` 綁定 publisher 身分、來源名稱、原標題／SHA256、翻譯版本同譯文
+  SHA256；全部吻合先可重用已發布譯題，狀態用 cached。缺歷史綁定、譯文被修改或
+  原標題／身分／翻譯版本改變均當 miss，沿既有來源配額處理，唔重綁舊分析 hash。
+  原標題保留供核對；機械欄位唔需要增加 UI。分析仍按實際標題、正文同來源資料
+  嚴格驗證；title cache 命中唔會豁免正文／引文驗證。測試要包括連續兩次 fresh 200
+  同一原標題保持五點、數字／否定詞等真改動、304、缺綁定、壞 hash、失敗／取消，
+  同已完成 chunk 喺其他 chunk 取消時仍保留。發布後觀察既有週期嘅逐篇 title cached
+  狀態及分析輸入／整筆快取；aggregate cached 數字唔係該篇重用證據。
 - `key_sentences`：文章閱讀頁 2026-05-23 redesign 之前有做過 substring
   highlight；而家已喺 article-reading.js 恢復，關鍵句清單亦保留。
   translate_content.py 一定要行喺 analyse.py 之前，保持 key_sentences
