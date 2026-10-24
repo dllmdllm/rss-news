@@ -82,19 +82,31 @@ def normalise_generated_points(raw, limited=False):
     for item in raw[:MAX_POINTS * 2]:
         if len(points) == MAX_POINTS:
             break
-        try:
-            parsed = normalise_points([item], True)
-        except ContractError:
+        if (not isinstance(item, dict) or not isinstance(item.get('sentences'), list)
+                or not isinstance(item.get('quotes'), list)):
             repaired = True
             continue
-        values = parsed['summary_points'][0]
-        identities = {re.sub(r'[\W_]+', '', value).casefold() for value in values}
-        if identities & seen:
+        values, quotes = [], []
+        repaired |= len(item['sentences']) != 2 or len(item['quotes']) != len(item['sentences'])
+        for value, quote in zip(item['sentences'][:2], item['quotes'][:2]):
+            try:
+                parsed = normalise_points([{'sentences': [value], 'quotes': [quote]}], True)
+            except ContractError:
+                repaired = True
+                continue
+            value = parsed['summary_points'][0][0]
+            identity = re.sub(r'[\W_]+', '', value).casefold()
+            if identity in seen:
+                repaired = True
+                continue
+            seen.add(identity)
+            values.append(value)
+            quotes.extend(parsed['summary_evidence'][0]['quotes'])
+        if not values:
             repaired = True
             continue
-        seen.update(identities)
         points.append(values)
-        support.extend(parsed['summary_evidence'])
+        support.append({'point': ''.join(values), 'quote': quotes[0], 'quotes': quotes})
         repaired |= len(values) != 2
     if not points:
         raise ContractError('sentence_structure', 'no usable structured summary points')

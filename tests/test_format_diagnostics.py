@@ -120,9 +120,10 @@ def test_parser_correction_cannot_bypass_verbatim_source_support():
     parsed = analyse._parse_batch(json.dumps([obj]), 1, require_rich=True)
     row = article(); original_body = row['content']
     asyncio.run(analyse._apply_results([row], parsed, {}, asyncio.Lock(), [0]))
-    assert len(row['summary_points']) == 4 and row['summary_status'] == 'partial'
+    assert len(row['summary_points']) == 5 and row['summary_status'] == 'partial'
     assert row['content'] == original_body
-    assert obj['summary_points'][0]['sentences'][0] not in row['summary']
+    assert row['summary_points'][0] == obj['summary_points'][0]['sentences'][:1]
+    assert obj['summary_points'][0]['sentences'][1] not in row['summary']
 
 
 @pytest.mark.parametrize('wrap', ['fence', 'prose', 'quoted-brackets'])

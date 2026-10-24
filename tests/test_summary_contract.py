@@ -58,7 +58,7 @@ def test_format_misses_keep_valid_points_without_padding(change):
     if change == 'over-five': points.append(copy.deepcopy(points[0]))
     result = parsed(points)
     assert result['summary_status'] == 'partial'
-    assert len(result['summary_points']) == (5 if change == 'over-five' else 4)
+    assert len(result['summary_points']) == (4 if change == 'missing' else 5)
     validate_record(result)
 
 
@@ -105,13 +105,14 @@ def test_source_limit_never_pads_or_retries_to_meet_counts(points):
     assert not analyse._needs_full_analysis(cache['a'], current)
 
 
-def test_missing_second_sentence_support_discards_whole_point():
+def test_missing_second_sentence_support_preserves_verified_first_sentence():
     points = raw_points(); points[0]['quotes'][1] = '這句原文根本不存在，不能充當支持。'
     result = parsed(points); current = article()
     asyncio.run(analyse._apply_results([current], [result], {}, asyncio.Lock(), [0]))
-    assert len(current['summary_points']) == 4
+    assert len(current['summary_points']) == 5
     assert current['summary_status'] == 'partial'
-    assert SENTENCES[0][0] not in current['summary']
+    assert current['summary_points'][0] == SENTENCES[0][:1]
+    assert SENTENCES[0][1] not in current['summary']
 
 
 def test_source_quote_outside_supplied_prefix_is_not_generation_support():

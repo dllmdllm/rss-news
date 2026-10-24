@@ -41,8 +41,9 @@ def test_one_malformed_point_does_not_remove_valid_siblings(bad):
     if bad == 'duplicate': obj['summary_points'][0] = copy.deepcopy(obj['summary_points'][1])
     result = generate(obj)
     assert result['summary_status'] == 'partial'
-    assert len(result['summary_points']) == 4
-    assert len(result['summary_evidence']) == 4
+    expected = 4 if bad in {'wrong-type', 'duplicate'} else 5
+    assert len(result['summary_points']) == expected
+    assert len(result['summary_evidence']) == expected
     validate_record(result)
 
 
@@ -68,10 +69,26 @@ def test_ungrounded_point_is_removed_without_discarding_supported_siblings():
     obj = complete(); obj['summary_points'][0]['quotes'][1] = '這條引文並不在任何提供的來源正文裏。'
     row = article(); cache = {}; original = row['content']
     asyncio.run(analyse._apply_results([row], [generate(obj)], cache, asyncio.Lock(), [0]))
-    assert row['summary_status'] == 'partial' and len(row['summary_points']) == 4
-    assert obj['summary_points'][0]['sentences'][0] not in row['summary']
+    assert row['summary_status'] == 'partial' and len(row['summary_points']) == 5
+    assert row['summary_points'][0] == obj['summary_points'][0]['sentences'][:1]
+    assert obj['summary_points'][0]['sentences'][1] not in row['summary']
     assert row['content'] == original
-    assert len(validate_summary_evidence(row, row['summary_evidence'])) == 4
+    assert len(validate_summary_evidence(row, row['summary_evidence'])) == 5
+
+
+@pytest.mark.parametrize('failure', ['missing-quote', 'ungrounded-quote', 'bad-first-sentence'])
+def test_a_single_usable_sentence_is_not_lost_with_a_broken_sibling(failure):
+    obj = complete(); obj['summary_points'] = obj['summary_points'][:1]
+    if failure == 'missing-quote': obj['summary_points'][0]['quotes'].pop()
+    if failure == 'ungrounded-quote': obj['summary_points'][0]['quotes'][1] = '這句引文根本不在提供嘅原文入面。'
+    if failure == 'bad-first-sentence': obj['summary_points'][0]['sentences'][0] = '無句號片語'
+    row = article(); cache = {}
+    asyncio.run(analyse._apply_results([row], [generate(obj)], cache, asyncio.Lock(), [0]))
+    index = 1 if failure == 'bad-first-sentence' else 0
+    assert row['summary_points'] == [[obj['summary_points'][0]['sentences'][index]]]
+    assert row['summary_status'] == 'partial' and row['summary']
+    assert len(row['summary_evidence'][0]['quotes']) == 1
+    validate_record(row)
 
 
 @pytest.mark.parametrize('existing', [False, True])
