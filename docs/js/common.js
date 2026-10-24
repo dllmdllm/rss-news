@@ -225,10 +225,26 @@ function timeLabel(article) {
 }
 
 function summaryNotice(article) {
+  const status = article.content_quality?.text_status;
+  if (article.summary && status && status !== 'available') return summaryEmptyText(article);
   if (article.summary_status === 'partial') return '摘要未完整：先顯示有原文支持的內容；五點、每點兩句仍為目標，沒有補寫缺漏。';
   if (article.summary_status === 'limited') return '來源資料不足，摘要只保留可支持的內容，未湊足五點兩句。';
   if (article.summary && article.summary_format !== 2 && !summaryIsTitleFallback(article)) return '現有摘要為精簡版；較完整版本待例行更新。';
   return '';
+}
+
+function summaryEmptyText(article) {
+  const quality = article.content_quality || {};
+  const status = quality.text_status || (quality.fallback === 'minimal' ? 'title-only' : '');
+  const messages = {
+    'withdrawn': '來源已撤回這篇內容，未提供可用的新聞摘要。',
+    'boilerplate': '來源只提供節目或網站介紹，未有可摘要的新聞正文。',
+    'image-only': '目前只取得圖片，未有可摘要的文字。',
+    'title-only': '目前只有標題或原文連結，未取得可摘要的正文。',
+    'unavailable': '未取得可摘要的來源文字。',
+  };
+  return messages[status] || (article.summary_status === 'limited'
+    ? '來源資料不足，暫無可支持的摘要。' : '🤖 AI 摘要稍後補上');
 }
 
 // Detect when summary is just the article title (the placeholder shape

@@ -204,8 +204,8 @@
     let summary = "";
     if (points.length) {
       summary = `<ul class="mini-summary">${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
-    } else if (summaryIsTitleFallback(article)) {
-      summary = `<span class="summary-pending">🤖 AI 摘要稍後補上</span>`;
+    } else {
+      summary = `<span class="summary-pending">${esc(summaryEmptyText(article))}</span>`;
     }
     return `<a href="${articleUrl(article)}">
       <span>${esc(article.category || "")} · ${esc(article.source || "")} · ${esc(timeLabel(article))}</span>
@@ -379,7 +379,7 @@
     $("hero").innerHTML = article.thumbnail ? `<img src="${esc(article.thumbnail)}" alt="${esc((article.title || "新聞") + "配圖")}">` : "";
     const summaryInner = summaryItems.length
       ? summaryItems.map((point) => `<li>${esc(point)}</li>`).join("")
-      : `<li class="summary-pending">${article.summary_status === 'limited' ? '來源資料不足，暫無可支持的摘要。' : '🤖 AI 摘要稍後補上'}</li>`;
+      : `<li class="summary-pending">${esc(summaryEmptyText(article))}</li>`;
     $("summaryBox").innerHTML = `<h2>AI 摘要</h2><ul>${summaryInner}</ul>${summaryNotice(article) ? `<p class="summary-limits">${esc(summaryNotice(article))}</p>` : ''}`;
     $("content").innerHTML = article.content ? sanitizeHtml(article.content, article.thumbnail || "") : `<div class="error">正文暫不可用或版本不符，請稍後重新載入；可繼續查看摘要及原文。</div>`;
     if ([...$('content').querySelectorAll('img')].some(img => imageSignature(img.getAttribute('src')) === imageSignature(article.thumbnail))) {

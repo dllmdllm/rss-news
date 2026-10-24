@@ -530,6 +530,18 @@ img.referrerPolicy = "no-referrer";
 - Prompt hash 仍決定分析版本。只因格式變更而過期、但輸入 hash 按原版本核對
   一樣嘅摘要暫留，沿原有每來源配額逐步更新；更正輸入唔可以還原舊分析。
   limited 結果可快取，唔為湊足五點重試；無手動付費 backfill 或增加 token/call 上限。
+- **第一階段免費修復（2026-10-24）**：`tools/plan_summary_recovery.py` 只產生離線
+  review plan，唔會修改 snapshot、cache 或發布資料。歷史完整版重用要逐筆重驗同一
+  publisher/文章 ID、歷史及當前 sidecar hash、原版本實際輸入 hash、每句原位引文及
+  當前正文支持；標題或輸入更改就拒絕。套用前須再驗整筆 fingerprint，保留手動修改、
+  正文、媒體及其他分析欄位；實際資料還原另需發布批准。
+  五點兩句嘅 `partial` 亦要通過上述核對先可改成 complete；只改標記唔算補回摘要，
+  明示 limited 唔可以只憑點數清除。回歸包括錯 ID、變更輸入、壞 sidecar、錯引文、
+  手動修改、cache/index/正文一致性同取消後既有結果保留。
+  `content_quality.text_status` 區分 available、image-only、title-only、boilerplate、
+  withdrawn、unavailable；後五者唔送付費分析。來源不足顯示實際原因，唔承諾摘要稍後
+  補上。圖片／placeholder 唔當成功全文 cache；撤稿唔復活舊新聞，boilerplate
+  只用已核實來源嘅精確特徵。任何重新取文仍受原來源配額、請求／時限及拒絕停止規則。
 - 分析被 build 時限取消時，亦要把已完成結果原子寫入 cache，唔可以只靠每20篇
   checkpoint。付費分析前先按原輸入 hash 還原已發布結果（包括明示 limited 空結果），
   修復缺失 cache；更正過嘅正文／標題仍須重新核對。相同來源配額內先處理缺摘要，

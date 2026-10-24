@@ -15,6 +15,8 @@ from src.article_evidence import validate_summary_evidence, body_text, normalise
 from src.enrichment_budget import legacy_source_limit
 from src.summary_contract import SUMMARY_FORMAT, normalise_generated_points, validate_record
 from src.analysis_input import input_hash, source_text
+from src.source_content import classify_content
+from src.summary_recovery import complete_metadata
 from src.analysis_statistics import CURRENT, RESPONSE_METADATA, count
 from src import analysis_diagnostics as diagnostic
 
@@ -168,6 +170,9 @@ def _published_cache_record(article):
 
 def _restore_cached(article, cached):
     """Reuse only an unchanged supplied input; prompt migration never deletes it."""
+    corrected = complete_metadata(cached, article)
+    if corrected:
+        cached['summary_status'] = corrected['summary_status']
     for field in ANALYSIS_FIELDS:
         if field in cached:
             article[field] = cached[field]
@@ -923,24 +928,24 @@ async def analyse_all(articles: list) -> list:
     cached_count = 0
     for a in articles:
         aid = a["id"]
+        source_status = classify_content(a)
         original = a.pop('_unit_marker_repair_from', None)
         no_text = not (a.get('content') or a.get('rss_content')) or not _article_text(a).strip()
         minimal = (a.get('content_quality') or {}).get('fallback') == 'minimal'
-        if no_text or minimal:
+        if no_text or minimal or source_status != 'available':
             prior = cache.get(aid) or _published_cache_record(a) or {}
-            # Existing compact text can remain readable, but a placeholder or
-            # image-only body must never admit new paid analysis.
-            keep_legacy = (prior.get('summary_format') != SUMMARY_FORMAT and
-                           bool(prior.get('summary')) and _same_cached_input(prior, a))
+            # Keep an input-bound prior result, including explicit limited
+            # empty output. Insufficient prose never admits paid analysis.
+            keep_prior = _same_cached_input(prior, a)
             for field in ANALYSIS_FIELDS:
                 a.pop(field, None)
-            if keep_legacy:
+            if keep_prior:
                 _restore_cached(a, prior)
             else:
                 cache.pop(aid, None)
             a['analysis_status'] = 'pending-source'
             a['_paid_enrichment_deferred'] = True
-            count('admission', 'minimal_source' if minimal else 'empty_source_text')
+            count('admission', 'minimal_source' if minimal else 'empty_source_text' if no_text else 'insufficient_source')
             continue
         if original:
             previous = dict(a, content=original)
@@ -966,6 +971,9 @@ async def analyse_all(articles: list) -> list:
                 cache[aid] = published
         if aid in cache and not _needs_full_analysis(cache[aid], a):
             c = cache[aid]
+            corrected = complete_metadata(c, a)
+            if corrected:
+                c['summary_status'] = corrected['summary_status']
             cached_count += 1
             a['analysis_status'] = 'available'
             a.pop('_paid_enrichment_deferred', None)
