@@ -59,6 +59,7 @@ from src.analyse import (
 from src.analysis_statistics import collect_analysis_statistics
 from src.event_dates import event_identity, validate_event
 from src.article_evidence import bind_current_body_hash, update_provenance, validate_summary_evidence
+from src.source_content import classify_content, text_status
 from src.translate_content import translate_english_content
 from src.panel_digest import generate_panel_digests
 from src.embed import compute_embeddings
@@ -775,7 +776,8 @@ def _retain_verified_content(articles: list, old_articles: list) -> None:
         quality = (record or {}).get("quality") or {}
         # Length alone cannot prove full text. Legacy unknown/reused records
         # and RSS bodies must never acquire verified-full provenance.
-        if not record or not record.get("content") or quality.get("fallback") != "none":
+        if (not record or not record.get("content") or quality.get("fallback") != "none" or
+                text_status(dict(previous, content=record['content'], content_quality=quality)) not in {'available', 'withdrawn'}):
             continue
         actual = hashlib.sha256(record['content'].encode('utf-8')).hexdigest()
         if any(expected and expected != actual for expected in
@@ -871,6 +873,7 @@ def _finalize_article_body(a):
         a['summary_evidence_status'] = 'available' if verified else 'unavailable'
         a['key_sentences'] = verified_keys
         a['key_sentences_content_hash'] = a['content_hash']
+    classify_content(a)
     return flags
 
 

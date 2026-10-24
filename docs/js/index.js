@@ -94,8 +94,6 @@
   // articleUrl, timeLabel, summaryIsTitleFallback, criticalScore live in
   // docs/js/common.js — shared with article-redesign.js.
 
-  const PENDING_AI_HTML = `<p class="summary-pending">🤖 AI 摘要稍後補上</p>`;
-
   function summaryText(article, limit = 120) {
     if (summaryIsTitleFallback(article)) return "";
     const raw = String(article.summary || "").replace(/\\n/g, "\n").replace(/(?:^|\n)\s*[・•●]\s*/g, " ").replace(/\s+/g, " ").trim();
@@ -123,8 +121,7 @@
   function pointsHtml(article, limit = 5) {
     const points = summaryPoints(article, limit);
     if (points.length) return points.map((point) => `<li>${summaryPointHtml(article, point)}</li>`).join("");
-    return article.summary_status === 'limited' ? '<li class="summary-pending">來源資料不足，暫無可支持的摘要。</li>'
-      : summaryIsTitleFallback(article) ? `<li class="summary-pending">🤖 AI 摘要稍後補上</li>` : "";
+    return `<li class="summary-pending">${esc(summaryEmptyText(article))}</li>`;
   }
 
   function summaryPointHtml(article, point) {
@@ -136,8 +133,7 @@
   function summarySentencesHtml(article) {
     const points = summaryPoints(article, 5);
     if (points.length) return esc(points.join(" "));
-    if (summaryIsTitleFallback(article)) return `<span class="summary-pending">🤖 AI 摘要稍後補上</span>`;
-    return esc(summaryText(article, 220));
+    return `<span class="summary-pending">${esc(summaryEmptyText(article))}</span>`;
   }
 
   function compactSummaryHtml(article, limit = 3) {
@@ -145,9 +141,8 @@
     if (points.length) {
       return `<ul>${points.map((point) => `<li>${esc(point)}</li>`).join("")}</ul>`;
     }
-    if (summaryIsTitleFallback(article)) return PENDING_AI_HTML;
     const fallback = summaryText(article, 120);
-    return fallback ? `<p>${esc(fallback)}</p>` : "";
+    return fallback ? `<p>${esc(fallback)}</p>` : `<p class="summary-pending">${esc(summaryEmptyText(article))}</p>`;
   }
 
   function metaLine(article, extra = "") {

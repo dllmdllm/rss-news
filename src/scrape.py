@@ -14,6 +14,7 @@ from src.media_fields import image_url, repair_thumbnail
 from src.public_http import UnsafeDestination, public_connector, public_get, read_public_body
 from src.enrichment_budget import legacy_source_limit
 from src.article_evidence import bind_current_body_hash
+from src.source_content import classify_content, text_status
 from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.feeds import (
@@ -1242,6 +1243,7 @@ def _rss_fallback_content(
     if article.get('collection_method') == 'wordpress-public-posts':
         article['content_quality']['origin'] = 'wordpress-public-posts'
         article['content_quality']['completeness'] = 'unverified'
+    classify_content(article)
     return content
 
 
@@ -1306,6 +1308,7 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     """Run every CPU-bound HTML transform in a single call so the caller can
     dispatch the whole thing to an executor and keep the event loop free for
     overlapping HTTP fetches. Returns (extracted_content, og_image_or_None)."""
+    original_html = html
     html = _expand_stheadline_galleries(html)
     html = _extract_noscript_imgs(html)
     html = _fix_picture_elements(html)
@@ -1314,7 +1317,25 @@ def _process_html_sync(html: str, url: str, need_og_image: bool) -> tuple[str | 
     # HK01/TVB ship empty article bodies hydrated client-side; build from
     # __NEXT_DATA__ JSON to preserve image order and get full text.
     content: str | None = None
-    if urlsplit(url).hostname in {'www.hkepc.com', 'hkepc.com'}:
+    host = (urlsplit(url).hostname or '').removeprefix('www.')
+    if host == 'newmobilelife.com':
+        # Keep Gutenberg paragraph/figure order; precision extraction can
+        # otherwise mistake this wrapper for an image-only article.
+        source_body = BeautifulSoup(_fix_lazy_images(_fix_picture_elements(original_html)), 'html.parser').select_one('.entry-content')
+        if source_body:
+            # WP Rocket supplies both a lazy image and the same noscript
+            # fallback. Keep one editorial figure, including its caption.
+            for fallback in source_body.select('noscript'):
+                container = fallback.find_parent('figure') or fallback.parent
+                regular = [img for img in container.find_all('img') if not img.find_parent('noscript')]
+                if regular:
+                    fallback.decompose()
+                else:
+                    fallback.unwrap()
+            for widget in source_body.select('.featured-posts, .related-posts, script, style'):
+                widget.decompose()
+            content = sanitize_rss_html(str(source_body), url, dedupe_images=False)
+    elif urlsplit(url).hostname in {'www.hkepc.com', 'hkepc.com'}:
         source_body = BeautifulSoup(html, 'html.parser').select_one('#view.content')
         if source_body:
             content = sanitize_rss_html(str(source_body), url, dedupe_images=False)
@@ -1370,7 +1391,8 @@ def _reusable_full_body(article: dict) -> bool:
     content = article.get("content")
     quality = article.get("content_quality") or {}
     if (not isinstance(content, str) or not content.strip() or
-            quality.get("fallback") != "none" or quality.get("completeness") == "unverified"):
+            quality.get("fallback") != "none" or quality.get("completeness") == "unverified" or
+            text_status(article) not in {'available', 'withdrawn'}):
         return False
     expected = article.get("content_hash")
     return expected is None or expected == hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -1402,6 +1424,7 @@ async def _scrape_one(
     sem: asyncio.Semaphore,
 ) -> dict:
     repair_thumbnail(article)
+    classify_content(article)
     # Only a full retained body is a free cache hit. A budget-deferred RSS
     # fallback must remain eligible for a real body request in a later cycle.
     if _reusable_full_body(article):
@@ -1467,6 +1490,7 @@ async def _scrape_one(
                         source=article["source"],
                         fallback="none",
                     )
+                    classify_content(article)
                     bind_current_body_hash(article)
                     article["body_status"] = "available"
                 else:
@@ -1519,6 +1543,7 @@ async def scrape_all(articles: list) -> list:
     queue = []
     for index, article in enumerate(articles):
         repair_thumbnail(article)
+        classify_content(article)
         if _reusable_full_body(article):
             article["body_status"] = "available"
         elif not _cached_access_failure(article):
