@@ -172,13 +172,20 @@ def test_partial_publication_reconciles_index_body_and_source_quotes(tmp_path):
 
 
 @pytest.mark.parametrize('width', [390, 1280])
-def test_partial_visible_in_cards_reader_search_without_claiming_source_limited(browser, news_data, width):
+@pytest.mark.parametrize('title_match', [False, True])
+def test_partial_visible_in_cards_reader_search_without_claiming_source_limited(browser, news_data, width, title_match):
     data, sentences, body = fixture_data(news_data)
     row = data['articles'][0]
     row['summary_points'] = row['summary_points'][:3]
     row['summary_evidence'] = row['summary_evidence'][:3]
+    if title_match:
+        row['summary_points'] = [row['summary_points'][0][:1]]
+        entry = row['summary_evidence'][0]
+        row['summary_evidence'] = [dict(entry, point=row['summary_points'][0][0], quotes=entry['quotes'][:1])]
+        row['title'] = row['summary_points'][0][0]
     row['summary'] = '\n'.join('・'+''.join(p) for p in row['summary_points'])
     row['summary_status'] = 'partial'
+    expected = [''.join(p) for p in row['summary_points']]
     raw = json.dumps({'a0': {'saved': True, 'read': False, 'position': .43, 'updated': 1}})
     with _static_server() as base:
         context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
@@ -189,7 +196,7 @@ def test_partial_visible_in_cards_reader_search_without_claiming_source_limited(
         try:
             page.goto(base+'/index.html'); page.locator('#leadStory h1').wait_for()
             lead = page.locator('#leadStory')
-            assert lead.locator('.summary-point').all_inner_texts() == [''.join(p) for p in sentences[:3]]
+            assert lead.locator('.summary-point').all_inner_texts() == expected
             assert '摘要未完整' in lead.locator('.summary-limits').inner_text()
             assert '來源資料不足' not in lead.inner_text() and '稍後補上' not in lead.inner_text()
             if width == 390: page.locator('#mobileTabs [data-view="search"]').click()
@@ -197,7 +204,7 @@ def test_partial_visible_in_cards_reader_search_without_claiming_source_limited(
             assert page.locator(REMOVED).count() == 0
             page.goto(base+'/article.html?id=a0')
             page.wait_for_function('document.querySelector("#summaryBox").dataset.bodyCheck === "matched"')
-            assert page.locator('#summaryBox li').all_inner_texts() == [''.join(p) for p in sentences[:3]]
+            assert page.locator('#summaryBox li').all_inner_texts() == expected
             assert '摘要未完整' in page.locator('#summaryBox .summary-limits').inner_text()
             assert '稍後補上' not in page.locator('#summaryBox').inner_text()
             state = page.evaluate('RssReaderState.get("a0")')

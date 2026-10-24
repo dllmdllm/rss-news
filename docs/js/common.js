@@ -237,6 +237,9 @@ function summaryNotice(article) {
 // content. Otherwise compare normalised forms.
 function summaryIsTitleFallback(article) {
   if (!article || !article.summary || !article.title) return false;
+  // A published structured summary may legitimately contain just one verified
+  // sentence. The legacy title-placeholder heuristic must not hide it.
+  if (article.summary_format === 2 && Array.isArray(article.summary_points) && article.summary_points.length) return false;
   const raw = String(article.summary).trim();
   if (!raw) return false;
   const bulletCount = (raw.match(/・/g) || []).length;
