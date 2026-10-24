@@ -227,9 +227,8 @@ function timeLabel(article) {
 function summaryNotice(article) {
   const status = article.content_quality?.text_status;
   if (article.summary && status && status !== 'available') return summaryEmptyText(article);
-  if (article.summary_status === 'partial') return '摘要未完整：先顯示有原文支持的內容；五點、每點兩句仍為目標，沒有補寫缺漏。';
-  if (article.summary_status === 'limited') return '來源資料不足，摘要只保留可支持的內容，未湊足五點兩句。';
-  if (article.summary && article.summary_format !== 2 && !summaryIsTitleFallback(article)) return '現有摘要為精簡版；較完整版本待例行更新。';
+  if (article.summary_status === 'partial') return '摘要未完整：只顯示目前可用內容，沒有補寫缺漏。';
+  if (article.summary_status === 'limited') return '來源資料不足，摘要只保留可支持的內容。';
   return '';
 }
 
@@ -253,6 +252,7 @@ function summaryEmptyText(article) {
 // content. Otherwise compare normalised forms.
 function summaryIsTitleFallback(article) {
   if (!article || !article.summary || !article.title) return false;
+  if (article.summary_format === 1 && ['short', 'limited'].includes(article.summary_status)) return false;
   // A published structured summary may legitimately contain just one verified
   // sentence. The legacy title-placeholder heuristic must not hide it.
   if (article.summary_format === 2 && Array.isArray(article.summary_points) && article.summary_points.length) return false;

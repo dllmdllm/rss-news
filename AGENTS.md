@@ -519,11 +519,15 @@ img.referrerPolicy = "no-referrer";
 
 - `score: null` → migrate 過來的舊 entry，下次 build 重新分析
 - `topic` 用於 `cluster_articles()`：相同 topic 歸為一組
-- **摘要格式（2026-10-23）**：生成目標係五點、每點兩句完整自然句子，
-  `summary_points` 每句附逐字原文支持。來源不足可少寫或留空，明示 limited；
-  唔可以加外部資料、重複或湊數。Parser、逐句引文及發布 gate 分別核對格式、
-  實際提供嘅原文同完整 metadata/body hash。`summary` 保留 ・換行字串供舊讀者／搜尋／TTS。
-- **部分摘要（2026-10-24 用戶批准）**：五點兩句係目標，唔係丟棄所有可用內容嘅條件。
+- **短摘要（2026-10-24 22:14 用戶批准）**：新生成回到 PR34 前嘅精簡風格，目標
+  5至8點、每點約10字；唔再要求五點兩句，亦唔會因點數不足丟棄可用內容。
+  新短摘要用 `summary_format=1`／`summary_status=short`，來源不足可少寫或留空並
+  明示 limited。只用來源事實，唔加外部資料、重複或湊數；可選逐點引文只喺逐字
+  核對成功先標可核對，未附／無效引文保留「未核實」，唔假稱已驗證。
+  發布同樣核對短摘要嘅實際輸入／版本、metadata/body hash同所有提供嘅引文。
+  現有長摘要、partial同limited原樣相容保留；格式2仍按原點／句／引文規則驗證，
+  唔將舊長摘要強行壓短、重標完整或清空快取。UI唔再承諾例行升級五點兩句。
+- **既有格式2部分摘要（2026-10-24 用戶批准）**：唔因未達舊五點兩句而丟棄可用內容。
   生成回覆逐句保留句子及原位逐字引文齊備嘅內容，再核對實際輸入／正文；
   同一點嘅壞句唔拖累好句，壞點唔拖累其他點，唔補句或重新配對缺失引文。
   未達標用 `summary_status=partial`
@@ -532,9 +536,9 @@ img.referrerPolicy = "no-referrer";
   點、句、引文、字串及 hash 一致；有效 partial 重用同一輸入，唔為湊數重做付費分析。
   回歸要包括四點完整內容、一個壞點、缺引文／無依據、舊摘要保留、取消寫 cache，
   同手機／桌面卡片、搜尋及閱讀頁嘅 partial／complete／limited 顯示。
-- Prompt hash 仍決定分析版本。只因格式變更而過期、但輸入 hash 按原版本核對
-  一樣嘅摘要暫留，沿原有每來源配額逐步更新；更正輸入唔可以還原舊分析。
-  limited 結果可快取，唔為湊足五點重試；無手動付費 backfill 或增加 token/call 上限。
+- Prompt hash 仍決定新分析版本。現有有效摘要按各自原版本核對實際輸入後直接重用，
+  唔因回復短摘要而排隊付費升級、清 cache或重綁舊 hash；更正輸入唔可以還原舊分析。
+  limited 結果可快取，唔為湊點重試；無手動付費 backfill 或增加 token/call 上限。
 - **第一階段免費修復（2026-10-24）**：`tools/plan_summary_recovery.py` 只產生離線
   review plan，唔會修改 snapshot、cache 或發布資料。歷史完整版重用要逐筆重驗同一
   publisher/文章 ID、歷史及當前 sidecar hash、原版本實際輸入 hash、每句原位引文及
@@ -910,9 +914,9 @@ Required regression fixtures include the real build order through pre-analysis
 media inventory, translation, analysis and sidecar publication: fresh hashed
 leading hero, image-only/minimal inputs, cached/fresh translations, deterministic
 cleanup, cancelled tails, and corrupt current/saved caches. Already-canonical
-snapshot replay alone misses mutation-order failures. Keep the source/model,
-five-point/two-sentence target and all existing budgets unchanged. Supported
-partial output stays visible under the approved partial-summary policy above.
+snapshot replay alone misses mutation-order failures. Keep source/model and all
+existing budgets unchanged. New output uses the owner-approved compact style;
+existing rich/partial output stays visible under its original validation contract.
 
 Missing summaries precede format upgrades inside unchanged per-source AI caps.
 Missing work alternates prior backlog/new articles and rotates sources. At most
