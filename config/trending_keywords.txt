@@ -1,4 +1,7 @@
-# synced 2026-10-29T14:58:49.980943+08:00
+# synced 2026-10-29T15:18:06.748128+08:00
+news
+hk01
+tvb news
 now news
 now
 rthk
@@ -6,6 +9,3 @@ now tv
 千葉縣
 playstation
 陳朗昇
-mavericks vs thunder
-駭客
-黃澤林
