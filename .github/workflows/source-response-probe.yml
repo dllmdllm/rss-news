@@ -1,15 +1,25 @@
-name: Windows source response probe
+name: Mac source response probe
+
 on:
   workflow_dispatch:
+
 permissions:
   contents: read
+
 concurrency:
-  group: windows-source-response-probe
+  group: mac-source-response-probe
   cancel-in-progress: false
+
 jobs:
   probe:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 3
+    runs-on: [self-hosted, macOS]
+    # 10 not the old Windows 3: on this runner checkout of the 500+ MB repo
+    # alone can take minutes on a degraded-network day (see update.yml);
+    # the probe reads themselves take seconds.
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
     env:
       MINIMAX_API_KEY: ''
       TELEGRAM_BOT_TOKEN: ''
@@ -21,9 +31,36 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Pin Python interpreter
+        # macOS port (2026-11-09): same pin as update.yml. The runner is a
+        # launchd service whose inherited PATH has no Homebrew, so build /
+        # reuse the persistent venv outside the checkout and prepend it to
+        # GITHUB_PATH. Replaces the old Windows pin
+        # (C:\Program Files\Python313\python.exe, needed when the runner ran
+        # as a LocalSystem service on Windows 365).
+        run: |
+          PY313="/opt/homebrew/bin/python3.13"
+          VENV="$HOME/rss-news-venv"
+          if [ ! -x "$PY313" ]; then
+            echo "python3.13 missing at $PY313" >&2
+            exit 1
+          fi
+          if [ ! -x "$VENV/bin/python" ]; then
+            "$PY313" -m venv "$VENV" || exit 1
+          fi
+          {
+            echo "$VENV/bin"
+            echo "/opt/homebrew/bin"
+          } >> "$GITHUB_PATH"
+          "$VENV/bin/python" -m pip --version
+
+      - name: Install dependencies
+        run: python -m pip install --cache-dir "$HOME/.cache/pip" -r requirements.txt
+
       - name: Two guarded public source reads
-        shell: powershell
-        run: '& "C:\Program Files\Python313\python.exe" tools/source_response_probe.py --out "$env:RUNNER_TEMP\rss-source-response-probe.json"'
+        run: python tools/source_response_probe.py --out "$RUNNER_TEMP/rss-source-response-probe.json"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
