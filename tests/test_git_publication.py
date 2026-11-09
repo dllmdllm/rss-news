@@ -17,7 +17,12 @@ def _publisher(tmp_path, failure=''):
     script = '\n'.join(line[10:] for line in script.splitlines())
     bindir = tmp_path / 'bin'; bindir.mkdir()
     record = tmp_path / 'calls.jsonl'
-    selected = str(tmp_path / 'checkout with space')
+    checkout = tmp_path / 'checkout with space'
+    checkout.mkdir()
+    # The ported step resolves its own checkout with `pwd -P` instead of
+    # asking cygpath to translate a path, so the trusted identity is the
+    # physical directory the script actually runs in.
+    selected = str(checkout.resolve())
     mock = '''import json,os,sys
 from pathlib import Path
 name=Path(sys.argv[0]).name; args=sys.argv[1:]
@@ -47,7 +52,7 @@ if cmd=='push' and fail=='push':sys.exit(1)
         path.write_text('#!' + sys.executable + '\n' + mock, encoding='utf-8'); path.chmod(0o755)
     env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ['PATH'], CALLS=str(record), SELECTED=selected, FAIL=failure,
                HEAD_STATE=str(tmp_path / 'head-state.txt'), GITHUB_OUTPUT=str(tmp_path / 'publication-output.txt'))
-    result = subprocess.run(['bash','-c',script],cwd=tmp_path,env=env,capture_output=True,text=True)
+    result = subprocess.run(['bash','-c',script],cwd=checkout,env=env,capture_output=True,text=True)
     calls = [json.loads(line) for line in record.read_text(encoding='utf-8').splitlines()]
     return result, calls, selected
 

@@ -110,7 +110,7 @@ def test_publication_workflow_blocks_push_until_code_and_data_gates_pass():
     positions = [source.index('- name: ' + name) for name in names]
     assert positions == sorted(positions)
     gate = source.split('- name: Validate generated site before publication',1)[1].split('- name:',1)[0]
-    assert '--require-current' in gate and 'if ($LASTEXITCODE -ne 0)' in gate
+    assert '--require-current' in gate and 'validate_publication.py docs --require-current || exit $?' in gate
     assert 'continue-on-error' not in gate
     assert 'Retain recovery artifact' in source and 'retention-days: 3' in source
     assert source.index('check-source --tested') < source.index('git reset --mixed origin/main')
