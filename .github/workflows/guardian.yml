@@ -106,7 +106,7 @@ jobs:
             fi
             if [ "$delivered_status" != "stale" ] || [ $(( now - last_alert )) -ge "$REALERT_SEC" ]; then
               pending_delivery=true
-              if tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。${dispatch_note}；如持續，檢查 runner：Get-Service actions.runner.*"; then
+              if tg "🔴 rss-news 斷更 ${age_min} 分鐘（最後更新 ${last_commit}）。${dispatch_note}；如持續，檢查 Mac mini runner（mac-mini-rss）有冇在線"; then
                 last_alert=$now
                 delivered_status="stale"
                 pending_delivery=false
