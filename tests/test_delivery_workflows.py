@@ -56,10 +56,11 @@ def test_guardian_failed_recovery_retries(tmp_path):
 
 
 def test_update_failure_state_written_only_after_api_ack():
-    # PowerShell is unavailable in the offline Linux fixture environment.
+    # The step is asserted as shell text: its ordering contract lives in the
+    # script itself (API call -> ok check -> acknowledged state write).
     source = (ROOT / '.github/workflows/update.yml').read_text(encoding="utf-8").split('- name: Notify Telegram on failure', 1)[1]
-    assert source.index('$response = Invoke-RestMethod') < source.index('if ($response.ok -ne $true)') < source.index('Set-Content -Path $statusFile -Value "failure"')
-    assert source.count('Set-Content -Path $statusFile -Value "failure"') == 1
+    assert source.index('response=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"') < source.index('json.load(sys.stdin).get("ok") is True') < source.index("printf 'failure\\n' > \"$status_file\"")
+    assert source.count("printf 'failure\\n' > \"$status_file\"") == 1
 
 
 @pytest.mark.skipif(os.name == 'nt', reason='Hosted POSIX shell mocks')
@@ -73,4 +74,4 @@ def test_guardian_dispatch_failure_does_not_claim_success(tmp_path):
 def test_heartbeat_acknowledgement_precedes_sent_state():
     source = (ROOT / '.github/workflows/update.yml').read_text(encoding='utf-8')
     heartbeat = source.split('- name: Daily heartbeat',1)[1].split('- name:',1)[0]
-    assert heartbeat.index('$response = Invoke-RestMethod') < heartbeat.index('$response.ok -ne $true') < heartbeat.index('Set-Content -Path $heartbeatFile')
+    assert heartbeat.index('response=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"') < heartbeat.index('json.load(sys.stdin).get("ok") is True') < heartbeat.index("printf '%s\\n' \"$today\" > \"$heartbeat_file\"")
