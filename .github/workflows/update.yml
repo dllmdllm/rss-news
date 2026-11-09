@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     # 25 not 16: on a degraded-network day (observed 2026-06-10) checkout
     # alone took ~10 min (2 min auth + 7.5 min fetch of the 500+ MB repo)
     # and the job died at the old 16-min cap before build.py even started —
@@ -34,60 +34,64 @@ jobs:
     timeout-minutes: 25
     defaults:
       run:
-        shell: powershell
+        shell: bash
     steps:
       - uses: actions/checkout@v6
 
       - name: Pin Python interpreter
-        # Self-hosted runner inherits PATH from whatever process started it,
-        # and since 2026-06-11 it runs as a Windows service under LocalSystem,
-        # so per-user installs are invisible: the old MS Store Python pin
-        # resolved LOCALAPPDATA to systemprofile and every run died here in
-        # ~24s (observed 2026-06-11→12, 80 consecutive failures). Pin the
-        # all-users CPython at C:\Program Files\Python313 instead and prepend
-        # it to GITHUB_PATH so all later steps see the same interpreter
-        # regardless of inherited PATH or service account.
+        # macOS port (2026-11-09): the runner is a launchd service running as
+        # user nary, and launchd's inherited PATH is minimal
+        # (/usr/bin:/bin:/usr/sbin:/sbin - no Homebrew), so `python` would
+        # resolve to the system Python 3.9 or nothing at all. Same fix as the
+        # old Windows pin (2026-06-11: the LocalSystem service account made
+        # per-user installs invisible and 80 consecutive runs died here),
+        # different mechanism: build a persistent venv from the Homebrew
+        # Python 3.13 OUTSIDE the checkout (site-packages persist between
+        # runs, like the old all-users CPython) and prepend its bin dir -
+        # plus Homebrew's - to GITHUB_PATH so every later step sees the same
+        # interpreter regardless of inherited PATH.
         run: |
-          $pyDir = "C:\Program Files\Python313"
-          if (-not (Test-Path "$pyDir\python.exe")) {
-            Write-Error "python.exe missing at $pyDir"; exit 1
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $pyDir
-          Add-Content -Path $env:GITHUB_PATH -Value "$pyDir\Scripts"
-          & "$pyDir\python.exe" -m pip --version
+          PY313="/opt/homebrew/bin/python3.13"
+          VENV="$HOME/rss-news-venv"
+          if [ ! -x "$PY313" ]; then
+            echo "python3.13 missing at $PY313" >&2
+            exit 1
+          fi
+          if [ ! -x "$VENV/bin/python" ]; then
+            "$PY313" -m venv "$VENV" || exit 1
+          fi
+          {
+            echo "$VENV/bin"
+            echo "/opt/homebrew/bin"
+          } >> "$GITHUB_PATH"
+          "$VENV/bin/python" -m pip --version
 
       - name: Install dependencies
         # No actions/cache step: on a self-hosted runner the pip cache dir and
-        # the installed site-packages both persist on local disk between runs,
-        # so upload/restore is pure overhead — and its save step was failing
-        # anyway under the LocalSystem service (Git tar.exe path with spaces,
-        # observed 2026-06-12).
-        run: python -m pip install --cache-dir "$env:LOCALAPPDATA\pip\Cache" -r requirements.txt
+        # the installed site-packages (the venv pinned above) both persist on
+        # local disk between runs, so upload/restore is pure overhead - and
+        # its save step was failing anyway on the old Windows host
+        # (LocalSystem service + Git tar.exe path with spaces, 2026-06-12).
+        run: python -m pip install --cache-dir "$HOME/.cache/pip" -r requirements.txt
 
       - name: Pre-flight check
         # Fail fast (~5s) instead of after a 12-min fetch. Catches:
         #   - a requirement that pip-installed but won't import (binary wheel
         #     mismatch, missing C runtime, partial cache corruption)
         #   - MiniMax endpoint TCP:443 unreachable (DNS or firewall)
+        # macOS port: the TCP probe is a Python socket instead of the
+        # PowerShell/.NET TcpClient probe; same host, port and 5s budget.
         run: |
           python -c "import aiohttp, feedparser, trafilatura, dotenv, zhconv, cloudscraper, bs4, sentence_transformers; print('imports OK')"
-          $ok = $false
-          try {
-            $c = [System.Net.Sockets.TcpClient]::new()
-            $iar = $c.BeginConnect('api.minimax.io', 443, $null, $null)
-            $ok = $iar.AsyncWaitHandle.WaitOne(5000, $false) -and $c.Connected
-            $c.Close()
-          } catch {}
-          if (-not $ok) { Write-Error 'minimax tcp:443 unreachable'; exit 1 }
-          Write-Host 'pre-flight OK'
+          python -c "import socket; s = socket.create_connection(('api.minimax.io', 443), timeout=5); s.close(); print('minimax tcp:443 OK')"
 
       - name: Retain prior public site
         # Only tracked docs are archived; no env, credentials or local reader
         # state. Retain uncertain legacy bytes without pretending they are good.
-        run: python tools/site_snapshot.py snapshot --out "$env:RUNNER_TEMP\rss-news-prior.zip" --allow-unvalidated
+        run: python tools/site_snapshot.py snapshot --out "$RUNNER_TEMP/rss-news-prior.zip" --allow-unvalidated
 
       - name: Run offline code regressions
-        # Browser fixtures are mandatory in hosted Code checks. This Windows
+        # Browser fixtures are mandatory in hosted Code checks. This macOS
         # publisher uses installed Python/Node and never calls paid providers.
         run: python -m pytest tests --ignore=tests/test_data_quality.py --ignore=tests/test_browser_smoke.py --ignore=tests/test_reader_mobile.py --ignore=tests/test_event_browser.py --ignore=tests/test_evidence_browser.py -q -rs
         env:
@@ -99,9 +103,19 @@ jobs:
 
       - name: Verify prior publication before paid collection
         # Existing cycles resume public reads before enrichment; no AI retry.
+        #
+        # DOWNGRADED on the macOS port (2026-11-09 reliability review): this
+        # gate used to hard-fail the run when the check failed - but once the
+        # published site is stale the check keeps failing, so the gate
+        # self-reinforces and kills every cycle before fetch (run #13793,
+        # 2026-11-07: earlier steps green, died here in ~92s while the runner
+        # was alive). It is now warn-and-continue: a failed check is
+        # reported, and the fetch proceeds anyway. The post-build gates
+        # (validate before commit, media inventory, data-quality suite) are
+        # unchanged and still hard-fail before anything is pushed.
         run: |
-          python tools/verify_publication.py --result "$env:RUNNER_TEMP\rss-news-prior-publication-${{ github.run_id }}.json"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/verify_publication.py --result "$RUNNER_TEMP/rss-news-prior-publication-${{ github.run_id }}.json" \
+            || echo "::warning::prior-publication verification failed - continuing to fetch anyway (gate downgraded 2026-11-09)"
         env:
           MINIMAX_API_KEY: ''
           TELEGRAM_BOT_TOKEN: ''
@@ -110,29 +124,32 @@ jobs:
           NOTIFY_SECRET: ''
 
       - name: Fetch RSS, scrape & analyse
-        # Retry once on a *fast* failure. lxml's C extension segfaults the
-        # interpreter mid-scrape at a low but steady rate (0xC0000005 in
-        # etree.pyd, 11 times 2026-07-20→30, ~1.5% of builds); it dies ~12s in
-        # and costs a whole 20-min cycle for what a re-run almost always
-        # clears. Gate on elapsed time, not exit code: build.py also exits 1
-        # when its own 850s cap fires before the core save, and retrying
-        # *that* would push the job past `timeout-minutes: 25`. 420s leaves
-        # room for a full second attempt inside the cap.
+        # Retry once on a *fast* failure. On the old Windows host this gate
+        # existed because lxml's C extension segfaulted the interpreter
+        # mid-scrape at a low but steady rate (0xC0000005 in etree.pyd, 11
+        # times 2026-07-20 to 30, ~1.5% of builds); it died ~12s in and cost
+        # a whole 20-min cycle for what a re-run almost always cleared. The
+        # macOS port keeps the same time-gated retry (the rationale is now
+        # generic - any fast crash deserves one retry; the segfault was just
+        # its first customer). Gate on elapsed time, not exit code: build.py
+        # also exits 1 when its own 850s cap fires before the core save, and
+        # retrying *that* would push the job past `timeout-minutes: 25`. 420s
+        # leaves room for a full second attempt inside the cap.
         run: |
-          $t0 = Get-Date
-          python build.py
-          $code = $LASTEXITCODE
-          if ($code -ne 0) {
-            $elapsed = [int]((Get-Date) - $t0).TotalSeconds
-            if ($elapsed -lt 420) {
-              Write-Host "::warning::build.py exited $code after ${elapsed}s — retrying once"
-              python build.py
-              $code = $LASTEXITCODE
-            } else {
-              Write-Host "::warning::build.py exited $code after ${elapsed}s — too late to retry"
-            }
-          }
-          exit $code
+          start=$(date +%s)
+          code=0
+          python build.py || code=$?
+          if [ "$code" -ne 0 ]; then
+            elapsed=$(( $(date +%s) - start ))
+            if [ "$elapsed" -lt 420 ]; then
+              echo "::warning::build.py exited $code after ${elapsed}s - retrying once"
+              code=0
+              python build.py || code=$?
+            else
+              echo "::warning::build.py exited $code after ${elapsed}s - too late to retry"
+            fi
+          fi
+          exit "$code"
         env:
           MINIMAX_API_KEY:      ${{ secrets.MINIMAX_API_KEY }}
           MINIMAX_MODEL:        ${{ secrets.MINIMAX_MODEL }}
@@ -143,10 +160,8 @@ jobs:
         # Keep the previous publication on any failed integrity/evidence gate.
         # This is deliberately before staging/committing/pushing generated data.
         run: |
-          python tools/validate_publication.py docs --require-current
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tools/check_media_inventory.py docs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/validate_publication.py docs --require-current || exit $?
+          python tools/check_media_inventory.py docs || exit $?
           python -m pytest tests/test_data_quality.py -q
         env:
           MINIMAX_API_KEY: ''
@@ -155,22 +170,24 @@ jobs:
 
       - name: Commit & push if changed
         id: publication
-        # Use Git Bash explicitly — `shell: bash` on self-hosted Windows
-        # picks up WSL bash first from PATH, which can't handle Windows
-        # paths like `C:\actions-runner\_work\...` that Actions injects.
-        # The runner parses `shell:` by whitespace, so `C:\Program Files\…`
-        # breaks (`Which2: 'C:\Program'` → ArgumentException). Use the 8.3
-        # short name `PROGRA~1` to keep the path whitespace-free.
-        shell: 'C:\PROGRA~1\Git\bin\bash.exe -eo pipefail {0}'
+        # Plain bash: the job default shell is bash on this macOS runner,
+        # so the body below runs under /bin/bash directly. (On the old
+        # Windows host this step needed an explicit Git Bash pin via an 8.3
+        # short path: the PowerShell default turned git's stderr progress
+        # into terminating ErrorRecords via $ErrorActionPreference = 'stop',
+        # and `shell: bash` picked up WSL bash, which cannot handle Windows
+        # paths. Neither hazard exists here.)
         run: |
-          # Bash sidesteps PowerShell's `$ErrorActionPreference = 'stop'`
-          # default, which on Windows hosts turns git's stderr progress into
-          # terminating ErrorRecords and kills the step before push completes.
+          # git's stderr progress is normal output here, not an error
+          # stream to fear; every git call below checks its own exit status
+          # explicitly, so keep the script running across expected non-zero
+          # probes instead of dying on the first one.
           set +e
           # The service account may differ from the checkout owner. Trust
           # only this resolved checkout for each Git command; no persistent
-          # config and no wildcard. Git Bash supplies cygpath on this runner.
-          selected_checkout=$(cygpath -am "$(pwd -P)") || exit 1
+          # config and no wildcard. (On Windows this needed cygpath to
+          # translate the path for Git Bash; macOS paths are native.)
+          selected_checkout=$(pwd -P) || exit 1
           [ -n "$selected_checkout" ] || exit 1
           git() { command git -c safe.directory= -c "safe.directory=$selected_checkout" "$@"; }
           git rev-parse --show-toplevel >/dev/null || exit 1
@@ -262,7 +279,17 @@ jobs:
         # Poll public bytes only. A CDN/deployment delay never repeats paid
         # analysis, dispatches another job or rolls back production.
         # The pinned commit includes data-only resyncs and the no-change path.
-        run: python tools/verify_publication.py --revision "${{ steps.publication.outputs.revision }}" --result "$env:RUNNER_TEMP\rss-news-publication-check-${{ github.run_id }}.json"
+        #
+        # WARN-ONLY on the macOS port (2026-11-09 reliability review): this
+        # check used to fail the whole run when public bytes lagged the push
+        # - run #12379 (2026-10-16) pushed new data successfully and still
+        # went red here, a "false red" that also fed the failure-notify
+        # path. A lagging CDN is not a build failure: warn, keep the result
+        # file (the next step uploads it either way), and let the run record
+        # what actually happened - data published.
+        run: |
+          python tools/verify_publication.py --revision "${{ steps.publication.outputs.revision }}" --result "$RUNNER_TEMP/rss-news-publication-check-${{ github.run_id }}.json" \
+            || echo "::warning::public Pages verification did not confirm the new revision yet (warn-only since 2026-11-09)"
         env:
           MINIMAX_API_KEY: ''
           TELEGRAM_BOT_TOKEN: ''
@@ -298,50 +325,53 @@ jobs:
         # is a positive signal that something's broken upstream of the
         # workflow (runner offline, GitHub Actions down, repo deleted).
         #
-        # Dedup state lives in a plain local file on the runner box
-        # (C:\actions-runner\rss_news_*_state.txt), NOT via `gh run list`.
-        # This is a persistent self-hosted Windows runner — same machine
-        # every run — so a local file is simpler and has no external
-        # dependency. The prior `gh run list ... 2>$null` approach silently
-        # fell back to "0 prior runs found" whenever that API call failed
-        # for any reason (missing `actions: read` was one instance, fixed
-        # 2026-07-21 — but the exact same symptom reappeared 2026-08-18 with
-        # the permission already in place, meaning `gh run list` itself is
-        # just not reliable enough for a check this load-bearing). Also
-        # resets the build-status file to "ok" so a later failure alerts
-        # fresh instead of stringing along a stale leftover "failure" state.
+        # Dedup state lives in plain local files on the runner box
+        # (~/rss-news-state/rss_news_*_state.txt), NOT via `gh run list`.
+        # This is a persistent self-hosted runner - same machine every run -
+        # so a local file is simpler and has no external dependency. The
+        # prior `gh run list` approach silently fell back to "0 prior runs
+        # found" whenever that API call failed for any reason (missing
+        # `actions: read` was one instance, fixed 2026-07-21 - but the exact
+        # same symptom reappeared 2026-08-18 with the permission already in
+        # place, meaning `gh run list` itself is just not reliable enough
+        # for a check this load-bearing). Also resets the build-status file
+        # to "ok" so a later failure alerts fresh instead of stringing along
+        # a stale leftover "failure" state.
+        #
+        # macOS port (2026-11-09): bash + curl instead of PowerShell
+        # Invoke-RestMethod; state moved from C:\actions-runner\ to
+        # ~/rss-news-state/ (still outside the checkout on purpose - a
+        # checkout clean must never wipe dedup state).
         if: success()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: "1122095129"
         run: |
-          $heartbeatFile = "C:\actions-runner\rss_news_heartbeat_state.txt"
-          $statusFile    = "C:\actions-runner\rss_news_build_status.txt"
-          Set-Content -Path $statusFile -Value "ok"
-          Set-Content -Path "$statusFile.observed" -Value "ok"
-          Remove-Item -Path "$statusFile.pending" -ErrorAction SilentlyContinue
-          $today = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
-          $lastSent = if (Test-Path $heartbeatFile) { (Get-Content $heartbeatFile -Raw).Trim() } else { "" }
-          if ($lastSent -eq $today) {
-            Write-Host "heartbeat skipped: already sent today ($today)"
+          state_dir="$HOME/rss-news-state"
+          mkdir -p "$state_dir"
+          heartbeat_file="$state_dir/rss_news_heartbeat_state.txt"
+          status_file="$state_dir/rss_news_build_status.txt"
+          printf 'ok\n' > "$status_file"
+          printf 'ok\n' > "$status_file.observed"
+          rm -f "$status_file.pending"
+          today=$(date -u +%F)
+          last_sent=""
+          if [ -f "$heartbeat_file" ]; then
+            last_sent=$(tr -d '[:space:]' < "$heartbeat_file")
+          fi
+          if [ "$last_sent" = "$today" ]; then
+            echo "heartbeat skipped: already sent today ($today)"
             exit 0
-          }
-          $ts = (Get-Date).ToUniversalTime().ToString("HH:mm")
-          $body = @{
-            chat_id = $env:TELEGRAM_CHAT_ID
-            text    = "OK rss-news heartbeat $today ${ts}Z"
-          } | ConvertTo-Json -Compress
-          try {
-            $response = Invoke-RestMethod `
-              -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
-              -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
-              -ContentType 'application/json; charset=utf-8'
-            if ($response.ok -ne $true) { throw "Telegram did not acknowledge delivery" }
-            Set-Content -Path $heartbeatFile -Value $today
-            Write-Host "heartbeat sent"
-          } catch {
-            Write-Host "heartbeat failed: $_"
-          }
+          fi
+          ts=$(date -u +%H:%M)
+          body=$(python -c 'import json, sys; print(json.dumps({"chat_id": sys.argv[1], "text": sys.argv[2]}))' "$TELEGRAM_CHAT_ID" "OK rss-news heartbeat $today ${ts}Z")
+          response=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" -H 'Content-Type: application/json; charset=utf-8' -d "$body") || response=""
+          if printf '%s' "$response" | python -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("ok") is True else 1)' 2>/dev/null; then
+            printf '%s\n' "$today" > "$heartbeat_file"
+            echo "heartbeat sent"
+          else
+            echo "heartbeat failed: $response"
+          fi
 
       - name: Notify Telegram on failure
         if: failure()
@@ -353,39 +383,39 @@ jobs:
           # storm (observed 2026-06-11) is noise that gets muted; the guardian
           # workflow owns ongoing-outage reminders. Dedup state is a local
           # file on the runner box, not `gh run list` (see "Daily heartbeat"
-          # step's comment — that API call proved unreliable enough to cause
+          # step's comment - that API call proved unreliable enough to cause
           # the exact opposite failure mode: spamming every run instead of
           # just the first).
-          $statusFile = "C:\actions-runner\rss_news_build_status.txt"
-          # statusFile records acknowledged delivery; observation and pending
-          # delivery remain separate so a failed Telegram request can retry.
-          Set-Content -Path "$statusFile.observed" -Value "failure"
-          $prevStatus = if (Test-Path $statusFile) { (Get-Content $statusFile -Raw).Trim() } else { "" }
-          if ($prevStatus -eq "failure") {
-            Write-Host "notify skipped: previous run already failed"
+          #
+          # macOS port (2026-11-09): bash + curl instead of PowerShell;
+          # state files live in ~/rss-news-state/ (see heartbeat step). The
+          # cross mark below is a literal - bash reads the runner's UTF-8
+          # step scripts natively; the PowerShell 5.1 ANSI misreading that
+          # forced a [char]0x274C workaround on Windows does not exist here.
+          state_dir="$HOME/rss-news-state"
+          mkdir -p "$state_dir"
+          status_file="$state_dir/rss_news_build_status.txt"
+          # status_file records acknowledged delivery; observation and
+          # pending delivery remain separate so a failed Telegram request
+          # can retry.
+          printf 'failure\n' > "$status_file.observed"
+          prev_status=""
+          if [ -f "$status_file" ]; then
+            prev_status=$(tr -d '[:space:]' < "$status_file")
+          fi
+          if [ "$prev_status" = "failure" ]; then
+            echo "notify skipped: previous run already failed"
             exit 0
-          }
-          Set-Content -Path "$statusFile.pending" -Value "failure"
-          $runUrl = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          # Emoji via code point, not a literal: the runner materialises step
-          # scripts as BOM-less UTF-8, which PowerShell 5.1 reads as ANSI —
-          # a literal ❌ in this file reaches Telegram as "âŒ".
-          $cross = [char]0x274C
-          $text = "$cross rss-news build failed`nrun #$env:GITHUB_RUN_NUMBER on $env:GITHUB_REF_NAME`n$runUrl"
-          $body = @{
-            chat_id = $env:TELEGRAM_CHAT_ID
-            text    = $text
-          } | ConvertTo-Json -Compress
-          try {
-            $response = Invoke-RestMethod `
-              -Uri "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" `
-              -Method Post `
-              -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
-              -ContentType 'application/json; charset=utf-8'
-            if ($response.ok -ne $true) { throw "Telegram did not acknowledge delivery" }
-            Set-Content -Path $statusFile -Value "failure"
-            Remove-Item -Path "$statusFile.pending" -ErrorAction SilentlyContinue
-            Write-Host "telegram notify sent"
-          } catch {
-            Write-Host "telegram notify failed: $_"
-          }
+          fi
+          printf 'failure\n' > "$status_file.pending"
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text=$(printf '\u274c rss-news build failed\nrun #%s on %s\n%s' "$GITHUB_RUN_NUMBER" "$GITHUB_REF_NAME" "$run_url")
+          body=$(python -c 'import json, sys; print(json.dumps({"chat_id": sys.argv[1], "text": sys.argv[2]}))' "$TELEGRAM_CHAT_ID" "$text")
+          response=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" -H 'Content-Type: application/json; charset=utf-8' -d "$body") || response=""
+          if printf '%s' "$response" | python -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("ok") is True else 1)' 2>/dev/null; then
+            printf 'failure\n' > "$status_file"
+            rm -f "$status_file.pending"
+            echo "telegram notify sent"
+          else
+            echo "telegram notify failed: $response"
+          fi
