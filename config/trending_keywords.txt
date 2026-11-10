@@ -1,4 +1,6 @@
-# synced 2026-11-11T06:21:19.070946+08:00
+# synced 2026-11-11T06:41:32.186112+08:00
+weather
+香港
 長者
 星島日報
 雙11優惠
@@ -6,6 +8,4 @@
 保温瓶
 david walliams
 cpi
-麥當勞 pokemon
-啟欣苑
-weather tomorrow
+姚子羚
