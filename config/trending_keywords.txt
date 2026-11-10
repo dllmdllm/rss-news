@@ -1,4 +1,5 @@
-# synced 2026-11-10T21:25:44.065985+08:00
+# synced 2026-11-10T21:54:51.068235+08:00
+cpi
 姚子羚
 weather tomorrow
 麥當勞 pokemon
@@ -8,4 +9,3 @@ cuaca besok
 yoasobi 香港演唱會
 北環線
 蘇民峯
-陳百祥
