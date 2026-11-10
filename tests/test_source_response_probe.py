@@ -65,7 +65,7 @@ def test_diagnostic_workflow_cannot_run_paid_build_or_publish():
     workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/source-response-probe.yml').read_text(encoding='utf-8')
     assert 'workflow_dispatch:' in workflow and 'schedule:' not in workflow
     assert 'contents: read' in workflow and 'persist-credentials: false' in workflow
-    assert 'runs-on: [self-hosted, Windows, X64]' in workflow
-    assert 'timeout-minutes: 3' in workflow
+    assert 'runs-on: [self-hosted, macOS]' in workflow
+    assert 'timeout-minutes: 10' in workflow
     assert 'secrets.' not in workflow and 'build.py' not in workflow and 'git push' not in workflow
     assert "MINIMAX_API_KEY: ''" in workflow and 'retention-days: 3' in workflow
