@@ -1,5 +1,6 @@
-# synced 2026-11-14T05:21:14.674163+08:00
-超級市場
+# synced 2026-11-14T05:36:36.679939+08:00
+weather hong kong
+天文台
 avril lavigne
 坪輋
 高市早苗
@@ -8,4 +9,3 @@ cuaca besok
 玫瑰戰爭
 apec 深圳
 賽馬
-王忠林
