@@ -1,4 +1,5 @@
-# synced 2026-11-18T16:17:05.393298+08:00
+# synced 2026-11-18T16:37:47.100020+08:00
+學校
 weather 香港
 observatory
 曾華倩
@@ -8,4 +9,3 @@ hko
 suica
 bobby au-yeung
 浩園
-gta
