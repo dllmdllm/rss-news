@@ -1,4 +1,6 @@
-# synced 2026-11-18T15:57:04.396477+08:00
+# synced 2026-11-18T16:17:05.393298+08:00
+weather 香港
+observatory
 曾華倩
 hko
 洪天明
@@ -6,6 +8,4 @@ hko
 suica
 bobby au-yeung
 浩園
-段永平
-陳寶珠
-gta 6
+gta
