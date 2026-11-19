@@ -1,4 +1,7 @@
-# synced 2026-11-19T12:57:02.294195+08:00
+# synced 2026-11-19T13:17:03.823376+08:00
+張曦雯
+飛機
+羽球
 lakers vs jazz
 粵菜
 湖人對爵士
@@ -6,6 +9,3 @@ lakers vs jazz
 獨行俠對勇士
 nginx
 mavericks vs warriors
-gemini neon
-麥美恩
-playstation
