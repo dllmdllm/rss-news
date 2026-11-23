@@ -1,6 +1,7 @@
-# synced 2026-11-24T04:13:34.577103+08:00
+# synced 2026-11-24T04:33:50.643358+08:00
 復仇者聯盟5
 cyberleek
+英偉達股票
 nvda股價
 doomsday
 全球城市
@@ -8,4 +9,3 @@ doomsday
 dow jones
 dow jones index
 voo stock
-nasdaq
