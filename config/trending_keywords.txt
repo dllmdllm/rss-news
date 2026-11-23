@@ -1,11 +1,11 @@
-# synced 2026-11-24T00:10:31.740041+08:00
+# synced 2026-11-24T00:30:49.944765+08:00
+nvidia 美股
+英偉達股票
 doomsday
 全球城市
+道指
+dow jones
 dow jones index
 voo stock
 nasdaq
 qqq
-amd stock
-cnn
-honor
-黃仁勳
