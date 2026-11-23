@@ -1,4 +1,4 @@
-# synced 2026-11-24T00:30:49.944765+08:00
+# synced 2026-11-24T00:51:04.860583+08:00
 nvidia 美股
 英偉達股票
 doomsday
@@ -7,5 +7,5 @@ doomsday
 dow jones
 dow jones index
 voo stock
-nasdaq
 qqq
+amd stock
